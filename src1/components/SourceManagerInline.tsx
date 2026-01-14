@@ -7,6 +7,7 @@ import { useScour } from './ScourContext';
 import { colors, styles, combine } from '../styles/inline';
 import { buttons, cards, forms, typography } from '../styles/designSystem';
 import { SourceBulkUpload } from './SourceBulkUpload';
+import { ScourStatusBar } from './ScourStatusBar';
 
 
 // ============================================================================
