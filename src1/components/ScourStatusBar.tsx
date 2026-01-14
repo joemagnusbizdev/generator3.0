@@ -1,9 +1,9 @@
-﻿import React from 'react';
+import React from 'react';
 
 interface ScourStatusBarProps {
   job: {
     id: string;
-    status: 'running' | 'done';
+    status: 'running' | 'done' | 'error';
     total: number;
     processed: number;
     created: number;

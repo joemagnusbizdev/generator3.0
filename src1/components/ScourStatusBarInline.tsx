@@ -1,151 +1,142 @@
-/**
- * ScourStatusBarInline - Status bar showing current scour job status
- */
 import React from 'react';
 import { useScour } from './ScourContext';
-import { colors } from '../styles/inline';
 
-// ============================================================================
-// Component
-// ============================================================================
-
-export function ScourStatusBarInline(): JSX.Element | null {
-  const { 
-    jobId, 
-    isScouring, 
-    lastResult, 
+const ScourStatusBarInline: React.FC = () => {
+  const {
+    isScouring,
+    scourJob,
+    jobId,
+    lastResult,
     lastError,
     lastStartedAt,
     lastFinishedAt,
   } = useScour();
 
-  // Don't render if no active job and no recent activity
-  if (!jobId && !isScouring && !lastResult && !lastError) {
+  // Don't show if no activity
+  if (!isScouring && !lastResult && !lastError && !scourJob) {
     return null;
   }
 
-  const barStyle: React.CSSProperties = {
-    position: 'fixed',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: isScouring ? colors.magnusDarkGreen : (lastError ? colors.red600 : colors.gray700),
-    color: 'white',
-    padding: '0.75rem 1rem',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    fontSize: '0.875rem',
-    zIndex: 1000,
-    boxShadow: '0 -2px 10px rgba(0,0,0,0.1)',
-  };
+  // Current job in progress
+  if (isScouring && scourJob) {
+    const progress = scourJob.total > 0 
+      ? Math.round((scourJob.processed / scourJob.total) * 100) 
+      : 0;
 
-  const leftStyle: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.75rem',
-  };
-
-  const rightStyle: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1rem',
-    fontSize: '0.75rem',
-    opacity: 0.9,
-  };
-
-  const spinnerStyle: React.CSSProperties = {
-    width: '16px',
-    height: '16px',
-    border: '2px solid rgba(255,255,255,0.3)',
-    borderTopColor: 'white',
-    borderRadius: '50%',
-    animation: 'spin 1s linear infinite',
-  };
-
-  const progressStyle: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.5rem',
-  };
-
-  const statStyle: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.25rem',
-  };
-
-  // Build status message
-  let statusMessage = '';
-  if (isScouring && jobId) {
-    statusMessage = `Scouring... Job ${jobId.slice(0, 8)}`;
-  } else if (lastError) {
-    statusMessage = `Error: ${lastError}`;
-  } else if (lastResult?.status === 'done') {
-    statusMessage = 'Scour completed';
-  } else if (lastResult?.skipped) {
-    statusMessage = `Skipped: ${lastResult.reason || 'No sources to process'}`;
+    return (
+      <div style={{
+        padding: '12px 16px',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        borderRadius: '8px',
+        marginBottom: '16px',
+        color: 'white',
+        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div className="spinner" style={{
+            width: '20px',
+            height: '20px',
+            border: '3px solid rgba(255,255,255,0.3)',
+            borderTop: '3px solid white',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+          }} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, marginBottom: '4px' }}>
+              Scour in Progress
+            </div>
+            <div style={{ fontSize: '13px', opacity: 0.9 }}>
+              Processing {scourJob.processed} of {scourJob.total} sources • 
+              {scourJob.created} alerts created • 
+              {scourJob.duplicatesSkipped || 0} duplicates skipped
+            </div>
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 700 }}>
+            {progress}%
+          </div>
+        </div>
+        
+        {/* Progress bar */}
+        <div style={{
+          marginTop: '8px',
+          height: '6px',
+          background: 'rgba(255,255,255,0.2)',
+          borderRadius: '3px',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            width: `${progress}%`,
+            height: '100%',
+            background: 'white',
+            transition: 'width 0.3s ease',
+            borderRadius: '3px',
+          }} />
+        </div>
+      </div>
+    );
   }
 
-  // Calculate progress
-  const progress = lastResult 
-    ? {
-        processed: lastResult.processed ?? 0,
-        total: lastResult.total ?? 0,
-        created: lastResult.created ?? 0,
-        errors: lastResult.errorCount ?? 0,
-      }
-    : null;
-
-  return (
-    <>
-      {/* Add keyframes for spinner animation */}
-      <style>
-        {`
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-        `}
-      </style>
-      
-      <div style={barStyle}>
-        <div style={leftStyle}>
-          {isScouring && <div style={spinnerStyle} />}
-          <span style={{ fontWeight: 500 }}>{statusMessage}</span>
-        </div>
-
-        <div style={rightStyle}>
-          {progress && progress.total > 0 && (
-            <>
-              <div style={progressStyle}>
-                <span style={statStyle}>
-                  📊 {progress.processed}/{progress.total}
-                </span>
-              </div>
-              
-              {progress.created > 0 && (
-                <span style={statStyle}>
-                  ✅ {progress.created} created
-                </span>
-              )}
-              
-              {progress.errors > 0 && (
-                <span style={{ ...statStyle, color: colors.red300 }}>
-                  ⚠️ {progress.errors} errors
-                </span>
-              )}
-            </>
-          )}
-
-          {lastFinishedAt && !isScouring && (
-            <span style={{ opacity: 0.7 }}>
-              Finished: {new Date(lastFinishedAt).toLocaleTimeString()}
-            </span>
+  // Completed - show last result
+  if (lastResult && !isScouring) {
+    return (
+      <div style={{
+        padding: '12px 16px',
+        background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+        borderRadius: '8px',
+        marginBottom: '16px',
+        color: 'white',
+        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ fontSize: '24px' }}>✓</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, marginBottom: '4px' }}>
+              Scour Completed
+            </div>
+            <div style={{ fontSize: '13px', opacity: 0.9 }}>
+              {lastResult.processed} sources processed • 
+              {lastResult.created} alerts created • 
+              {lastResult.duplicatesSkipped} duplicates • 
+              {lastResult.errorCount} errors
+            </div>
+          </div>
+          {lastFinishedAt && (
+            <div style={{ fontSize: '11px', opacity: 0.8 }}>
+              {new Date(lastFinishedAt).toLocaleTimeString()}
+            </div>
           )}
         </div>
       </div>
-    </>
-  );
-}
+    );
+  }
+
+  // Error state
+  if (lastError && !isScouring) {
+    return (
+      <div style={{
+        padding: '12px 16px',
+        background: 'linear-gradient(135deg, #eb3349 0%, #f45c43 100%)',
+        borderRadius: '8px',
+        marginBottom: '16px',
+        color: 'white',
+        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ fontSize: '24px' }}>⚠</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, marginBottom: '4px' }}>
+              Scour Failed
+            </div>
+            <div style={{ fontSize: '13px', opacity: 0.9 }}>
+              {lastError}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
 
 export default ScourStatusBarInline;
