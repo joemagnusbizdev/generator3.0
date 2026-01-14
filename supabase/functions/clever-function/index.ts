@@ -1,5 +1,8 @@
 /// <reference lib="deno.unstable" />
 
+import { runScourWorker } from './workers/scourWorker.ts';
+
+
 console.log("=== Function starting ===");
 
 Deno.serve(async (req) => {

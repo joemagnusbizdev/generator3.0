@@ -3,7 +3,8 @@ import { SourceBulkUpload } from './SourceBulkUpload';
 import { ScourStatusBar } from './ScourStatusBar';
 import { SourceTable } from './SourceTable';
 import { AutoScourSettings } from './AutoScourSettings';
-import { apiFetchJson, apiPostJson } from '../lib/utils/api';
+import { useScour } from './ScourContext';
+import { apiFetchJson } from '../lib/utils/api';
 
 interface Source {
   id: string;
@@ -27,8 +28,8 @@ export default function SourceManagerInline({ accessToken, permissions, userRole
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isScouring, setIsScouring] = useState(false);
-  const [scourJob, setScourJob] = useState<any>(null);
+
+  const { isScouring, scourJob, startScour } = useScour();
 
   const canManage = permissions?.canManageSources !== false;
   const canScour = permissions?.canScour !== false;
@@ -69,40 +70,7 @@ export default function SourceManagerInline({ accessToken, permissions, userRole
       return;
     }
 
-    try {
-      setIsScouring(true);
-      const sourceIds = sources.filter(s => s.enabled).map(s => s.id);
-      
-      if (sourceIds.length === 0) {
-        alert('No enabled sources. Please enable at least one source.');
-        setIsScouring(false);
-        return;
-      }
-
-      const result = await apiPostJson<{ ok: boolean; jobId: string; total: number }>(
-        '/scour-sources',
-        { sourceIds, daysBack: 14 },
-        accessToken
-      );
-
-      if (result.ok) {
-        setScourJob({
-          id: result.jobId,
-          status: 'running',
-          total: result.total,
-          processed: 0,
-          created: 0,
-        });
-        console.log('Scour job started:', result.jobId);
-      } else {
-        alert('Failed to start scour');
-        setIsScouring(false);
-      }
-    } catch (err: any) {
-      console.error('Error starting scour:', err);
-      alert('Failed to start scour: ' + err.message);
-      setIsScouring(false);
-    }
+    await startScour(accessToken);
   };
 
   const containerStyle: React.CSSProperties = {

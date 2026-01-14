@@ -46,12 +46,12 @@ interface Tab {
 // ============================================================================
 
 const ALL_TABS: Tab[] = [
-  { id: 'review', label: 'Review', icon: '📋' },
-  { id: 'create', label: 'Create', icon: '✏️' },
-  { id: 'sources', label: 'Sources', icon: '🔗' },
-  { id: 'trends', label: 'Trends', icon: '📈' },
-  { id: 'analytics', label: 'Analytics', icon: '📊' },
-  { id: 'admin', label: 'Admin', icon: '⚙️' },
+  { id: 'review', label: 'Review', icon: 'ðŸ“‹' },
+  { id: 'create', label: 'Create', icon: 'âœï¸' },
+  { id: 'sources', label: 'Sources', icon: 'ðŸ”—' },
+  { id: 'trends', label: 'Trends', icon: 'ðŸ“ˆ' },
+  { id: 'analytics', label: 'Analytics', icon: 'ðŸ“Š' },
+  { id: 'admin', label: 'Admin', icon: 'âš™ï¸' },
 ];
 
 // ============================================================================
@@ -283,7 +283,7 @@ export default function App(): JSX.Element {
       <div style={appStyle}>
         <div style={{ ...headerStyle, justifyContent: 'center' }}>
           <div style={logoStyle}>
-            <span style={{ fontSize: '2rem' }}>🛡️</span>
+            <span style={{ fontSize: '2rem' }}>ðŸ›¡ï¸</span>
             <span style={logoTextStyle}>MAGNUS Intelligence</span>
           </div>
         </div>
@@ -505,7 +505,7 @@ export default function App(): JSX.Element {
         {/* Header */}
         <header style={headerStyle}>
           <div style={logoStyle}>
-            <span style={{ fontSize: '1.5rem' }}>🛡️</span>
+            <span style={{ fontSize: '1.5rem' }}>ðŸ›¡ï¸</span>
             <span style={logoTextStyle}>MAGNUS Intelligence</span>
           </div>
 

@@ -1,371 +1,144 @@
-﻿/**
- * ScourContext - React context for server-side source scanning
- */
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useRef,
-  useCallback,
-  useEffect,
-  type ReactNode,
-} from 'react';
-import { getApiUrl } from '../lib/supabase/api';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { apiPostJson, apiFetchJson } from '../lib/utils/api';
 
-// ============================================================================
-// Service Key for Internal API Calls
-// ============================================================================
-const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdub2JueXplemt1eXB0dWFrenRmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODM4MTA5MywiZXhwIjoyMDgzOTU3MDkzfQ.tX4M3i08_d8P1gCTL37XogysPgAac-7Et09godBSdNA';
-
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface ScourStartOpts {
-  maxSources?: number;
-  batchSize?: number;
-  sourceIds?: string[];
-  jobId?: string;
-}
-
-export interface ScourTotals {
-  ok: boolean;
-  skipped?: boolean;
-  reason?: string;
-  jobId?: string;
-  status: 'running' | 'done';
+interface ScourJob {
+  id: string;
+  status: 'running' | 'done' | 'error';
   total: number;
-  nextIndex: number;
   processed: number;
   created: number;
-  duplicatesSkipped: number;
-  lowConfidenceSkipped: number;
-  errorCount: number;
-  errorsThisCall: Array<{ sourceId: string; reason: string }>;
-  rejectionsThisCall: Array<{ sourceId: string; reason: string; query?: string }>;
-  processedThisCall?: number;
-  createdThisCall?: number;
-  done?: boolean;
-  partial?: boolean;
-  lastUpdateTs?: string;
+  ai_engaged?: boolean;
+  message?: string;
 }
 
-export interface JobStatusResp {
-  ok: boolean;
-  job?: {
-    id: string;
-    status: 'running' | 'done';
-    sourceIds?: string[];
-    nextIndex?: number;
-    processed?: number;
-    created?: number;
-    duplicatesSkipped?: number;
-    lowConfidenceSkipped?: number;
-    errors?: Array<{ sourceId: string; reason: string }>;
-    rejections?: Array<{ sourceId: string; reason: string; query?: string }>;
-    updated_at?: string;
-    created_at?: string;
-    total?: number;
-    errorCount?: number;
-  };
-}
-
-export interface HealthInfo {
-  ok: boolean;
-  time?: string;
-  env?: {
-    AUTO_SCOUR_ENABLED?: boolean;
-    AI_ENABLED?: boolean;
-    SCOUR_ENABLED?: boolean;
-    [key: string]: unknown;
-  };
-}
-
-export interface ScourState {
+interface ScourContextType {
   isScouring: boolean;
-  isRunning: boolean;
-  lastError: string | null;
-  lastStartedAt: string | null;
-  lastFinishedAt: string | null;
-  lastScouredIso: string | null;
-  health: HealthInfo | null;
-  autoEnabled: boolean;
-  jobId: string | null;
-  scourJobId: string | null;
-  job: JobStatusResp['job'] | null;
-  lastResult: ScourTotals | null;
-  startScour: (opts?: ScourStartOpts) => Promise<void>;
-  runScour: (opts?: ScourStartOpts) => Promise<void>;
-  cancelScour: () => void;
-  refreshLastScoured: () => Promise<void>;
-  refreshHealth: () => Promise<void>;
-  refreshJob: (jobId: string) => Promise<void>;
+  scourJob: ScourJob | null;
+  startScour: (accessToken?: string) => Promise<void>;
+  stopScour: () => void;
 }
 
-// ============================================================================
-// Context
-// ============================================================================
+const ScourContext = createContext<ScourContextType | undefined>(undefined);
 
-const ScourContext = createContext<ScourState | null>(null);
-
-export function useScour(): ScourState {
-  const ctx = useContext(ScourContext);
-  if (!ctx) {
-    throw new Error('useScour must be used within a ScourProvider');
-  }
-  return ctx;
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-function isoNow(): string {
-  return new Date().toISOString();
-}
-
-async function fetchJson<T>(
-  url: string,
-  token?: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-    ...(options.headers as Record<string, string> || {}),
-  };
-
-  const response = await fetch(url, { ...options, headers });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Request failed ${response.status}: ${text}`);
-  }
-
-  return response.json();
-}
-
-// ============================================================================
-// Provider
-// ============================================================================
-
-interface ScourProviderProps {
-  children: ReactNode;
-  accessToken?: string;
-}
-
-export function ScourProvider({ children, accessToken }: ScourProviderProps): JSX.Element {
+export function ScourProvider({ children, accessToken }: { children: React.ReactNode; accessToken?: string }) {
   const [isScouring, setIsScouring] = useState(false);
-  const [lastError, setLastError] = useState<string | null>(null);
-  const [lastStartedAt, setLastStartedAt] = useState<string | null>(null);
-  const [lastFinishedAt, setLastFinishedAt] = useState<string | null>(null);
-  const [lastScouredIso, setLastScouredIso] = useState<string | null>(null);
-  const [health, setHealth] = useState<HealthInfo | null>(null);
-  const [autoEnabled, setAutoEnabled] = useState(false);
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [job, setJob] = useState<JobStatusResp['job'] | null>(null);
-  const [lastResult, setLastResult] = useState<ScourTotals | null>(null);
+  const [scourJob, setScourJob] = useState<ScourJob | null>(null);
+  const [pollInterval, setPollInterval] = useState<NodeJS.Timeout | null>(null);
 
-  const tokenRef = useRef(accessToken);
-  const workerRef = useRef<Worker | null>(null);
-  const cancelledRef = useRef(false);
+  // Poll job status
+  const pollJobStatus = useCallback(async (jobId: string) => {
+    try {
+      const result = await apiFetchJson<{ ok: boolean; job: ScourJob }>(
+        `/scour/status?jobId=${jobId}`,
+        accessToken
+      );
 
-  useEffect(() => {
-    tokenRef.current = accessToken;
-  }, [accessToken]);
+      if (result.ok && result.job) {
+        setScourJob(result.job);
 
+        // If job is done or error, stop polling
+        if (result.job.status === 'done' || result.job.status === 'error') {
+          setIsScouring(false);
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            setPollInterval(null);
+          }
+          console.log('Scour job completed:', result.job);
+        }
+      }
+    } catch (err) {
+      console.error('Error polling scour status:', err);
+    }
+  }, [accessToken, pollInterval]);
+
+  // Start scour
+  const startScour = useCallback(async (token?: string) => {
+    const authToken = token || accessToken;
+
+    try {
+      setIsScouring(true);
+      
+      // Get all enabled sources
+      const sourcesResult = await apiFetchJson<{ ok: boolean; sources: any[] }>(
+        '/sources',
+        authToken
+      );
+
+      if (!sourcesResult.ok || !sourcesResult.sources) {
+        throw new Error('Failed to load sources');
+      }
+
+      const sourceIds = sourcesResult.sources.filter(s => s.enabled).map(s => s.id);
+
+      if (sourceIds.length === 0) {
+        alert('No enabled sources. Please enable at least one source.');
+        setIsScouring(false);
+        return;
+      }
+
+      // Start scour job
+      const result = await apiPostJson<{ ok: boolean; jobId: string; total: number }>(
+        '/scour-sources',
+        { sourceIds, daysBack: 14 },
+        authToken
+      );
+
+      if (result.ok) {
+        const newJob: ScourJob = {
+          id: result.jobId,
+          status: 'running',
+          total: result.total,
+          processed: 0,
+          created: 0,
+        };
+        setScourJob(newJob);
+        console.log('Scour job started:', result.jobId);
+
+        // Start polling
+        const interval = setInterval(() => {
+          pollJobStatus(result.jobId);
+        }, 3000); // Poll every 3 seconds
+        setPollInterval(interval);
+      } else {
+        throw new Error('Failed to start scour');
+      }
+    } catch (err: any) {
+      console.error('Error starting scour:', err);
+      alert('Failed to start scour: ' + err.message);
+      setIsScouring(false);
+    }
+  }, [accessToken, pollJobStatus]);
+
+  // Stop scour
+  const stopScour = useCallback(() => {
+    setIsScouring(false);
+    setScourJob(null);
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      setPollInterval(null);
+    }
+  }, [pollInterval]);
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (workerRef.current) {
-        workerRef.current.terminate();
-        workerRef.current = null;
+      if (pollInterval) {
+        clearInterval(pollInterval);
       }
     };
-  }, []);
-
-  const stopWorker = useCallback(() => {
-    if (workerRef.current) {
-      workerRef.current.postMessage({ type: 'stop' });
-      workerRef.current.terminate();
-      workerRef.current = null;
-    }
-  }, []);
-
-  const refreshLastScoured = useCallback(async () => {
-    try {
-      const url = getApiUrl('/last-scoured');
-      const data = await fetchJson<{ lastIso?: string }>(url, tokenRef.current);
-      if (data.lastIso) {
-        setLastScouredIso(data.lastIso);
-      }
-    } catch (err) {
-      console.warn('Failed to refresh last scoured:', err);
-    }
-  }, []);
-
-  const refreshHealth = useCallback(async () => {
-    try {
-      const url = getApiUrl('/health');
-      const data = await fetchJson<HealthInfo>(url, tokenRef.current);
-      setHealth(data);
-      if (data.env?.AUTO_SCOUR_ENABLED) {
-        setAutoEnabled(true);
-      }
-    } catch (err) {
-      console.warn('Failed to refresh health:', err);
-    }
-  }, []);
-
-  const refreshJob = useCallback(async (jid: string) => {
-    try {
-      const url = getApiUrl(`/scour/status?jobId=${encodeURIComponent(jid)}`);
-      const data = await fetchJson<JobStatusResp>(url, tokenRef.current);
-      if (data.ok && data.job) {
-        setJob(data.job);
-      }
-    } catch (err) {
-      console.warn('Failed to refresh job:', err);
-    }
-  }, []);
-
-  const startScour = useCallback(async (opts: ScourStartOpts = {}) => {
-    cancelledRef.current = false;
-    setIsScouring(true);
-    setLastError(null);
-    setLastStartedAt(isoNow());
-    setLastFinishedAt(null);
-    setJobId(null);
-    setJob(null);
-    setLastResult(null);
-    stopWorker();
-
-    try {
-      const url = getApiUrl('/scour-sources');
-      const body = {
-        maxSources: opts.maxSources ?? 25,
-        batchSize: opts.batchSize ?? 5,
-        sourceIds: opts.sourceIds,
-        jobId: opts.jobId,
-        daysBack: 14,
-        callBudgetMs: 50000,
-        sourceTimeoutMs: 35000,
-      };
-
-      const data = await fetchJson<ScourTotals>(url, tokenRef.current, {
-        method: 'POST',
-        body: JSON.stringify(body),
-      });
-
-      if (data.jobId) {
-        const jid = data.jobId;
-        setJobId(jid);
-        refreshJob(jid);
-
-        const worker = new Worker(
-          new URL('../workers/scourPoller.ts', import.meta.url),
-          { type: 'module' }
-        );
-        workerRef.current = worker;
-
-        worker.onmessage = (event) => {
-          const msg = event.data;
-
-          if (msg.type === 'status') {
-            setLastResult({
-              ok: true,
-              jobId: msg.payload.jobId,
-              status: msg.payload.status,
-              total: msg.payload.total,
-              nextIndex: msg.payload.nextIndex,
-              processed: msg.payload.processed,
-              created: msg.payload.created,
-              duplicatesSkipped: msg.payload.duplicatesSkipped,
-              lowConfidenceSkipped: msg.payload.lowConfidenceSkipped,
-              errorCount: msg.payload.errorCount,
-              errorsThisCall: msg.payload.errorsThisCall,
-              rejectionsThisCall: msg.payload.rejectionsThisCall,
-              lastUpdateTs: msg.payload.lastUpdateTs,
-            });
-
-            if (msg.payload.status === 'done') {
-              setIsScouring(false);
-              setLastFinishedAt(isoNow());
-              refreshLastScoured();
-              refreshHealth();
-              stopWorker();
-            }
-          } else if (msg.type === 'error') {
-            setLastError(msg.error);
-          } else if (msg.type === 'done') {
-            setIsScouring(false);
-            setLastFinishedAt(isoNow());
-            refreshLastScoured();
-            refreshHealth();
-            stopWorker();
-          }
-        };
-
-        worker.onerror = (err) => {
-          setLastError(err.message);
-          setIsScouring(false);
-          stopWorker();
-        };
-
-        worker.postMessage({
-          type: 'start',
-          apiBase: getApiUrl(''),
-          token: tokenRef.current,
-          jobId: jid,
-          pollMs: 1500,
-        });
-      } else {
-        setIsScouring(false);
-        setLastFinishedAt(isoNow());
-        setLastResult(data);
-        refreshLastScoured();
-        refreshHealth();
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to start scour';
-      setLastError(message);
-      setIsScouring(false);
-      setLastFinishedAt(isoNow());
-    }
-  }, [refreshJob, refreshLastScoured, refreshHealth, stopWorker]);
-
-  const cancelScour = useCallback(() => {
-    cancelledRef.current = true;
-    stopWorker();
-    setIsScouring(false);
-    setLastFinishedAt(isoNow());
-  }, [stopWorker]);
-
-  const state: ScourState = {
-    isScouring,
-    isRunning: isScouring,
-    lastError,
-    lastStartedAt,
-    lastFinishedAt,
-    lastScouredIso,
-    health,
-    autoEnabled,
-    jobId,
-    scourJobId: jobId,
-    job,
-    lastResult,
-    startScour,
-    runScour: startScour,
-    cancelScour,
-    refreshLastScoured,
-    refreshHealth,
-    refreshJob,
-  };
+  }, [pollInterval]);
 
   return (
-    <ScourContext.Provider value={state}>
+    <ScourContext.Provider value={{ isScouring, scourJob, startScour, stopScour }}>
       {children}
     </ScourContext.Provider>
   );
 }
 
-export default ScourContext;
+export function useScour() {
+  const context = useContext(ScourContext);
+  if (context === undefined) {
+    throw new Error('useScour must be used within a ScourProvider');
+  }
+  return context;
+}
