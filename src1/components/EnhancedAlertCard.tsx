@@ -1,0 +1,236 @@
+/**
+ * EnhancedAlertCard - Display component for alert items
+ */
+import React from 'react';
+import { colors, styles, combine } from '../styles/inline';
+import { cardVariants, buttonVariants, badges, typography } from '../styles/designSystem';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface Alert {
+  id: string;
+  title: string;
+  location?: string;
+  severity?: 'critical' | 'warning' | 'caution' | 'informative' | string;
+  sourceUrl?: string;
+  articleUrl?: string;
+  country?: string;
+  region?: string;
+  event_type?: string;
+  created_at?: string;
+  status?: string;
+}
+
+interface EnhancedAlertCardProps {
+  alert: Alert;
+  onDelete?: (id: string) => void;
+  onApprove?: (id: string) => void;
+  onDismiss?: (id: string) => void;
+  busy?: boolean;
+  showActions?: boolean;
+}
+
+// ============================================================================
+// Severity Styles
+// ============================================================================
+
+const severityColors: Record<string, React.CSSProperties> = {
+  critical: {
+    backgroundColor: colors.red[50],
+    borderLeftColor: colors.red[500],
+    borderLeftWidth: 4,
+    borderLeftStyle: 'solid',
+  },
+  warning: {
+    backgroundColor: colors.orange[50],
+    borderLeftColor: colors.orange[500],
+    borderLeftWidth: 4,
+    borderLeftStyle: 'solid',
+  },
+  caution: {
+    backgroundColor: colors.status.warning + '15',
+    borderLeftColor: colors.status.warning,
+    borderLeftWidth: 4,
+    borderLeftStyle: 'solid',
+  },
+  informative: {
+    backgroundColor: colors.blue[50],
+    borderLeftColor: colors.blue[500],
+    borderLeftWidth: 4,
+    borderLeftStyle: 'solid',
+  },
+};
+
+const severityBadges: Record<string, React.CSSProperties> = {
+  critical: badges.severity.critical,
+  warning: badges.severity.warning,
+  caution: badges.severity.caution,
+  informative: badges.severity.informative,
+};
+
+// ============================================================================
+// Component
+// ============================================================================
+
+export function EnhancedAlertCard({
+  alert,
+  onDelete,
+  onApprove,
+  onDismiss,
+  busy = false,
+  showActions = true,
+}: EnhancedAlertCardProps): JSX.Element {
+  const severity = alert.severity?.toLowerCase() ?? 'informative';
+  const severityStyle = severityColors[severity] ?? severityColors.informative;
+  const badgeStyle = severityBadges[severity] ?? badges.severity.informative;
+
+  const cardStyle: React.CSSProperties = combine(
+    cardVariants.base,
+    severityStyle,
+    {
+      marginBottom: '1rem',
+      transition: 'box-shadow 0.2s ease',
+      opacity: busy ? 0.7 : 1,
+      pointerEvents: busy ? 'none' : 'auto',
+    }
+  );
+
+  const headerStyle: React.CSSProperties = {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: '0.75rem',
+  };
+
+  const titleStyle: React.CSSProperties = combine(
+    typography.h4,
+    {
+      margin: 0,
+      flex: 1,
+      paddingRight: '1rem',
+    }
+  );
+
+  const metaStyle: React.CSSProperties = {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '0.5rem',
+    marginBottom: '0.75rem',
+    fontSize: '0.875rem',
+    color: colors.grayscale[600],
+  };
+
+  const actionsStyle: React.CSSProperties = {
+    display: 'flex',
+    gap: '0.5rem',
+    marginTop: '1rem',
+    flexWrap: 'wrap',
+  };
+
+  const linkStyle: React.CSSProperties = {
+    color: colors.magnusDarkGreen,
+    textDecoration: 'none',
+    fontSize: '0.875rem',
+  };
+
+  return (
+    <div style={cardStyle}>
+      <div style={headerStyle}>
+        <h4 style={titleStyle}>{alert.title}</h4>
+        <span style={badgeStyle}>
+          {severity.charAt(0).toUpperCase() + severity.slice(1)}
+        </span>
+      </div>
+
+      <div style={metaStyle}>
+        {alert.location && (
+          <span>📍 {alert.location}</span>
+        )}
+        {alert.country && !alert.location && (
+          <span>🌍 {alert.country}</span>
+        )}
+        {alert.region && (
+          <span>🗺️ {alert.region}</span>
+        )}
+        {alert.event_type && (
+          <span>📋 {alert.event_type}</span>
+        )}
+        {alert.created_at && (
+          <span>🕒 {new Date(alert.created_at).toLocaleDateString()}</span>
+        )}
+        {alert.status && (
+          <span style={{ 
+            padding: '2px 8px', 
+            backgroundColor: colors.grayscale[200], 
+            borderRadius: '4px',
+            fontSize: '0.75rem',
+          }}>
+            {alert.status}
+          </span>
+        )}
+      </div>
+
+      {(alert.sourceUrl || alert.articleUrl) && (
+        <div style={{ marginBottom: '0.5rem' }}>
+          {alert.sourceUrl && (
+            <a 
+              href={alert.sourceUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              style={linkStyle}
+            >
+              View Source →
+            </a>
+          )}
+          {alert.sourceUrl && alert.articleUrl && <span style={{ margin: '0 0.5rem' }}>|</span>}
+          {alert.articleUrl && (
+            <a 
+              href={alert.articleUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              style={linkStyle}
+            >
+              View Article →
+            </a>
+          )}
+        </div>
+      )}
+
+      {showActions && (onApprove || onDismiss || onDelete) && (
+        <div style={actionsStyle}>
+          {onApprove && (
+            <button
+              onClick={() => onApprove(alert.id)}
+              disabled={busy}
+              style={combine(buttonVariants.primary, buttonVariants.small)}
+            >
+              {busy ? 'Processing...' : 'Approve'}
+            </button>
+          )}
+          {onDismiss && (
+            <button
+              onClick={() => onDismiss(alert.id)}
+              disabled={busy}
+              style={combine(buttonVariants.secondary, buttonVariants.small)}
+            >
+              Dismiss
+            </button>
+          )}
+          {onDelete && (
+            <button
+              onClick={() => onDelete(alert.id)}
+              disabled={busy}
+              style={combine(buttonVariants.danger, buttonVariants.small)}
+            >
+              {busy ? 'Deleting...' : 'Delete'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default EnhancedAlertCard;
