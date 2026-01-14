@@ -1,4 +1,4 @@
-﻿/// <reference lib="deno.unstable" />
+/// <reference lib="deno.unstable" />
 
 console.log("=== Function starting ===");
 
@@ -508,6 +508,125 @@ Deno.serve(async (req) => {
         }
       );
     }
+    // ========================================================================
+    // AUTO SCOUR SETTINGS (Admin only)
+    // ========================================================================
+
+    // GET /auto-scour/status
+    if ((path === "/auto-scour/status" || path === "/clever-function/auto-scour/status") && req.method === "GET") {
+      const enabled = await getKV("auto_scour_enabled");
+      const intervalMinutes = await getKV("auto_scour_interval_minutes") || 60;
+      const lastRun = await getKV("auto_scour_last_run");
+      
+      return new Response(
+        JSON.stringify({ 
+          ok: true, 
+          enabled: enabled === true || enabled === "true",
+          intervalMinutes: parseInt(intervalMinutes),
+          lastRun,
+          envEnabled: Deno.env.get("AUTO_SCOUR_ENABLED") === "true"
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          }
+        }
+      );
+    }
+
+    // POST /auto-scour/toggle
+    if ((path === "/auto-scour/toggle" || path === "/clever-function/auto-scour/toggle") && req.method === "POST") {
+      const body = await req.json();
+      const { enabled, intervalMinutes } = body;
+      
+      if (typeof enabled !== "boolean") {
+        return new Response(
+          JSON.stringify({ ok: false, error: "enabled must be a boolean" }),
+          { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
+        );
+      }
+
+      await setKV("auto_scour_enabled", enabled);
+      
+      if (intervalMinutes && typeof intervalMinutes === "number" && intervalMinutes >= 30) {
+        await setKV("auto_scour_interval_minutes", intervalMinutes);
+      }
+      
+      return new Response(
+        JSON.stringify({ 
+          ok: true, 
+          enabled,
+          intervalMinutes: intervalMinutes || 60,
+          message: enabled ? "Auto-scour enabled" : "Auto-scour disabled"
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          }
+        }
+      );
+    }
+
+    // POST /auto-scour/run-now (Admin only - manual trigger)
+    if ((path === "/auto-scour/run-now" || path === "/clever-function/auto-scour/run-now") && req.method === "POST") {
+      // Get all enabled sources
+      const sources = await querySupabase("/sources?enabled=eq.true&order=created_at.desc&limit=1000");
+      const sourceIds = sources.map((s: any) => s.id);
+      
+      if (sourceIds.length === 0) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "No enabled sources to scour" }),
+          { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
+        );
+      }
+
+      const jobId = crypto.randomUUID();
+      const job = {
+        id: jobId,
+        status: "running",
+        sourceIds,
+        maxSources: sourceIds.length,
+        daysBack: 14,
+        nextIndex: 0,
+        processed: 0,
+        created: 0,
+        duplicatesSkipped: 0,
+        lowConfidenceSkipped: 0,
+        errorCount: 0,
+        errors: [],
+        rejections: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        total: sourceIds.length,
+        autoScourTriggered: true,
+      };
+
+      await setKV(`scour_job:${jobId}`, job);
+      await setKV("last_scoured_timestamp", new Date().toISOString());
+      await setKV("auto_scour_last_run", new Date().toISOString());
+      
+      return new Response(
+        JSON.stringify({ 
+          ok: true, 
+          jobId,
+          status: "running",
+          total: job.total,
+          message: "Manual auto-scour started"
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          }
+        }
+      );
+    }
+
 
     // ========================================================================
     // SCOUR
