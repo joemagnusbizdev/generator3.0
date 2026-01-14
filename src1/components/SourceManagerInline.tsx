@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
+import { apiFetchJson } from '../lib/utils/api';
+import { useScour } from './ScourContext';
 import { SourceBulkUpload } from './SourceBulkUpload';
-import { ScourStatusBar } from './ScourStatusBar';
+import ScourStatusBarInline from './ScourStatusBarInline';
 import { SourceTable } from './SourceTable';
 import { AutoScourSettings } from './AutoScourSettings';
-import { useScour } from './ScourContext';
-import { apiFetchJson } from '../lib/utils/api';
 
 interface Source {
   id: string;
@@ -16,213 +16,235 @@ interface Source {
 }
 
 interface SourceManagerInlineProps {
-  accessToken?: string;
+  accessToken: string;
   permissions?: {
     canManageSources?: boolean;
     canScour?: boolean;
   };
-  userRole?: string;
 }
 
-export default function SourceManagerInline({ accessToken, permissions, userRole }: SourceManagerInlineProps) {
+const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({ 
+  accessToken,
+  permissions 
+}) => {
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { isScouring, scourJob, startScour } = useScour();
+  const { isScouring, startScour } = useScour();
 
   const canManage = permissions?.canManageSources !== false;
   const canScour = permissions?.canScour !== false;
-  const isAdmin = userRole === 'admin' || userRole === 'owner';
 
-  const loadSources = useCallback(async () => {
+  const loadSources = async () => {
     try {
       setLoading(true);
       setError(null);
-      const result = await apiFetchJson<{ ok: boolean; sources: Source[] }>('/sources', accessToken);
-      
-      if (result.ok) {
-        setSources(result.sources || []);
-        console.log('Loaded sources:', result.sources?.length || 0);
+
+      const response = await apiFetchJson<{ ok: boolean; sources: Source[] }>(
+        '/sources',
+        accessToken
+      );
+
+      if (response.ok && Array.isArray(response.sources)) {
+        setSources(response.sources);
+        console.log(`âœ… Loaded ${response.sources.length} sources`);
       } else {
-        setError('Failed to load sources');
+        console.warn('Invalid response format:', response);
+        setSources([]);
       }
     } catch (err: any) {
-      console.error('Error loading sources:', err);
+      console.error('Failed to load sources:', err);
       setError(err.message || 'Failed to load sources');
+      setSources([]);
     } finally {
       setLoading(false);
     }
-  }, [accessToken]);
+  };
 
   useEffect(() => {
     loadSources();
-  }, [loadSources]);
+  }, [accessToken]);
 
-  const handleScour = async () => {
+  const handleStartScour = async () => {
     if (!canScour) {
-      alert('You do not have permission to scour sources.');
+      alert('You do not have permission to run scour operations.');
       return;
     }
 
-    if (sources.length === 0) {
-      alert('No sources to scour. Please upload sources first.');
+    const enabledSources = sources.filter(s => s.enabled);
+    
+    if (enabledSources.length === 0) {
+      alert('No enabled sources available. Please enable at least one source before scouring.');
       return;
     }
 
-    await startScour(accessToken);
+    console.log(`ðŸš€ Starting scour with ${enabledSources.length} enabled sources:`, 
+      enabledSources.map(s => s.name).join(', ')
+    );
+
+    try {
+      await startScour(accessToken, {
+        sourceIds: enabledSources.map(s => s.id),
+        daysBack: 14
+      });
+    } catch (err: any) {
+      console.error('Start scour error:', err);
+      alert(`Failed to start scour: ${err.message}`);
+    }
   };
 
+  const isAdmin = permissions?.canManageSources !== false;
+
+  // Inline styles
   const containerStyle: React.CSSProperties = {
-    padding: '2rem',
-    maxWidth: '1400px',
+    maxWidth: '1200px',
     margin: '0 auto',
-  };
-
-  const headerStyle: React.CSSProperties = {
-    marginBottom: '2rem',
-  };
-
-  const titleStyle: React.CSSProperties = {
-    fontSize: '1.875rem',
-    fontWeight: 'bold',
-    marginBottom: '0.5rem',
-  };
-
-  const subtitleStyle: React.CSSProperties = {
-    color: '#6b7280',
-    fontSize: '0.875rem',
-  };
-
-  const actionBarStyle: React.CSSProperties = {
-    display: 'flex',
-    gap: '1rem',
-    marginBottom: '2rem',
-    alignItems: 'center',
-  };
-
-  const buttonStyle: React.CSSProperties = {
-    padding: '0.75rem 1.5rem',
-    borderRadius: '0.5rem',
-    border: 'none',
-    fontSize: '0.875rem',
-    fontWeight: '600',
-    cursor: 'pointer',
-    backgroundColor: '#3b82f6',
-    color: 'white',
-    transition: 'background-color 0.2s',
+    padding: '24px',
   };
 
   const sectionStyle: React.CSSProperties = {
-    marginBottom: '2rem',
-    backgroundColor: 'white',
-    borderRadius: '0.5rem',
-    padding: '1.5rem',
-    boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+    marginBottom: '24px',
   };
 
-  const sectionTitleStyle: React.CSSProperties = {
-    fontSize: '1.25rem',
-    fontWeight: '600',
-    marginBottom: '1rem',
+  const headingStyle: React.CSSProperties = {
+    fontSize: '18px',
+    fontWeight: 600,
+    marginBottom: '12px',
+    color: '#111827',
+  };
+
+  const buttonPrimaryStyle: React.CSSProperties = {
+    padding: '10px 20px',
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  };
+
+  const buttonStyle: React.CSSProperties = {
+    padding: '10px 20px',
+    background: 'white',
+    color: '#374151',
+    border: '1px solid #D1D5DB',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: 500,
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  };
+
+  const errorStyle: React.CSSProperties = {
+    padding: '12px',
+    background: '#FEE2E2',
+    border: '1px solid #FECACA',
+    borderRadius: '6px',
+    color: '#991B1B',
+    marginBottom: '16px',
+  };
+
+  const emptyStateStyle: React.CSSProperties = {
+    textAlign: 'center',
+    padding: '40px',
+    color: '#6B7280',
+    background: '#F9FAFB',
+    borderRadius: '8px',
+    border: '1px dashed #D1D5DB',
   };
 
   return (
     <div style={containerStyle}>
-      <div style={headerStyle}>
-        <h1 style={titleStyle}>Source Management</h1>
-        <p style={subtitleStyle}>
-          Upload, manage, and monitor news sources for alert generation
-        </p>
-      </div>
-
+      {/* Auto Scour Settings (Admin Only) */}
       {isAdmin && (
-        <AutoScourSettings
-          accessToken={accessToken}
-          isAdmin={isAdmin}
-        />
+        <AutoScourSettings accessToken={accessToken} isAdmin={isAdmin} />
       )}
 
+      {/* Bulk Upload Section */}
       {canManage && (
         <div style={sectionStyle}>
-          <h2 style={sectionTitleStyle}>📤 Bulk Upload Sources</h2>
+          <h2 style={headingStyle}>Bulk Upload Sources</h2>
           <SourceBulkUpload
             accessToken={accessToken}
-            onUploadComplete={(count) => {
-              console.log(`Successfully uploaded ${count} sources`);
-              loadSources();
-            }}
+            onUploadComplete={loadSources}
           />
         </div>
       )}
 
-      {(isScouring || scourJob) && (
-        <div style={{ marginBottom: '2rem' }}>
-          <ScourStatusBar
-            job={scourJob}
-            isRunning={isScouring}
-          />
-        </div>
-      )}
+      {/* Scour Status Bar */}
+      <ScourStatusBarInline />
 
-      <div style={actionBarStyle}>
-        {canScour && (
-          <button
-            onClick={handleScour}
-            disabled={isScouring || sources.length === 0}
-            style={{
-              ...buttonStyle,
-              backgroundColor: isScouring || sources.length === 0 ? '#9ca3af' : '#3b82f6',
-              cursor: isScouring || sources.length === 0 ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {isScouring ? '🔄 Scouring...' : '🔍 Start Scour'}
-          </button>
-        )}
-        
+      {/* Controls */}
+      <div style={{ marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <button
+          onClick={handleStartScour}
+          disabled={isScouring || !canScour || sources.length === 0}
+          style={{
+            ...buttonPrimaryStyle,
+            opacity: (isScouring || !canScour || sources.length === 0) ? 0.5 : 1,
+            cursor: (isScouring || !canScour || sources.length === 0) ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {isScouring ? 'â³ Scouring...' : 'ðŸ” Start Scour'}
+        </button>
+
         <button
           onClick={loadSources}
           disabled={loading}
           style={{
             ...buttonStyle,
-            backgroundColor: '#10b981',
+            opacity: loading ? 0.5 : 1,
           }}
         >
-          {loading ? '⟳ Loading...' : '🔄 Refresh Sources'}
+          ðŸ”„ Refresh Sources
         </button>
 
-        <div style={{ marginLeft: 'auto', color: '#6b7280', fontSize: '0.875rem' }}>
-          {sources.length} sources • {sources.filter(s => s.enabled).length} enabled
-        </div>
+        {sources.length > 0 && (
+          <span style={{ fontSize: '14px', color: '#6B7280' }}>
+            {sources.filter(s => s.enabled).length} of {sources.length} sources enabled
+          </span>
+        )}
       </div>
 
-      {error && (
-        <div style={{
-          padding: '1rem',
-          backgroundColor: '#fee2e2',
-          color: '#991b1b',
-          borderRadius: '0.5rem',
-          marginBottom: '1rem',
-        }}>
-          ⚠️ {error}
+      {/* Error Display */}
+      {error && <div style={errorStyle}>{error}</div>}
+
+      {/* Loading State */}
+      {loading && (
+        <div style={{ textAlign: 'center', padding: '40px', color: '#6B7280' }}>
+          Loading sources...
         </div>
       )}
 
-      <div style={sectionStyle}>
-        <h2 style={sectionTitleStyle}>📋 Sources List</h2>
-        
-        {loading && sources.length === 0 ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>
-            Loading sources...
-          </div>
-        ) : (
-          <SourceTable
-            sources={sources}
-            onSourceUpdated={loadSources}
-            accessToken={accessToken}
-          />
-        )}
-      </div>
+      {/* Sources List */}
+      {!loading && (
+        <>
+          <h2 style={headingStyle}>Sources ({sources.length})</h2>
+          
+          {sources.length === 0 ? (
+            <div style={emptyStateStyle}>
+              <div style={{ fontSize: '48px', marginBottom: '16px' }}>ðŸ“°</div>
+              <div style={{ fontSize: '16px', fontWeight: 500, marginBottom: '8px' }}>
+                No sources configured
+              </div>
+              <div style={{ fontSize: '14px' }}>
+                Use bulk upload above to add news sources
+              </div>
+            </div>
+          ) : (
+            <SourceTable
+              sources={sources}
+              onSourceUpdated={loadSources}
+              accessToken={accessToken}
+            />
+          )}
+        </>
+      )}
     </div>
   );
-}
+};
+
+export default SourceManagerInline;
