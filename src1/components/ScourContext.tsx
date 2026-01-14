@@ -46,12 +46,9 @@ export interface ScourState {
 }
 
 export interface ScourContextType extends ScourState {
-  // Main actions
   startScour: (accessToken?: string, opts?: ScourStartOpts) => Promise<void>;
-  runScour: (accessToken?: string, opts?: ScourStartOpts) => Promise<void>; // Alias for startScour
+  runScour: (accessToken?: string, opts?: ScourStartOpts) => Promise<void>;
   stopScour: () => void;
-  
-  // Legacy aliases for backward compatibility
   scourJobId: string | null;
 }
 
@@ -141,6 +138,38 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
       setLastError(null);
       setLastStartedAt(new Date().toISOString());
 
+      let sourceIds = opts?.sourceIds || [];
+
+      // If no sourceIds provided, fetch all enabled sources
+      if (sourceIds.length === 0) {
+        console.log('⚠️  No sourceIds provided - fetching enabled sources...');
+        try {
+          const sourcesResponse = await apiFetchJson<{ ok: boolean; sources: Array<{ id: string; enabled: boolean }> }>(
+            '/sources',
+            token
+          );
+
+          if (sourcesResponse.ok && Array.isArray(sourcesResponse.sources)) {
+            sourceIds = sourcesResponse.sources
+              .filter(s => s.enabled)
+              .map(s => s.id);
+            
+            console.log(`✅ Fetched ${sourceIds.length} enabled sources`);
+          } else {
+            throw new Error('Failed to fetch sources');
+          }
+        } catch (fetchErr: any) {
+          console.error('Failed to fetch sources:', fetchErr);
+          throw new Error(`Cannot start scour: ${fetchErr.message}`);
+        }
+      }
+
+      if (sourceIds.length === 0) {
+        throw new Error('No enabled sources available to scour');
+      }
+
+      console.log(`🚀 Starting scour with ${sourceIds.length} sources`);
+
       // Start the scour job
       const response = await apiPostJson<{
         ok: boolean;
@@ -149,7 +178,7 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
         total: number;
         message?: string;
       }>('/scour-sources', {
-        sourceIds: opts?.sourceIds || [],
+        sourceIds,
         daysBack: opts?.daysBack || 14,
       }, token);
 
@@ -161,7 +190,7 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
         setScourJob({
           id: newJobId,
           status: 'running',
-          total: response.total || 0,
+          total: response.total || sourceIds.length,
           processed: 0,
           created: 0,
           duplicatesSkipped: 0,
@@ -194,7 +223,6 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
   }, [stopPolling]);
 
   const value: ScourContextType = {
-    // State
     isScouring,
     scourJob,
     jobId,
@@ -202,14 +230,10 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
     lastError,
     lastStartedAt,
     lastFinishedAt,
-    
-    // Actions
     startScour,
-    runScour: startScour, // Alias
+    runScour: startScour,
     stopScour,
-    
-    // Legacy
-    scourJobId: jobId, // Alias
+    scourJobId: jobId,
   };
 
   return (
