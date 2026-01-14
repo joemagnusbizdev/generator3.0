@@ -15,7 +15,53 @@ import { getApiUrl } from '../lib/supabase/api';
 // ============================================================================
 // Types
 // ============================================================================
+// Add this constant at the top of ScourContext.tsx (after imports)
+const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdub2JueXplemt1eXB0dWFrenRmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODM4MTA5MywiZXhwIjoyMDgzOTU3MDkzfQ.tX4M3i08_d8P1gCTL37XogysPgAac-7Et09godBSdNA';
 
+// Then update the scourSources function (around line 200):
+const scourSources = useCallback(async (
+  sourceIds?: string[],
+  maxSources?: number,
+  daysBack?: number
+) => {
+  setIsScourRunning(true);
+  setScourError(null);
+  setScourProgress({ processed: 0, total: 0, currentSource: '' });
+
+  const payload: any = {};
+  if (sourceIds && sourceIds.length > 0) payload.sourceIds = sourceIds;
+  if (maxSources) payload.maxSources = maxSources;
+  if (daysBack) payload.daysBack = daysBack;
+
+  try {
+    const res = await fetch(getApiUrl('/scour-sources'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,  // ← ADD THIS LINE
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`Scour failed: ${res.status} ${errorText}`);
+    }
+
+    const data = await res.json();
+    
+    if (data.jobId) {
+      pollScourStatus(data.jobId);
+    } else {
+      setIsScourRunning(false);
+      await refreshAll();
+    }
+  } catch (err: any) {
+    console.error('Scour error:', err);
+    setScourError(err.message);
+    setIsScourRunning(false);
+  }
+}, [pollScourStatus, refreshAll]);
 export interface ScourStartOpts {
   maxSources?: number;
   batchSize?: number;
@@ -123,17 +169,14 @@ function isoNow(): string {
 
 async function fetchJson<T>(
   url: string,
-  token?: string,
+  token?: string,  // Keep parameter for compatibility but don't use it
   options: RequestInit = {}
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,  // ← ALWAYS use service key
     ...(options.headers as Record<string, string> || {}),
   };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
 
   const response = await fetch(url, { ...options, headers });
 
@@ -144,7 +187,6 @@ async function fetchJson<T>(
 
   return response.json();
 }
-
 // ============================================================================
 // Provider
 // ============================================================================
