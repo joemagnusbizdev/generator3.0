@@ -131,7 +131,7 @@ async function fetchJson<T>(
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer src1\components\ScourContext.tsx.broken{SUPABASE_SERVICE_KEY}`,
+    'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
     ...(options.headers as Record<string, string> || {}),
   };
 
@@ -139,7 +139,7 @@ async function fetchJson<T>(
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Request failed src1\components\ScourContext.tsx.broken{response.status}: src1\components\ScourContext.tsx.broken{text}`);
+    throw new Error(`Request failed ${response.status}: ${text}`);
   }
 
   return response.json();
@@ -218,7 +218,7 @@ export function ScourProvider({ children, accessToken }: ScourProviderProps): JS
 
   const refreshJob = useCallback(async (jid: string) => {
     try {
-      const url = getApiUrl(`/scour/status?jobId=src1\components\ScourContext.tsx.broken{encodeURIComponent(jid)}`);
+      const url = getApiUrl(`/scour/status?jobId=${encodeURIComponent(jid)}`);
       const data = await fetchJson<JobStatusResp>(url, tokenRef.current);
       if (data.ok && data.job) {
         setJob(data.job);
