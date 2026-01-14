@@ -11,7 +11,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetchJson, apiPostJson, apiPatchJson } from '../lib/utils/api';
 import { colors } from '../styles/inline';
-import { buttonVariants, cardVariants, formControls } from '../styles/designSystem';
 
 // ============================================================================
 // Types
@@ -46,22 +45,24 @@ const ROLE_INFO: Record<Role, { label: string; description: string; color: strin
   operator: {
     label: 'Operator',
     description: 'Create, review, approve, post, delete, dismiss alerts. Full trend access.',
-    color: colors.grayscale[700],
-    bgColor: colors.grayscale[200],
+    color: colors.gray700,
+    bgColor: colors.gray200,
   },
   analyst: {
     label: 'Analyst',
     description: 'All operator permissions plus source management.',
-    color: colors.blue[700],
-    bgColor: colors.blue[100],
+    color: colors.blue700,
+    bgColor: colors.blue100,
   },
   admin: {
     label: 'Administrator',
     description: 'Full access including analytics and user management.',
-    color: colors.purple[700],
-    bgColor: colors.purple[100],
+    color: colors.purple700,
+    bgColor: colors.purple100,
   },
 };
+
+const ALLOWED_DOMAIN = '@magnus.co.il';
 
 // ============================================================================
 // Component
@@ -92,24 +93,33 @@ export function UserManagementInline({
   // Permission check
   if (!permissions.canManageUsers || currentUserRole !== 'admin') {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: colors.grayscale[500] }}>
+      <div style={{ padding: '2rem', textAlign: 'center', color: colors.gray500 }}>
         <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>🔒 Access Restricted</p>
         <p>Only administrators can manage users.</p>
       </div>
     );
   }
 
-  // Fetch users
+  // ============================================================================
+  // Data Fetching
+  // ============================================================================
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setErr(null);
-
     try {
-      const data = await apiFetchJson<User[]>('/admin/users', accessToken);
-      setUsers(Array.isArray(data) ? data : []);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load users';
-      setErr(message);
+      const res = await apiFetchJson<{ ok: boolean; users?: User[]; error?: string }>(
+        '/admin/users',
+        accessToken
+      );
+      if (res.ok && res.users) {
+        setUsers(res.users);
+      } else {
+        setErr(res.error || 'Failed to load users');
+        setUsers([]);
+      }
+    } catch (e) {
+      setErr('Network error');
       setUsers([]);
     } finally {
       setLoading(false);
@@ -120,160 +130,119 @@ export function UserManagementInline({
     refresh();
   }, [refresh]);
 
-  // Reset form
+  // ============================================================================
+  // Handlers
+  // ============================================================================
+
   const resetForm = () => {
     setFormData({ name: '', email: '', password: '', role: 'operator' });
     setFormError(null);
-    setShowAddForm(false);
     setEditingUser(null);
-  };
-
-  // Start editing user
-  const startEdit = (user: User) => {
-    setEditingUser(user);
-    setFormData({
-      name: user.name || '',
-      email: user.email,
-      password: '', // Don't pre-fill password
-      role: user.role,
-    });
-    setFormError(null);
     setShowAddForm(false);
   };
 
-  // Handle create user
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
+    // Validation
     if (!formData.name.trim()) {
       setFormError('Name is required');
       return;
     }
-
     if (!formData.email.trim()) {
       setFormError('Email is required');
       return;
     }
-
-    if (!formData.password || formData.password.length < 8) {
+    if (!formData.email.endsWith(ALLOWED_DOMAIN)) {
+      setFormError(`Email must be from ${ALLOWED_DOMAIN} domain`);
+      return;
+    }
+    if (!editingUser && formData.password.length < 8) {
       setFormError('Password must be at least 8 characters');
       return;
     }
 
     setSubmitting(true);
-
     try {
-      const result = await apiPostJson<{ ok: boolean; error?: string }>('/admin/users', formData, accessToken);
-      if (!result.ok) {
-        throw new Error(result.error || 'Failed to create user');
-      }
-      resetForm();
-      await refresh();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to create user';
-      setFormError(message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // Handle update user
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingUser) return;
-    setFormError(null);
-
-    const updates: any = {};
-
-    // Only include changed fields
-    if (formData.name.trim() !== (editingUser.name || '')) {
-      updates.name = formData.name.trim();
-    }
-    if (formData.role !== editingUser.role) {
-      updates.role = formData.role;
-    }
-    if (formData.password && formData.password.length > 0) {
-      if (formData.password.length < 8) {
-        setFormError('Password must be at least 8 characters');
-        return;
-      }
-      updates.password = formData.password;
-    }
-
-    if (Object.keys(updates).length === 0) {
-      setFormError('No changes to save');
-      return;
-    }
-
-    setSubmitting(true);
-
-    try {
-      const result = await apiPatchJson<{ ok: boolean; error?: string }>(
-        `/admin/users/${editingUser.id}`,
-        updates,
+      const res = await apiPostJson<{ ok: boolean; error?: string }>(
+        '/admin/users',
+        {
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          role: formData.role,
+        },
         accessToken
       );
-      if (!result.ok) {
-        throw new Error(result.error || 'Failed to update user');
+
+      if (res.ok) {
+        resetForm();
+        refresh();
+      } else {
+        setFormError(res.error || 'Failed to create user');
       }
-      resetForm();
-      await refresh();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update user';
-      setFormError(message);
+    } catch (e) {
+      setFormError('Network error');
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Delete user
-  const deleteUser = async (user: User) => {
-    if (!confirm(`Are you sure you want to delete ${user.name || user.email}?`)) return;
-
-    setBusyId(user.id);
-
+  const handleRoleChange = async (userId: string, newRole: Role) => {
+    setBusyId(userId);
     try {
-      await apiFetchJson(`/admin/users/${user.id}`, accessToken, { method: 'DELETE' });
-      setUsers(prev => prev.filter(u => u.id !== user.id));
-      if (editingUser?.id === user.id) {
-        resetForm();
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to delete user';
-      alert(message);
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  // Quick role change
-  const changeRole = async (user: User, newRole: Role) => {
-    if (user.role === newRole) return;
-    
-    setBusyId(user.id);
-
-    try {
-      const result = await apiPatchJson<{ ok: boolean; error?: string }>(
-        `/admin/users/${user.id}`,
+      const res = await apiPatchJson<{ ok: boolean; error?: string }>(
+        `/admin/users/${userId}`,
         { role: newRole },
         accessToken
       );
-      if (!result.ok) {
-        throw new Error(result.error || 'Failed to update role');
+
+      if (res.ok) {
+        setUsers((prev) =>
+          prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
+        );
+      } else {
+        setErr(res.error || 'Failed to update role');
       }
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, role: newRole } : u));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update role';
-      alert(message);
+    } catch (e) {
+      setErr('Network error');
     } finally {
       setBusyId(null);
     }
   };
 
+  const handleDelete = async (userId: string) => {
+    if (!confirm('Are you sure you want to delete this user?')) return;
+
+    setBusyId(userId);
+    try {
+      const res = await apiFetchJson<{ ok: boolean; error?: string }>(
+        `/admin/users/${userId}`,
+        accessToken,
+        { method: 'DELETE' }
+      );
+
+      if (res.ok) {
+        setUsers((prev) => prev.filter((u) => u.id !== userId));
+      } else {
+        setErr(res.error || 'Failed to delete user');
+      }
+    } catch (e) {
+      setErr('Network error');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // ============================================================================
   // Styles
+  // ============================================================================
+
   const containerStyle: React.CSSProperties = {
     padding: '1.5rem',
+    backgroundColor: colors.magnusLightBg,
+    minHeight: '100%',
   };
 
   const headerStyle: React.CSSProperties = {
@@ -285,297 +254,330 @@ export function UserManagementInline({
     gap: '1rem',
   };
 
-  const formCardStyle: React.CSSProperties = {
-    ...cardVariants.base,
-    padding: '1.5rem',
-    marginBottom: '1.5rem',
-    backgroundColor: editingUser ? colors.yellow[50] : colors.blue[50],
-    border: `1px solid ${editingUser ? colors.yellow[200] : colors.blue[200]}`,
+  const titleStyle: React.CSSProperties = {
+    fontSize: '1.5rem',
+    fontWeight: '700',
+    color: colors.magnusDarkGreen,
+    margin: 0,
   };
 
-  const inputGroupStyle: React.CSSProperties = {
-    marginBottom: '1rem',
+  const buttonStyle: React.CSSProperties = {
+    padding: '0.5rem 1rem',
+    borderRadius: '0.5rem',
+    border: 'none',
+    cursor: 'pointer',
+    fontSize: '0.875rem',
+    fontWeight: '600',
+    transition: 'all 0.2s',
+  };
+
+  const primaryButtonStyle: React.CSSProperties = {
+    ...buttonStyle,
+    backgroundColor: colors.magnusAccentGreen,
+    color: colors.white,
+  };
+
+  const secondaryButtonStyle: React.CSSProperties = {
+    ...buttonStyle,
+    backgroundColor: colors.gray100,
+    color: colors.gray700,
+    border: `1px solid ${colors.gray300}`,
+  };
+
+  const dangerButtonStyle: React.CSSProperties = {
+    ...buttonStyle,
+    backgroundColor: colors.red600,
+    color: colors.white,
+  };
+
+  const cardStyle: React.CSSProperties = {
+    backgroundColor: colors.white,
+    borderRadius: '0.75rem',
+    border: `1px solid ${colors.gray200}`,
+    marginBottom: '1.5rem',
+    overflow: 'hidden',
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '0.625rem 0.875rem',
+    borderRadius: '0.5rem',
+    border: `1px solid ${colors.gray300}`,
+    fontSize: '0.875rem',
+    outline: 'none',
   };
 
   const labelStyle: React.CSSProperties = {
     display: 'block',
-    marginBottom: '0.25rem',
-    fontSize: '0.875rem',
-    fontWeight: 500,
-    color: colors.grayscale[700],
+    fontSize: '0.8125rem',
+    fontWeight: '600',
+    color: colors.gray700,
+    marginBottom: '0.375rem',
   };
 
-  const inputStyle: React.CSSProperties = {
-    ...formControls.input,
+  const tableStyle: React.CSSProperties = {
     width: '100%',
+    borderCollapse: 'collapse',
   };
 
-  const userCardStyle: React.CSSProperties = {
-    ...cardVariants.base,
-    padding: '1rem',
-    marginBottom: '0.75rem',
-    display: 'grid',
-    gridTemplateColumns: '1fr auto',
-    gap: '1rem',
-    alignItems: 'center',
-  };
-
-  const roleBadgeStyle = (role: Role): React.CSSProperties => ({
-    display: 'inline-block',
-    padding: '4px 10px',
-    borderRadius: '12px',
-    fontSize: '0.75rem',
-    fontWeight: 600,
-    textTransform: 'uppercase',
-    backgroundColor: ROLE_INFO[role].bgColor,
-    color: ROLE_INFO[role].color,
-  });
-
-  const errorStyle: React.CSSProperties = {
+  const thStyle: React.CSSProperties = {
+    textAlign: 'left',
     padding: '0.75rem 1rem',
-    backgroundColor: colors.red[50],
-    border: `1px solid ${colors.red[200]}`,
-    borderRadius: '8px',
-    color: colors.red[700],
-    marginBottom: '1rem',
-    fontSize: '0.875rem',
+    backgroundColor: colors.gray50,
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    color: colors.gray600,
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    borderBottom: `1px solid ${colors.gray200}`,
   };
+
+  const tdStyle: React.CSSProperties = {
+    padding: '0.75rem 1rem',
+    borderBottom: `1px solid ${colors.gray100}`,
+    fontSize: '0.875rem',
+    color: colors.gray700,
+  };
+
+  // ============================================================================
+  // Render
+  // ============================================================================
 
   return (
     <div style={containerStyle}>
       {/* Header */}
       <div style={headerStyle}>
-        <div>
-          <h2 style={{ 
-            fontSize: '1.5rem', 
-            fontWeight: 600, 
-            color: colors.magnusDarkGreen,
-            margin: 0,
-            marginBottom: '0.25rem',
-          }}>
-            👥 User Management
-          </h2>
-          <p style={{ margin: 0, fontSize: '0.875rem', color: colors.grayscale[500] }}>
-            {users.length} user{users.length !== 1 ? 's' : ''} • Only admins can create users
-          </p>
-        </div>
+        <h2 style={titleStyle}>👥 User Management</h2>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          {!showAddForm && !editingUser && (
-            <button
-              onClick={() => { setShowAddForm(true); setEditingUser(null); }}
-              style={buttonVariants.primary}
-            >
-              + Add User
-            </button>
-          )}
           <button
+            style={secondaryButtonStyle}
             onClick={refresh}
             disabled={loading}
-            style={buttonVariants.secondary}
           >
-            {loading ? 'Loading...' : '↻ Refresh'}
+            🔄 Refresh
+          </button>
+          <button
+            style={primaryButtonStyle}
+            onClick={() => setShowAddForm(true)}
+          >
+            ➕ Add User
           </button>
         </div>
       </div>
 
-      {err && <div style={errorStyle}><strong>Error:</strong> {err}</div>}
+      {/* Error */}
+      {err && (
+        <div
+          style={{
+            padding: '1rem',
+            backgroundColor: colors.red50,
+            border: `1px solid ${colors.red200}`,
+            borderRadius: '0.5rem',
+            color: colors.red700,
+            marginBottom: '1rem',
+          }}
+        >
+          {err}
+        </div>
+      )}
 
-      {/* Add/Edit Form */}
-      {(showAddForm || editingUser) && (
-        <div style={formCardStyle}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3 style={{ margin: 0, color: editingUser ? colors.yellow[700] : colors.blue[700] }}>
-              {editingUser ? `Edit: ${editingUser.name || editingUser.email}` : 'Add New User'}
+      {/* Add User Form */}
+      {showAddForm && (
+        <div style={cardStyle}>
+          <div style={{ padding: '1rem', borderBottom: `1px solid ${colors.gray200}`, backgroundColor: colors.gray50 }}>
+            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '600', color: colors.gray800 }}>
+              Add New User
             </h3>
-            <button onClick={resetForm} style={{ ...buttonVariants.secondary, ...buttonVariants.small }}>
-              Cancel
-            </button>
           </div>
-
-          {formError && <div style={errorStyle}>{formError}</div>}
-
-          <form onSubmit={editingUser ? handleUpdate : handleCreate}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-              <div style={inputGroupStyle}>
+          <form onSubmit={handleSubmit} style={{ padding: '1.5rem' }}>
+            <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+              <div>
                 <label style={labelStyle}>Name *</label>
                 <input
                   type="text"
-                  value={formData.name}
-                  onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
                   style={inputStyle}
-                  placeholder="Full name"
-                  required={!editingUser}
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="John Doe"
                 />
               </div>
-
-              <div style={inputGroupStyle}>
-                <label style={labelStyle}>Email {!editingUser && '*'}</label>
+              <div>
+                <label style={labelStyle}>Email *</label>
                 <input
                   type="email"
+                  style={inputStyle}
                   value={formData.email}
-                  onChange={e => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                  style={{ ...inputStyle, backgroundColor: editingUser ? colors.grayscale[100] : 'white' }}
-                  placeholder="user@company.com"
-                  required={!editingUser}
-                  disabled={!!editingUser} // Can't change email
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder={`user${ALLOWED_DOMAIN}`}
                 />
-                {editingUser && (
-                  <p style={{ fontSize: '0.7rem', color: colors.grayscale[500], marginTop: '0.25rem' }}>
-                    Email cannot be changed
-                  </p>
-                )}
               </div>
-
-              <div style={inputGroupStyle}>
-                <label style={labelStyle}>Password {!editingUser && '*'}</label>
+              <div>
+                <label style={labelStyle}>Password *</label>
                 <input
                   type="password"
-                  value={formData.password}
-                  onChange={e => setFormData(prev => ({ ...prev, password: e.target.value }))}
                   style={inputStyle}
-                  placeholder={editingUser ? 'Leave blank to keep current' : 'Minimum 8 characters'}
-                  minLength={editingUser ? 0 : 8}
-                  required={!editingUser}
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  placeholder="Min 8 characters"
                 />
               </div>
-
-              <div style={inputGroupStyle}>
+              <div>
                 <label style={labelStyle}>Role *</label>
                 <select
+                  style={inputStyle}
                   value={formData.role}
-                  onChange={e => setFormData(prev => ({ ...prev, role: e.target.value as Role }))}
-                  style={{ ...formControls.select, width: '100%' }}
+                  onChange={(e) => setFormData({ ...formData, role: e.target.value as Role })}
                 >
-                  {(['operator', 'analyst', 'admin'] as Role[]).map(role => (
-                    <option key={role} value={role}>
-                      {ROLE_INFO[role].label}
+                  {Object.entries(ROLE_INFO).map(([key, info]) => (
+                    <option key={key} value={key}>
+                      {info.label}
                     </option>
                   ))}
                 </select>
-                <p style={{ fontSize: '0.7rem', color: colors.grayscale[500], marginTop: '0.25rem' }}>
-                  {ROLE_INFO[formData.role].description}
-                </p>
               </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={submitting}
-              style={{ ...buttonVariants.primary, marginTop: '0.5rem' }}
-            >
-              {submitting ? (editingUser ? 'Saving...' : 'Creating...') : (editingUser ? 'Save Changes' : 'Create User')}
-            </button>
+            {formError && (
+              <div style={{ marginTop: '1rem', color: colors.red600, fontSize: '0.875rem' }}>
+                ⚠️ {formError}
+              </div>
+            )}
+
+            <div style={{ marginTop: '1.5rem', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button type="button" style={secondaryButtonStyle} onClick={resetForm}>
+                Cancel
+              </button>
+              <button type="submit" style={primaryButtonStyle} disabled={submitting}>
+                {submitting ? 'Creating...' : 'Create User'}
+              </button>
+            </div>
           </form>
         </div>
       )}
 
-      {/* Role Legend */}
-      <div style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '1rem',
-        marginBottom: '1.5rem',
-        padding: '1rem',
-        backgroundColor: colors.grayscale[50],
-        borderRadius: '8px',
-      }}>
-        {(['operator', 'analyst', 'admin'] as Role[]).map(role => (
-          <div key={role} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={roleBadgeStyle(role)}>{ROLE_INFO[role].label}</span>
-            <span style={{ fontSize: '0.75rem', color: colors.grayscale[600] }}>
-              {ROLE_INFO[role].description}
-            </span>
+      {/* Users Table */}
+      <div style={cardStyle}>
+        <div style={{ padding: '1rem', borderBottom: `1px solid ${colors.gray200}`, backgroundColor: colors.gray50 }}>
+          <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '600', color: colors.gray800 }}>
+            Users ({users.length})
+          </h3>
+        </div>
+
+        {loading ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: colors.gray500 }}>
+            Loading users...
           </div>
-        ))}
+        ) : users.length === 0 ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: colors.gray500 }}>
+            No users found
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>User</th>
+                  <th style={thStyle}>Role</th>
+                  <th style={thStyle}>Created</th>
+                  <th style={thStyle}>Last Sign In</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((user) => (
+                  <tr key={user.id} style={{ opacity: busyId === user.id ? 0.5 : 1 }}>
+                    <td style={tdStyle}>
+                      <div style={{ fontWeight: '600', color: colors.gray800 }}>
+                        {user.name || 'No name'}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: colors.gray500 }}>
+                        {user.email}
+                      </div>
+                    </td>
+                    <td style={tdStyle}>
+                      <select
+                        value={user.role}
+                        onChange={(e) => handleRoleChange(user.id, e.target.value as Role)}
+                        disabled={busyId === user.id}
+                        style={{
+                          padding: '0.25rem 0.5rem',
+                          borderRadius: '0.375rem',
+                          border: `1px solid ${colors.gray300}`,
+                          backgroundColor: ROLE_INFO[user.role]?.bgColor || colors.gray100,
+                          color: ROLE_INFO[user.role]?.color || colors.gray700,
+                          fontWeight: '600',
+                          fontSize: '0.75rem',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {Object.entries(ROLE_INFO).map(([key, info]) => (
+                          <option key={key} value={key}>
+                            {info.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td style={tdStyle}>
+                      {user.created_at
+                        ? new Date(user.created_at).toLocaleDateString()
+                        : '-'}
+                    </td>
+                    <td style={tdStyle}>
+                      {user.last_sign_in_at
+                        ? new Date(user.last_sign_in_at).toLocaleDateString()
+                        : 'Never'}
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: 'right' }}>
+                      <button
+                        style={{
+                          ...dangerButtonStyle,
+                          padding: '0.25rem 0.5rem',
+                          fontSize: '0.75rem',
+                        }}
+                        onClick={() => handleDelete(user.id)}
+                        disabled={busyId === user.id}
+                      >
+                        🗑️ Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* Users List */}
-      {loading && users.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: colors.grayscale[500] }}>
-          Loading users...
+      {/* Role Descriptions */}
+      <div style={cardStyle}>
+        <div style={{ padding: '1rem', borderBottom: `1px solid ${colors.gray200}`, backgroundColor: colors.gray50 }}>
+          <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '600', color: colors.gray800 }}>
+            Role Descriptions
+          </h3>
         </div>
-      ) : users.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: colors.grayscale[500] }}>
-          No users found. Click "Add User" to create one.
-        </div>
-      ) : (
-        <div>
-          {users.map(user => {
-            const isBusy = busyId === user.id;
-            const isEditing = editingUser?.id === user.id;
-
-            return (
+        <div style={{ padding: '1rem' }}>
+          <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))' }}>
+            {Object.entries(ROLE_INFO).map(([key, info]) => (
               <div
-                key={user.id}
+                key={key}
                 style={{
-                  ...userCardStyle,
-                  opacity: isBusy ? 0.6 : 1,
-                  borderColor: isEditing ? colors.yellow[300] : colors.grayscale[200],
-                  backgroundColor: isEditing ? colors.yellow[50] : 'white',
+                  padding: '1rem',
+                  backgroundColor: info.bgColor,
+                  borderRadius: '0.5rem',
+                  border: `1px solid ${info.color}20`,
                 }}
               >
-                {/* User Info */}
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                    <strong style={{ fontSize: '1rem', color: colors.magnusDarkText }}>
-                      {user.name || 'Unnamed User'}
-                    </strong>
-                    <span style={roleBadgeStyle(user.role)}>
-                      {ROLE_INFO[user.role].label}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '0.875rem', color: colors.grayscale[600], marginBottom: '0.25rem' }}>
-                    {user.email}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: colors.grayscale[500] }}>
-                    Created: {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'Unknown'}
-                    {' • '}
-                    Last login: {user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleString() : 'Never'}
-                  </div>
+                <div style={{ fontWeight: '700', color: info.color, marginBottom: '0.25rem' }}>
+                  {info.label}
                 </div>
-
-                {/* Actions */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
-                  {/* Quick Role Change */}
-                  <select
-                    value={user.role}
-                    onChange={e => changeRole(user, e.target.value as Role)}
-                    disabled={isBusy}
-                    style={{
-                      ...formControls.select,
-                      fontSize: '0.75rem',
-                      padding: '0.25rem 0.5rem',
-                      width: 'auto',
-                    }}
-                  >
-                    {(['operator', 'analyst', 'admin'] as Role[]).map(role => (
-                      <option key={role} value={role}>{ROLE_INFO[role].label}</option>
-                    ))}
-                  </select>
-
-                  {/* Edit/Delete Buttons */}
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button
-                      onClick={() => startEdit(user)}
-                      disabled={isBusy}
-                      style={{ ...buttonVariants.secondary, ...buttonVariants.small }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => deleteUser(user)}
-                      disabled={isBusy}
-                      style={{ ...buttonVariants.danger, ...buttonVariants.small }}
-                    >
-                      {isBusy ? '...' : 'Delete'}
-                    </button>
-                  </div>
+                <div style={{ fontSize: '0.8125rem', color: colors.gray600 }}>
+                  {info.description}
                 </div>
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
