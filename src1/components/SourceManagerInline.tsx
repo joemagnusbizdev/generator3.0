@@ -1,4 +1,4 @@
-/**
+﻿/**
  * SourceManagerInline - Source management component with bulk upload
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -6,6 +6,8 @@ import { apiFetchJson, apiPostJson, apiPatchJson } from '../lib/utils/api';
 import { useScour } from './ScourContext';
 import { colors, styles, combine } from '../styles/inline';
 import { buttons, cards, forms, typography } from '../styles/designSystem';
+import { SourceBulkUpload } from './SourceBulkUpload';
+
 
 // ============================================================================
 // Types
@@ -168,7 +170,7 @@ export function SourceManagerInline({
     }
   }, [accessToken]);
 
-  // Bulk delete
+// Inside your component:// Bulk delete
   const bulkDelete = useCallback(async () => {
     if (selectedIds.size === 0) return;
     if (!confirm(`Delete ${selectedIds.size} sources?`)) return;
@@ -355,7 +357,7 @@ export function SourceManagerInline({
             onClick={() => fileInputRef.current?.click()}
             style={buttons.secondary}
           >
-            📤 Bulk Upload
+            ðŸ“¤ Bulk Upload
           </button>
           
           {selectedIds.size > 0 && (
@@ -364,7 +366,7 @@ export function SourceManagerInline({
               disabled={loading}
               style={buttons.danger}
             >
-              🗑️ Delete ({selectedIds.size})
+              ðŸ—‘ï¸ Delete ({selectedIds.size})
             </button>
           )}
           
@@ -373,7 +375,7 @@ export function SourceManagerInline({
             disabled={loading}
             style={buttons.secondary}
           >
-            {loading ? 'Loading...' : '🔄 Refresh'}
+            {loading ? 'Loading...' : 'ðŸ”„ Refresh'}
           </button>
         </div>
       </div>
@@ -511,7 +513,7 @@ export function SourceManagerInline({
                           fontWeight: 500,
                         }}
                       >
-                        {source.enabled ? '✓ Enabled' : 'Disabled'}
+                        {source.enabled ? 'âœ“ Enabled' : 'Disabled'}
                       </button>
                     </td>
                     <td style={tdStyle}>
@@ -532,7 +534,7 @@ export function SourceManagerInline({
                               fontSize: '0.875rem',
                             }}
                           >
-                            🔍
+                            ðŸ”
                           </button>
                         )}
                         <button
@@ -546,7 +548,7 @@ export function SourceManagerInline({
                             color: colors.red600,
                           }}
                         >
-                          🗑️
+                          ðŸ—‘ï¸
                         </button>
                       </div>
                     </td>

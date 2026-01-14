@@ -1,34 +1,24 @@
-/**
- * API utility functions for the MAGNUS frontend
- */
-
-import { getApiUrl } from '../supabase/api';
-
-// Service role key for internal use
-const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdub2JueXplemt1eXB0dWFrenRmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODM4MTA5MywiZXhwIjoyMDgzOTU3MDkzfQ.tX4M3i08_d8P1gCTL37XogysPgAac-7Et09godBSdNA';
+﻿import { getApiUrl } from '../supabase/api';
 
 /**
- * Generic JSON fetch with authentication
+ * Fetch JSON from API with authentication
  */
-export async function apiFetchJson<T = unknown>(
+export async function apiFetchJson<T>(
   endpoint: string,
   token?: string,
   options: RequestInit = {}
 ): Promise<T> {
   const url = getApiUrl(endpoint);
-  
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {}),
   };
-  
-  // Always use service key (for internal use)
-  headers['Authorization'] = `Bearer ${SUPABASE_SERVICE_KEY}`;
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(url, { ...options, headers });
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -39,17 +29,21 @@ export async function apiFetchJson<T = unknown>(
 }
 
 /**
- * Delete an alert by ID
+ * Delete an alert
  */
 export async function deleteAlert(id: string, token?: string): Promise<void> {
   const url = getApiUrl(`/alerts/${id}`);
-  
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const response = await fetch(url, {
     method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`, // Use service key
-      'Content-Type': 'application/json',
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -58,11 +52,11 @@ export async function deleteAlert(id: string, token?: string): Promise<void> {
 }
 
 /**
- * POST JSON to an endpoint
+ * POST JSON to API
  */
-export async function apiPostJson<T = unknown>(
+export async function apiPostJson<T>(
   endpoint: string,
-  body: unknown,
+  body: any,
   token?: string
 ): Promise<T> {
   return apiFetchJson<T>(endpoint, token, {
@@ -72,15 +66,22 @@ export async function apiPostJson<T = unknown>(
 }
 
 /**
- * PATCH JSON to an endpoint
+ * PATCH JSON to API
  */
-export async function apiPatchJson<T = unknown>(
+export async function apiPatchJson<T>(
   endpoint: string,
-  body: unknown,
+  body: any,
   token?: string
 ): Promise<T> {
   return apiFetchJson<T>(endpoint, token, {
     method: 'PATCH',
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * Bulk upload sources from Excel
+ */
+export async function bulkUploadSources(sources: any[]): Promise<any> {
+  return apiPostJson('/sources/bulk', { sources });
 }
