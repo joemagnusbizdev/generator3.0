@@ -335,6 +335,13 @@ export function SourceManagerInline({
 
   return (
     <div style={containerStyle}>
+      <SourceBulkUpload 
+        accessToken={accessToken}
+        onUploadComplete={async (count) => {
+          console.log('Uploaded sources:', count);
+          await refresh();
+        }}
+      />
       <div style={headerStyle}>
         <div>
           <h2 style={titleStyle}>Source Manager</h2>
