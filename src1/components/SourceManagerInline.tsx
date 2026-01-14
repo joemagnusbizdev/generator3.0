@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetchJson, apiPostJson, apiPatchJson } from '../lib/utils/api';
 import { useScour } from './ScourContext';
 import { colors, styles, combine } from '../styles/inline';
-import { buttonVariants, cardVariants, formControls, typography } from '../styles/designSystem';
+import { buttons, cards, forms, typography } from '../styles/designSystem';
 
 // ============================================================================
 // Types
@@ -98,7 +98,7 @@ export function SourceManagerInline({
   // Permission check
   if (!permissions.canManageSources) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: colors.grayscale[500] }}>
+      <div style={{ padding: '2rem', textAlign: 'center', color: colors.gray500 }}>
         You don't have permission to manage sources.
       </div>
     );
@@ -301,8 +301,8 @@ export function SourceManagerInline({
   const thStyle: React.CSSProperties = {
     textAlign: 'left',
     padding: '0.75rem',
-    borderBottom: `2px solid ${colors.grayscale[200]}`,
-    color: colors.grayscale[600],
+    borderBottom: `2px solid ${colors.gray200}`,
+    color: colors.gray600,
     fontWeight: 600,
     textTransform: 'uppercase',
     fontSize: '0.75rem',
@@ -310,25 +310,25 @@ export function SourceManagerInline({
 
   const tdStyle: React.CSSProperties = {
     padding: '0.75rem',
-    borderBottom: `1px solid ${colors.grayscale[200]}`,
+    borderBottom: `1px solid ${colors.gray200}`,
     verticalAlign: 'middle',
   };
 
   const errorStyle: React.CSSProperties = {
     padding: '1rem',
-    backgroundColor: colors.red[50],
-    border: `1px solid ${colors.red[200]}`,
+    backgroundColor: colors.red50,
+    border: `1px solid ${colors.red200}`,
     borderRadius: '8px',
-    color: colors.red[700],
+    color: colors.red700,
     marginBottom: '1rem',
   };
 
   const previewStyle: React.CSSProperties = {
-    ...cardVariants.base,
+    ...cards.base,
     padding: '1rem',
     marginBottom: '1rem',
-    backgroundColor: colors.blue[50],
-    border: `1px solid ${colors.blue[200]}`,
+    backgroundColor: colors.blue50,
+    border: `1px solid ${colors.blue200}`,
   };
 
   return (
@@ -337,7 +337,7 @@ export function SourceManagerInline({
         <div>
           <h2 style={titleStyle}>Source Manager</h2>
           {stats && (
-            <p style={{ margin: '0.5rem 0 0', color: colors.grayscale[600], fontSize: '0.875rem' }}>
+            <p style={{ margin: '0.5rem 0 0', color: colors.gray600, fontSize: '0.875rem' }}>
               {stats.enabled} enabled / {stats.total} total sources
             </p>
           )}
@@ -353,7 +353,7 @@ export function SourceManagerInline({
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            style={buttonVariants.secondary}
+            style={buttons.secondary}
           >
             📤 Bulk Upload
           </button>
@@ -362,7 +362,7 @@ export function SourceManagerInline({
             <button
               onClick={bulkDelete}
               disabled={loading}
-              style={buttonVariants.danger}
+              style={buttons.danger}
             >
               🗑️ Delete ({selectedIds.size})
             </button>
@@ -371,7 +371,7 @@ export function SourceManagerInline({
           <button
             onClick={refresh}
             disabled={loading}
-            style={buttonVariants.secondary}
+            style={buttons.secondary}
           >
             {loading ? 'Loading...' : '🔄 Refresh'}
           </button>
@@ -387,7 +387,7 @@ export function SourceManagerInline({
       {/* Bulk Upload Preview */}
       {uploadPreview && (
         <div style={previewStyle}>
-          <h3 style={{ margin: '0 0 1rem', color: colors.blue[700] }}>
+          <h3 style={{ margin: '0 0 1rem', color: colors.blue700 }}>
             Preview: {uploadPreview.length} sources to upload
           </h3>
           <div style={{ maxHeight: '200px', overflow: 'auto', marginBottom: '1rem' }}>
@@ -410,7 +410,7 @@ export function SourceManagerInline({
               </tbody>
             </table>
             {uploadPreview.length > 10 && (
-              <p style={{ textAlign: 'center', color: colors.grayscale[500], margin: '0.5rem 0' }}>
+              <p style={{ textAlign: 'center', color: colors.gray500, margin: '0.5rem 0' }}>
                 ...and {uploadPreview.length - 10} more
               </p>
             )}
@@ -419,13 +419,13 @@ export function SourceManagerInline({
             <button
               onClick={confirmBulkUpload}
               disabled={uploading}
-              style={buttonVariants.primary}
+              style={buttons.primary}
             >
               {uploading ? 'Uploading...' : 'Confirm Upload'}
             </button>
             <button
               onClick={() => setUploadPreview(null)}
-              style={buttonVariants.secondary}
+              style={buttons.secondary}
             >
               Cancel
             </button>
@@ -435,11 +435,11 @@ export function SourceManagerInline({
 
       {/* Sources Table */}
       {loading && sources.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: colors.grayscale[500] }}>
+        <div style={{ textAlign: 'center', padding: '3rem', color: colors.gray500 }}>
           Loading sources...
         </div>
       ) : sources.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: colors.grayscale[500] }}>
+        <div style={{ textAlign: 'center', padding: '3rem', color: colors.gray500 }}>
           No sources configured. Use bulk upload to add sources.
         </div>
       ) : (
@@ -471,7 +471,7 @@ export function SourceManagerInline({
                   <tr 
                     key={source.id}
                     style={{ 
-                      backgroundColor: isSelected ? colors.blue[50] : 'transparent',
+                      backgroundColor: isSelected ? colors.blue50 : 'transparent',
                       opacity: isBusy ? 0.6 : 1,
                     }}
                   >
@@ -505,8 +505,8 @@ export function SourceManagerInline({
                           borderRadius: '4px',
                           border: 'none',
                           cursor: isBusy ? 'not-allowed' : 'pointer',
-                          backgroundColor: source.enabled ? colors.status.success + '20' : colors.grayscale[200],
-                          color: source.enabled ? colors.status.success : colors.grayscale[600],
+                          backgroundColor: source.enabled ? colors.success + '20' : colors.gray200,
+                          color: source.enabled ? colors.success : colors.gray600,
                           fontSize: '0.75rem',
                           fontWeight: 500,
                         }}
@@ -527,7 +527,7 @@ export function SourceManagerInline({
                             disabled={isBusy}
                             title="Scour this source"
                             style={{
-                              ...buttonVariants.icon,
+                              ...buttons.icon,
                               padding: '4px 8px',
                               fontSize: '0.875rem',
                             }}
@@ -540,10 +540,10 @@ export function SourceManagerInline({
                           disabled={isBusy}
                           title="Delete source"
                           style={{
-                            ...buttonVariants.icon,
+                            ...buttons.icon,
                             padding: '4px 8px',
                             fontSize: '0.875rem',
-                            color: colors.red[600],
+                            color: colors.red600,
                           }}
                         >
                           🗑️

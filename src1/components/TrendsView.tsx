@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetchJson, apiPostJson } from '../lib/utils/api';
 import { colors, styles, combine } from '../styles/inline';
-import { cardVariants, buttonVariants, badges, typography } from '../styles/designSystem';
+import { cards, buttons, badges, typography } from '../styles/designSystem';
 
 // ============================================================================
 // Types
@@ -140,9 +140,9 @@ export function TrendsView({
   const filterBtnStyle = (active: boolean): React.CSSProperties => ({
     padding: '0.5rem 1rem',
     borderRadius: '20px',
-    border: `1px solid ${active ? colors.magnusDarkGreen : colors.grayscale[300]}`,
+    border: `1px solid ${active ? colors.magnusDarkGreen : colors.gray300}`,
     backgroundColor: active ? colors.magnusDarkGreen : 'white',
-    color: active ? 'white' : colors.grayscale[700],
+    color: active ? 'white' : colors.gray700,
     cursor: 'pointer',
     fontSize: '0.875rem',
     fontWeight: 500,
@@ -150,7 +150,7 @@ export function TrendsView({
   });
 
   const cardStyle: React.CSSProperties = {
-    ...cardVariants.base,
+    ...cards.base,
     marginBottom: '1rem',
     padding: '1.25rem',
   };
@@ -176,7 +176,7 @@ export function TrendsView({
     gap: '0.75rem',
     marginBottom: '0.5rem',
     fontSize: '0.875rem',
-    color: colors.grayscale[600],
+    color: colors.gray600,
   };
 
   const statusBadge = (status?: string): React.CSSProperties => {
@@ -190,30 +190,30 @@ export function TrendsView({
 
     switch (status) {
       case 'open':
-        return { ...baseStyle, backgroundColor: colors.status.danger + '20', color: colors.status.danger };
+        return { ...baseStyle, backgroundColor: colors.danger + '20', color: colors.danger };
       case 'monitoring':
-        return { ...baseStyle, backgroundColor: colors.status.warning + '20', color: colors.status.warning };
+        return { ...baseStyle, backgroundColor: colors.warning + '20', color: colors.warning };
       case 'closed':
-        return { ...baseStyle, backgroundColor: colors.grayscale[200], color: colors.grayscale[600] };
+        return { ...baseStyle, backgroundColor: colors.gray200, color: colors.gray600 };
       default:
-        return { ...baseStyle, backgroundColor: colors.blue[100], color: colors.blue[700] };
+        return { ...baseStyle, backgroundColor: colors.blue100, color: colors.blue700 };
     }
   };
 
   const errorStyle: React.CSSProperties = {
     padding: '1rem',
-    backgroundColor: colors.red[50],
-    border: `1px solid ${colors.red[200]}`,
+    backgroundColor: colors.red50,
+    border: `1px solid ${colors.red200}`,
     borderRadius: '8px',
-    color: colors.red[700],
+    color: colors.red700,
     marginBottom: '1rem',
   };
 
   const emptyStyle: React.CSSProperties = {
     textAlign: 'center',
     padding: '3rem',
-    color: colors.grayscale[500],
-    backgroundColor: colors.grayscale[100],
+    color: colors.gray500,
+    backgroundColor: colors.gray100,
     borderRadius: '12px',
   };
 
@@ -224,7 +224,7 @@ export function TrendsView({
         <button
           onClick={refresh}
           disabled={loading}
-          style={buttonVariants.secondary}
+          style={buttons.secondary}
         >
           {loading ? 'Loading...' : 'Refresh'}
         </button>
@@ -241,7 +241,7 @@ export function TrendsView({
             {f.charAt(0).toUpperCase() + f.slice(1)}
             {f !== 'all' && (
               <span style={{ marginLeft: '4px', opacity: 0.8 }}>
-                ({trends.filter(t => f === 'all' || t.status === f).length})
+                ({trends.filter(t => t.status === f).length})
               </span>
             )}
           </button>
@@ -255,7 +255,7 @@ export function TrendsView({
       )}
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: colors.grayscale[500] }}>
+        <div style={{ textAlign: 'center', padding: '3rem', color: colors.gray500 }}>
           Loading trends...
         </div>
       ) : filteredTrends.length === 0 ? (
@@ -271,7 +271,7 @@ export function TrendsView({
         </div>
       ) : (
         <div>
-          <p style={{ marginBottom: '1rem', color: colors.grayscale[600] }}>
+          <p style={{ marginBottom: '1rem', color: colors.gray600 }}>
             {filteredTrends.length} trend{filteredTrends.length !== 1 ? 's' : ''}
           </p>
 
@@ -287,7 +287,7 @@ export function TrendsView({
               {trend.description && (
                 <p style={{ 
                   margin: '0 0 0.75rem', 
-                  color: colors.grayscale[600],
+                  color: colors.gray600,
                   lineHeight: 1.5,
                 }}>
                   {trend.description}
@@ -310,7 +310,7 @@ export function TrendsView({
                 {trend.severity && (
                   <span style={{ 
                     padding: '2px 6px',
-                    backgroundColor: colors.status.warning + '20',
+                    backgroundColor: colors.warning + '20',
                     borderRadius: '4px',
                   }}>
                     ⚠️ {trend.severity}
@@ -320,7 +320,7 @@ export function TrendsView({
 
               <div style={{ 
                 fontSize: '0.75rem', 
-                color: colors.grayscale[500],
+                color: colors.gray500,
                 display: 'flex',
                 gap: '1rem',
                 marginTop: '0.5rem',
@@ -341,10 +341,10 @@ export function TrendsView({
                 <div style={{
                   marginTop: '0.75rem',
                   padding: '0.75rem',
-                  backgroundColor: colors.blue[50],
+                  backgroundColor: colors.blue50,
                   borderRadius: '8px',
                   fontSize: '0.875rem',
-                  color: colors.blue[800],
+                  color: colors.blue800,
                 }}>
                   <strong>Predictive Analysis:</strong> {trend.predictive_analysis}
                 </div>
@@ -355,7 +355,7 @@ export function TrendsView({
                 <div style={{
                   marginTop: '0.5rem',
                   fontSize: '0.75rem',
-                  color: colors.grayscale[600],
+                  color: colors.gray600,
                 }}>
                   Countries involved: {trend.countries.join(', ')}
                 </div>
@@ -367,12 +367,12 @@ export function TrendsView({
                 gap: '0.5rem',
                 marginTop: '1rem',
                 paddingTop: '0.75rem',
-                borderTop: `1px solid ${colors.grayscale[200]}`,
+                borderTop: `1px solid ${colors.gray200}`,
               }}>
                 <button
                   onClick={() => setExpandedId(expandedId === trend.id ? null : trend.id)}
                   style={{
-                    ...buttonVariants.secondary,
+                    ...buttons.secondary,
                     fontSize: '0.75rem',
                     padding: '0.5rem 0.75rem',
                   }}
@@ -384,7 +384,7 @@ export function TrendsView({
                   onClick={() => handleExportReport(trend.id)}
                   disabled={exportingId === trend.id}
                   style={{
-                    ...buttonVariants.primary,
+                    ...buttons.primary,
                     fontSize: '0.75rem',
                     padding: '0.5rem 0.75rem',
                     opacity: exportingId === trend.id ? 0.7 : 1,
@@ -399,7 +399,7 @@ export function TrendsView({
                 <div style={{
                   marginTop: '1rem',
                   padding: '1rem',
-                  backgroundColor: colors.grayscale[50],
+                  backgroundColor: colors.gray50,
                   borderRadius: '8px',
                   fontSize: '0.875rem',
                 }}>

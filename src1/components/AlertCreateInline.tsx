@@ -16,7 +16,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { apiPostJson } from '../lib/utils/api';
 import { colors, styles, combine } from '../styles/inline';
-import { buttonVariants, cardVariants, formControls, typography, badges } from '../styles/designSystem';
+import { buttons, cards, forms, typography, badges } from '../styles/designSystem';
 
 // ============================================================================
 // Types
@@ -64,25 +64,25 @@ const SEVERITY_OPTIONS: { value: Severity; label: string; description: string; c
     value: 'critical', 
     label: 'Critical', 
     description: 'Mass-casualty events, major terrorist attacks, armed conflict escalation, imminent life-threatening hazards',
-    color: colors.red[600],
+    color: colors.red600,
   },
   { 
     value: 'warning', 
     label: 'Warning', 
     description: 'Significant disruption, violence, unrest, major infrastructure impact',
-    color: colors.orange[600],
+    color: colors.orange600,
   },
   { 
     value: 'caution', 
     label: 'Caution', 
     description: 'Localized incidents, moderate disruption, travelers should take extra care',
-    color: colors.status.warning,
+    color: colors.warning,
   },
   { 
     value: 'informative', 
     label: 'Informative', 
     description: 'Routine advisories, low-impact updates, general reminders',
-    color: colors.blue[600],
+    color: colors.blue600,
   },
 ];
 
@@ -164,7 +164,7 @@ export default function AlertCreateInline({
   // Permission check
   if (permissions && !permissions.canCreate) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: colors.grayscale[500] }}>
+      <div style={{ padding: '2rem', textAlign: 'center', color: colors.gray500 }}>
         You don't have permission to create alerts.
       </div>
     );
@@ -419,12 +419,12 @@ export default function AlertCreateInline({
 
   const subtitleStyle: React.CSSProperties = {
     fontSize: '0.875rem',
-    color: colors.grayscale[600],
+    color: colors.gray600,
     marginTop: '0.5rem',
   };
 
   const sectionStyle: React.CSSProperties = {
-    ...cardVariants.base,
+    ...cards.base,
     padding: '1.5rem',
     marginBottom: '1.5rem',
   };
@@ -435,7 +435,7 @@ export default function AlertCreateInline({
     color: colors.magnusDarkText,
     marginBottom: '1rem',
     paddingBottom: '0.5rem',
-    borderBottom: `1px solid ${colors.grayscale[200]}`,
+    borderBottom: `1px solid ${colors.gray200}`,
   };
 
   const fieldStyle: React.CSSProperties = {
@@ -447,18 +447,18 @@ export default function AlertCreateInline({
     marginBottom: '0.375rem',
     fontSize: '0.875rem',
     fontWeight: 500,
-    color: colors.grayscale[700],
+    color: colors.gray700,
   };
 
   const requiredStyle: React.CSSProperties = {
-    color: colors.red[500],
+    color: colors.red500,
     marginLeft: '2px',
   };
 
   const inputStyle: React.CSSProperties = {
     width: '100%',
     padding: '0.75rem',
-    border: `1px solid ${colors.grayscale[300]}`,
+    border: `1px solid ${colors.gray300}`,
     borderRadius: '8px',
     fontSize: '1rem',
     transition: 'border-color 0.2s',
@@ -483,17 +483,17 @@ export default function AlertCreateInline({
 
   const errorBoxStyle: React.CSSProperties = {
     padding: '1rem',
-    backgroundColor: colors.red[50],
-    border: `1px solid ${colors.red[200]}`,
+    backgroundColor: colors.red50,
+    border: `1px solid ${colors.red200}`,
     borderRadius: '8px',
-    color: colors.red[700],
+    color: colors.red700,
     marginBottom: '1rem',
   };
 
   const successBoxStyle: React.CSSProperties = {
     padding: '1rem',
-    backgroundColor: colors.status.success + '15',
-    border: `1px solid ${colors.status.success}`,
+    backgroundColor: colors.success + '15',
+    border: `1px solid ${colors.success}`,
     borderRadius: '8px',
     color: colors.magnusDarkGreen,
     marginBottom: '1rem',
@@ -501,10 +501,10 @@ export default function AlertCreateInline({
 
   const warningBoxStyle: React.CSSProperties = {
     padding: '0.75rem',
-    backgroundColor: colors.status.warning + '15',
-    border: `1px solid ${colors.status.warning}`,
+    backgroundColor: colors.warning + '15',
+    border: `1px solid ${colors.warning}`,
     borderRadius: '8px',
-    color: colors.orange[700],
+    color: colors.orange700,
     marginBottom: '1rem',
     fontSize: '0.875rem',
   };
@@ -518,7 +518,7 @@ export default function AlertCreateInline({
 
   const helpTextStyle: React.CSSProperties = {
     fontSize: '0.75rem',
-    color: colors.grayscale[500],
+    color: colors.gray500,
     marginTop: '0.25rem',
   };
 
@@ -541,9 +541,9 @@ export default function AlertCreateInline({
         <h3 style={sectionTitleStyle}>📄 WordPress Export Preview</h3>
         <div style={{ 
           padding: '1rem', 
-          backgroundColor: colors.grayscale[50], 
+          backgroundColor: colors.gray50, 
           borderRadius: '8px',
-          border: `1px solid ${colors.grayscale[200]}`,
+          border: `1px solid ${colors.gray200}`,
         }}>
           <h4 style={{ margin: '0 0 1rem', color: colors.magnusDarkGreen }}>
             {formData.title || '(No title)'}
@@ -744,8 +744,8 @@ export default function AlertCreateInline({
                     onClick={() => removeAdvice(index)}
                     style={{
                       padding: '0.5rem 0.75rem',
-                      backgroundColor: colors.red[100],
-                      color: colors.red[600],
+                      backgroundColor: colors.red100,
+                      color: colors.red600,
                       border: 'none',
                       borderRadius: '6px',
                       cursor: 'pointer',
@@ -761,7 +761,7 @@ export default function AlertCreateInline({
                 type="button"
                 onClick={addAdvice}
                 style={{
-                  ...buttonVariants.secondary,
+                  ...buttons.secondary,
                   marginTop: '0.5rem',
                 }}
               >
@@ -810,8 +810,8 @@ export default function AlertCreateInline({
                   onClick={() => removeSource(index)}
                   style={{
                     padding: '0.75rem',
-                    backgroundColor: colors.red[100],
-                    color: colors.red[600],
+                    backgroundColor: colors.red100,
+                    color: colors.red600,
                     border: 'none',
                     borderRadius: '6px',
                     cursor: 'pointer',
@@ -827,7 +827,7 @@ export default function AlertCreateInline({
               type="button"
               onClick={addSource}
               style={{
-                ...buttonVariants.secondary,
+                ...buttons.secondary,
                 marginTop: '0.5rem',
               }}
             >
@@ -935,7 +935,7 @@ export default function AlertCreateInline({
           <button
             type="button"
             onClick={() => setShowPreview(!showPreview)}
-            style={buttonVariants.secondary}
+            style={buttons.secondary}
           >
             {showPreview ? 'Hide Preview' : 'Show WP Preview'}
           </button>
@@ -943,7 +943,7 @@ export default function AlertCreateInline({
           <button
             type="button"
             onClick={resetForm}
-            style={buttonVariants.secondary}
+            style={buttons.secondary}
           >
             Reset Form
           </button>
@@ -952,7 +952,7 @@ export default function AlertCreateInline({
             type="submit"
             disabled={submitting || !validation.isValid}
             style={{
-              ...buttonVariants.primary,
+              ...buttons.primary,
               opacity: (submitting || !validation.isValid) ? 0.6 : 1,
               cursor: (submitting || !validation.isValid) ? 'not-allowed' : 'pointer',
             }}
@@ -963,7 +963,7 @@ export default function AlertCreateInline({
 
         {/* Validation Summary */}
         {!validation.isValid && (
-          <div style={{ marginTop: '1rem', fontSize: '0.875rem', color: colors.red[600] }}>
+          <div style={{ marginTop: '1rem', fontSize: '0.875rem', color: colors.red600 }}>
             <strong>Please fix:</strong>
             <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.5rem' }}>
               {validation.errors.map((err, i) => (

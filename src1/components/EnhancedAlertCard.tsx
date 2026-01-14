@@ -3,7 +3,7 @@
  */
 import React from 'react';
 import { colors, styles, combine } from '../styles/inline';
-import { cardVariants, buttonVariants, badges, typography } from '../styles/designSystem';
+import { cards, buttons, badges, typography } from '../styles/designSystem';
 
 // ============================================================================
 // Types
@@ -38,26 +38,26 @@ interface EnhancedAlertCardProps {
 
 const severityColors: Record<string, React.CSSProperties> = {
   critical: {
-    backgroundColor: colors.red[50],
-    borderLeftColor: colors.red[500],
+    backgroundColor: colors.red50,
+    borderLeftColor: colors.red500,
     borderLeftWidth: 4,
     borderLeftStyle: 'solid',
   },
   warning: {
-    backgroundColor: colors.orange[50],
-    borderLeftColor: colors.orange[500],
+    backgroundColor: colors.orange50,
+    borderLeftColor: colors.orange500,
     borderLeftWidth: 4,
     borderLeftStyle: 'solid',
   },
   caution: {
-    backgroundColor: colors.status.warning + '15',
-    borderLeftColor: colors.status.warning,
+    backgroundColor: colors.warning + '15',
+    borderLeftColor: colors.warning,
     borderLeftWidth: 4,
     borderLeftStyle: 'solid',
   },
   informative: {
-    backgroundColor: colors.blue[50],
-    borderLeftColor: colors.blue[500],
+    backgroundColor: colors.blue50,
+    borderLeftColor: colors.blue500,
     borderLeftWidth: 4,
     borderLeftStyle: 'solid',
   },
@@ -87,7 +87,7 @@ export function EnhancedAlertCard({
   const badgeStyle = severityBadges[severity] ?? badges.severity.informative;
 
   const cardStyle: React.CSSProperties = combine(
-    cardVariants.base,
+    cards.base,
     severityStyle,
     {
       marginBottom: '1rem',
@@ -119,7 +119,7 @@ export function EnhancedAlertCard({
     gap: '0.5rem',
     marginBottom: '0.75rem',
     fontSize: '0.875rem',
-    color: colors.grayscale[600],
+    color: colors.gray600,
   };
 
   const actionsStyle: React.CSSProperties = {
@@ -163,7 +163,7 @@ export function EnhancedAlertCard({
         {alert.status && (
           <span style={{ 
             padding: '2px 8px', 
-            backgroundColor: colors.grayscale[200], 
+            backgroundColor: colors.gray200, 
             borderRadius: '4px',
             fontSize: '0.75rem',
           }}>
@@ -204,7 +204,7 @@ export function EnhancedAlertCard({
             <button
               onClick={() => onApprove(alert.id)}
               disabled={busy}
-              style={combine(buttonVariants.primary, buttonVariants.small)}
+              style={combine(buttons.primary, buttons.small)}
             >
               {busy ? 'Processing...' : 'Approve'}
             </button>
@@ -213,7 +213,7 @@ export function EnhancedAlertCard({
             <button
               onClick={() => onDismiss(alert.id)}
               disabled={busy}
-              style={combine(buttonVariants.secondary, buttonVariants.small)}
+              style={combine(buttons.secondary, buttons.small)}
             >
               Dismiss
             </button>
@@ -222,7 +222,7 @@ export function EnhancedAlertCard({
             <button
               onClick={() => onDelete(alert.id)}
               disabled={busy}
-              style={combine(buttonVariants.danger, buttonVariants.small)}
+              style={combine(buttons.danger, buttons.small)}
             >
               {busy ? 'Deleting...' : 'Delete'}
             </button>

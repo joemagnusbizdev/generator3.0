@@ -29,7 +29,7 @@ export function ScourStatusBarInline(): JSX.Element | null {
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: isScouring ? colors.magnusDarkGreen : (lastError ? colors.red[600] : colors.grayscale[700]),
+    backgroundColor: isScouring ? colors.magnusDarkGreen : (lastError ? colors.red600 : colors.gray700),
     color: 'white',
     padding: '0.75rem 1rem',
     display: 'flex',
@@ -130,7 +130,7 @@ export function ScourStatusBarInline(): JSX.Element | null {
               )}
               
               {progress.errors > 0 && (
-                <span style={{ ...statStyle, color: colors.red[300] }}>
+                <span style={{ ...statStyle, color: colors.red300 }}>
                   ⚠️ {progress.errors} errors
                 </span>
               )}

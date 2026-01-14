@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from './lib/supabase/client';
 import { getApiUrl } from './lib/supabase/api';
 import { colors, styles, combine } from './styles/inline';
-import { buttonVariants, typography, layout } from './styles/designSystem';
+import { buttons, typography, layout } from './styles/designSystem';
 
 // Components
 import {
@@ -225,7 +225,7 @@ export default function App(): JSX.Element {
 
   const navStyle: React.CSSProperties = {
     backgroundColor: 'white',
-    borderBottom: `1px solid ${colors.grayscale[200]}`,
+    borderBottom: `1px solid ${colors.gray200}`,
     padding: '0 1rem',
   };
 
@@ -240,7 +240,7 @@ export default function App(): JSX.Element {
     padding: '1rem 1.25rem',
     border: 'none',
     backgroundColor: 'transparent',
-    color: active ? colors.magnusDarkGreen : colors.grayscale[600],
+    color: active ? colors.magnusDarkGreen : colors.gray600,
     fontWeight: active ? 600 : 400,
     cursor: 'pointer',
     borderBottom: `3px solid ${active ? colors.magnusDarkGreen : 'transparent'}`,
@@ -300,10 +300,10 @@ export default function App(): JSX.Element {
           {authError && (
             <div style={{
               padding: '0.75rem',
-              backgroundColor: colors.red[50],
-              border: `1px solid ${colors.red[200]}`,
+              backgroundColor: colors.red50,
+              border: `1px solid ${colors.red200}`,
               borderRadius: '8px',
-              color: colors.red[700],
+              color: colors.red700,
               marginBottom: '1rem',
               fontSize: '0.875rem',
             }}>
@@ -328,7 +328,7 @@ export default function App(): JSX.Element {
                 style={{
                   width: '100%',
                   padding: '0.75rem',
-                  border: `1px solid ${colors.grayscale[300]}`,
+                  border: `1px solid ${colors.gray300}`,
                   borderRadius: '8px',
                   fontSize: '1rem',
                 }}
@@ -352,7 +352,7 @@ export default function App(): JSX.Element {
                 style={{
                   width: '100%',
                   padding: '0.75rem',
-                  border: `1px solid ${colors.grayscale[300]}`,
+                  border: `1px solid ${colors.gray300}`,
                   borderRadius: '8px',
                   fontSize: '1rem',
                 }}
@@ -491,7 +491,7 @@ export default function App(): JSX.Element {
           alignItems: 'center', 
           justifyContent: 'center',
           height: '100vh',
-          color: colors.grayscale[500],
+          color: colors.gray500,
         }}>
           Loading...
         </div>

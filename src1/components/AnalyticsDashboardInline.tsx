@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { apiFetchJson } from '../lib/utils/api';
 import { colors } from '../styles/inline';
-import { buttonVariants } from '../styles/designSystem';
+import { buttons } from '../styles/designSystem';
 
 // ============================================================================
 // Types
@@ -387,7 +387,7 @@ export function AnalyticsDashboardInline({
   // Permission check
   if (!permissions.canAccessAnalytics) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: colors.grayscale[500] }}>
+      <div style={{ padding: '2rem', textAlign: 'center', color: colors.gray500 }}>
         <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>🔒 Access Restricted</p>
         <p>You don't have permission to view analytics.</p>
       </div>
@@ -569,7 +569,7 @@ export function AnalyticsDashboardInline({
           onClick={refresh}
           disabled={loading}
           style={{
-            ...buttonVariants.secondary,
+            ...buttons.secondary,
             display: 'flex',
             alignItems: 'center',
             gap: '0.5rem',
