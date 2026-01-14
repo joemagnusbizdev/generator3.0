@@ -190,7 +190,7 @@ export default function App(): JSX.Element {
 
   const appStyle: React.CSSProperties = {
     minHeight: '100vh',
-    backgroundColor: colors.background.secondary,
+    backgroundColor: colors.magnusLightBg,
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   };
 
@@ -411,7 +411,6 @@ export default function App(): JSX.Element {
             accessToken={accessToken ?? undefined}
             permissions={{ 
               canCreate: permissions.canCreate,
-              canEditAlerts: permissions.canEditAlerts,
             }}
             onAlertCreated={(alert) => {
               console.log('Alert created:', alert);
@@ -428,7 +427,6 @@ export default function App(): JSX.Element {
             permissions={{
               canManageSources: permissions.canManageSources,
               canScour: permissions.canScour,
-              canViewScourStats: permissions.canViewScourStats,
             }}
           />
         );
@@ -439,10 +437,6 @@ export default function App(): JSX.Element {
             accessToken={accessToken ?? undefined}
             permissions={{ 
               canViewTrends: permissions.canViewTrends,
-              canCreateTrends: permissions.canCreateTrends,
-              canEditTrends: permissions.canEditTrends,
-              canExportTrends: permissions.canExportTrends,
-              canDeleteTrends: permissions.canDeleteTrends,
             }}
           />
         );
