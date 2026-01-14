@@ -94,6 +94,28 @@ app.use("*", async (c, next) => {
   if (c.req.method === "OPTIONS") return c.text("", 204);
   await next();
 });
+// Global auth middleware
+app.use("*", async (c, next) => {
+  const path = c.req.path;
+  
+  // Skip auth for health check
+  if (path === "/health" || path === "/clever-function/health") {
+    return await next();
+  }
+  
+  // Require valid JWT for all other routes
+  const user = await getAuthUser(c.req.raw);
+  if (!user) {
+    return c.json({ 
+      ok: false, 
+      code: 401,
+      message: "Invalid JWT",
+      error: "Authentication required" 
+    }, 401);
+  }
+  
+  return await next();
+});
 
 // -------------------------
 // Supabase service client
