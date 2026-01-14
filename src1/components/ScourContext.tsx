@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ScourContext - React context for server-side source scanning
  */
 import React, {
@@ -13,55 +13,14 @@ import React, {
 import { getApiUrl } from '../lib/supabase/api';
 
 // ============================================================================
-// Types
+// Service Key for Internal API Calls
 // ============================================================================
-// Add this constant at the top of ScourContext.tsx (after imports)
 const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdub2JueXplemt1eXB0dWFrenRmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODM4MTA5MywiZXhwIjoyMDgzOTU3MDkzfQ.tX4M3i08_d8P1gCTL37XogysPgAac-7Et09godBSdNA';
 
-// Then update the scourSources function (around line 200):
-const scourSources = useCallback(async (
-  sourceIds?: string[],
-  maxSources?: number,
-  daysBack?: number
-) => {
-  setIsScourRunning(true);
-  setScourError(null);
-  setScourProgress({ processed: 0, total: 0, currentSource: '' });
+// ============================================================================
+// Types
+// ============================================================================
 
-  const payload: any = {};
-  if (sourceIds && sourceIds.length > 0) payload.sourceIds = sourceIds;
-  if (maxSources) payload.maxSources = maxSources;
-  if (daysBack) payload.daysBack = daysBack;
-
-  try {
-    const res = await fetch(getApiUrl('/scour-sources'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,  // ← ADD THIS LINE
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`Scour failed: ${res.status} ${errorText}`);
-    }
-
-    const data = await res.json();
-    
-    if (data.jobId) {
-      pollScourStatus(data.jobId);
-    } else {
-      setIsScourRunning(false);
-      await refreshAll();
-    }
-  } catch (err: any) {
-    console.error('Scour error:', err);
-    setScourError(err.message);
-    setIsScourRunning(false);
-  }
-}, [pollScourStatus, refreshAll]);
 export interface ScourStartOpts {
   maxSources?: number;
   batchSize?: number;
@@ -132,12 +91,10 @@ export interface ScourState {
   health: HealthInfo | null;
   autoEnabled: boolean;
   jobId: string | null;
-  // Alias for compatibility with components expecting scourJobId
   scourJobId: string | null;
   job: JobStatusResp['job'] | null;
   lastResult: ScourTotals | null;
   startScour: (opts?: ScourStartOpts) => Promise<void>;
-  // Alias for compatibility with components expecting runScour
   runScour: (opts?: ScourStartOpts) => Promise<void>;
   cancelScour: () => void;
   refreshLastScoured: () => Promise<void>;
@@ -169,12 +126,12 @@ function isoNow(): string {
 
 async function fetchJson<T>(
   url: string,
-  token?: string,  // Keep parameter for compatibility but don't use it
+  token?: string,
   options: RequestInit = {}
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,  // ← ALWAYS use service key
+    'Authorization': `Bearer src1\components\ScourContext.tsx.broken{SUPABASE_SERVICE_KEY}`,
     ...(options.headers as Record<string, string> || {}),
   };
 
@@ -182,11 +139,12 @@ async function fetchJson<T>(
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Request failed ${response.status}: ${text}`);
+    throw new Error(`Request failed src1\components\ScourContext.tsx.broken{response.status}: src1\components\ScourContext.tsx.broken{text}`);
   }
 
   return response.json();
 }
+
 // ============================================================================
 // Provider
 // ============================================================================
@@ -212,12 +170,10 @@ export function ScourProvider({ children, accessToken }: ScourProviderProps): JS
   const workerRef = useRef<Worker | null>(null);
   const cancelledRef = useRef(false);
 
-  // Update token ref when prop changes
   useEffect(() => {
     tokenRef.current = accessToken;
   }, [accessToken]);
 
-  // Cleanup worker on unmount
   useEffect(() => {
     return () => {
       if (workerRef.current) {
@@ -262,7 +218,7 @@ export function ScourProvider({ children, accessToken }: ScourProviderProps): JS
 
   const refreshJob = useCallback(async (jid: string) => {
     try {
-      const url = getApiUrl(`/scour/status?jobId=${encodeURIComponent(jid)}`);
+      const url = getApiUrl(`/scour/status?jobId=src1\components\ScourContext.tsx.broken{encodeURIComponent(jid)}`);
       const data = await fetchJson<JobStatusResp>(url, tokenRef.current);
       if (data.ok && data.job) {
         setJob(data.job);
@@ -285,17 +241,14 @@ export function ScourProvider({ children, accessToken }: ScourProviderProps): JS
 
     try {
       const url = getApiUrl('/scour-sources');
-      // Timeout values aligned with AI guidelines:
-      // - callBudgetMs: Total time for this API call (multiple sources)
-      // - sourceTimeoutMs: Must exceed Brave(10s) + OpenAI(20s) = 30s minimum
       const body = {
         maxSources: opts.maxSources ?? 25,
-        batchSize: opts.batchSize ?? 5, // Smaller batches = more responsive
+        batchSize: opts.batchSize ?? 5,
         sourceIds: opts.sourceIds,
         jobId: opts.jobId,
-        daysBack: 14, // AI_DAYS_BACK default per guidelines
-        callBudgetMs: 50000, // 50s call budget
-        sourceTimeoutMs: 35000, // 35s per source (Brave 10s + OpenAI 20s + buffer)
+        daysBack: 14,
+        callBudgetMs: 50000,
+        sourceTimeoutMs: 35000,
       };
 
       const data = await fetchJson<ScourTotals>(url, tokenRef.current, {
@@ -308,7 +261,6 @@ export function ScourProvider({ children, accessToken }: ScourProviderProps): JS
         setJobId(jid);
         refreshJob(jid);
 
-        // Start the polling worker
         const worker = new Worker(
           new URL('../workers/scourPoller.ts', import.meta.url),
           { type: 'module' }
@@ -359,7 +311,6 @@ export function ScourProvider({ children, accessToken }: ScourProviderProps): JS
           stopWorker();
         };
 
-        // Start polling
         worker.postMessage({
           type: 'start',
           apiBase: getApiUrl(''),
@@ -368,7 +319,6 @@ export function ScourProvider({ children, accessToken }: ScourProviderProps): JS
           pollMs: 1500,
         });
       } else {
-        // No job ID - immediate completion or skipped
         setIsScouring(false);
         setLastFinishedAt(isoNow());
         setLastResult(data);
@@ -400,11 +350,11 @@ export function ScourProvider({ children, accessToken }: ScourProviderProps): JS
     health,
     autoEnabled,
     jobId,
-    scourJobId: jobId, // Alias for components expecting scourJobId
+    scourJobId: jobId,
     job,
     lastResult,
     startScour,
-    runScour: startScour, // Alias for components expecting runScour
+    runScour: startScour,
     cancelScour,
     refreshLastScoured,
     refreshHealth,
