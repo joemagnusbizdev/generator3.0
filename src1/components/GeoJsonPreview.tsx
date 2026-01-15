@@ -1,4 +1,10 @@
-import { MapContainer, TileLayer, GeoJSON } from "react-leaflet";
+import { MapContainer as RLMapContainer, TileLayer, GeoJSON } from "react-leaflet";
+
+/**
+ * Type escape for react-leaflet MapContainer
+ * (fixes TS mismatch without affecting runtime)
+ */
+const MapContainer = RLMapContainer as unknown as React.FC<any>;
 
 type Props = {
   geojson: any;
