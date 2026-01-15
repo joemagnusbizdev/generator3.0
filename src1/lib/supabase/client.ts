@@ -1,20 +1,17 @@
-import { createClient } from "@supabase/supabase-js";
-import { supabaseUrl, publicAnonKey } from "./info";
+import { createClient } from '@supabase/supabase-js';
 
-if (!supabaseUrl || !publicAnonKey) {
-  console.error("Supabase client cannot be initialized: missing VITE_SUPABASE_PROJECT_ID or VITE_SUPABASE_ANON_KEY");
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!SUPABASE_URL) {
+  throw new Error('Missing VITE_SUPABASE_URL');
+}
+
+if (!SUPABASE_ANON_KEY) {
+  throw new Error('Missing VITE_SUPABASE_ANON_KEY');
 }
 
 export const supabase = createClient(
-  supabaseUrl || "https://placeholder.supabase.co",
-  publicAnonKey || "placeholder-key",
-  {
-    auth: {
-      // Use a custom key so you don't clash with other instances
-      storageKey: "magnus-intel-ui-auth",
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  }
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY
 );
