@@ -1,5 +1,5 @@
 // Supabase project configuration
-// Set these in Vercel (Project Settings → Environment Variables) and in your local .env file.
+// Set these in Vercel (Project Settings â†’ Environment Variables) and in your local .env file.
 // Required:
 //   VITE_SUPABASE_PROJECT_ID
 //   VITE_SUPABASE_ANON_KEY

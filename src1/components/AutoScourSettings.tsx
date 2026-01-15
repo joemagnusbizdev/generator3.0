@@ -177,7 +177,7 @@ export function AutoScourSettings({ accessToken, isAdmin }: AutoScourSettingsPro
     <div style={containerStyle}>
       <div style={headerStyle}>
         <div style={titleStyle}>
-          <span>⚡</span>
+          <span>âš¡</span>
           <span>Auto Scour (Admin)</span>
           <span style={badgeStyle}>
             {status.enabled ? 'ENABLED' : 'DISABLED'}
@@ -196,7 +196,7 @@ export function AutoScourSettings({ accessToken, isAdmin }: AutoScourSettingsPro
         <div>
           <strong>Env Status:</strong>{' '}
           <span style={{ color: status.envEnabled ? '#10b981' : '#ef4444' }}>
-            {status.envEnabled ? '✓ Enabled' : '✗ Disabled'}
+            {status.envEnabled ? 'âœ“ Enabled' : 'âœ— Disabled'}
           </span>
         </div>
       </div>
@@ -211,7 +211,7 @@ export function AutoScourSettings({ accessToken, isAdmin }: AutoScourSettingsPro
             cursor: toggling ? 'not-allowed' : 'pointer',
           }}
         >
-          {toggling ? '⟳ Toggling...' : status.enabled ? '⏸ Disable Auto Scour' : '▶ Enable Auto Scour'}
+          {toggling ? 'âŸ³ Toggling...' : status.enabled ? 'â¸ Disable Auto Scour' : 'â–¶ Enable Auto Scour'}
         </button>
 
         {status.enabled && (
@@ -224,12 +224,12 @@ export function AutoScourSettings({ accessToken, isAdmin }: AutoScourSettingsPro
               cursor: running ? 'not-allowed' : 'pointer',
             }}
           >
-            {running ? '⟳ Running...' : '🚀 Run Now'}
+            {running ? 'âŸ³ Running...' : 'ðŸš€ Run Now'}
           </button>
         )}
 
         <div style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#6b7280' }}>
-          {status.enabled ? '🟢 Automatically scouring sources' : '🔴 Manual scour only'}
+          {status.enabled ? 'ðŸŸ¢ Automatically scouring sources' : 'ðŸ”´ Manual scour only'}
         </div>
       </div>
 
@@ -242,7 +242,7 @@ export function AutoScourSettings({ accessToken, isAdmin }: AutoScourSettingsPro
           borderRadius: '0.375rem',
           fontSize: '0.875rem',
         }}>
-          ⚠️ <strong>Warning:</strong> AUTO_SCOUR_ENABLED environment variable is disabled in edge function.
+          âš ï¸ <strong>Warning:</strong> AUTO_SCOUR_ENABLED environment variable is disabled in edge function.
           Set it to "true" in Supabase dashboard for cron to work.
         </div>
       )}

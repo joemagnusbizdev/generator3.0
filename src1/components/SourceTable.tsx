@@ -100,9 +100,9 @@ export function SourceTable({ sources, onSourceUpdated, accessToken }: SourceTab
                   {testResult && (
                     <div style={{ marginTop: '0.25rem', fontSize: '0.75rem' }}>
                       {testResult.ok ? (
-                        <span style={{ color: '#16a34a' }}>✓ OK {testResult.status ? `(${testResult.status})` : ''}</span>
+                        <span style={{ color: '#16a34a' }}>âœ“ OK {testResult.status ? `(${testResult.status})` : ''}</span>
                       ) : (
-                        <span style={{ color: '#dc2626' }}>✗ UNREACHABLE</span>
+                        <span style={{ color: '#dc2626' }}>âœ— UNREACHABLE</span>
                       )}
                     </div>
                   )}

@@ -184,7 +184,7 @@ function PeriodCard({ title, subtitle, total, posted, comparison, isActive, onCl
           alignItems: 'center',
           gap: '4px',
         }}>
-          {comparison.direction === 'up' ? '↑' : comparison.direction === 'down' ? '↓' : '→'}
+          {comparison.direction === 'up' ? 'â†‘' : comparison.direction === 'down' ? 'â†“' : 'â†’'}
           {comparison.value}% {comparison.label}
         </div>
       )}
@@ -388,7 +388,7 @@ export function AnalyticsDashboardInline({
   if (!permissions.canAccessAnalytics) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center', color: colors.gray500 }}>
-        <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>🔒 Access Restricted</p>
+        <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>ðŸ”’ Access Restricted</p>
         <p>You don't have permission to view analytics.</p>
       </div>
     );
@@ -559,7 +559,7 @@ export function AnalyticsDashboardInline({
             margin: 0,
             marginBottom: '0.25rem',
           }}>
-            📊 Analytics Dashboard
+            ðŸ“Š Analytics Dashboard
           </h2>
           <p style={{ margin: 0, fontSize: '0.875rem', color: COLORS.muted }}>
             Alert metrics by time period
@@ -575,7 +575,7 @@ export function AnalyticsDashboardInline({
             gap: '0.5rem',
           }}
         >
-          ↻ Refresh
+          â†» Refresh
         </button>
       </div>
 
@@ -634,11 +634,11 @@ export function AnalyticsDashboardInline({
         gap: '0.75rem',
         marginBottom: '2rem',
       }}>
-        <SummaryStat label="Total Alerts" value={formatNumber(breakdowns.total)} icon="📋" color={COLORS.primary} />
-        <SummaryStat label="Posted to WP" value={formatNumber(breakdowns.posted)} icon="📤" color={COLORS.success} />
-        <SummaryStat label="Drafts" value={formatNumber(breakdowns.draft)} icon="📝" color={COLORS.warning} />
-        <SummaryStat label="Approved" value={formatNumber(breakdowns.approved)} icon="✅" color={COLORS.info} />
-        <SummaryStat label="Dismissed" value={formatNumber(breakdowns.dismissed)} icon="🚫" color={COLORS.muted} />
+        <SummaryStat label="Total Alerts" value={formatNumber(breakdowns.total)} icon="ðŸ“‹" color={COLORS.primary} />
+        <SummaryStat label="Posted to WP" value={formatNumber(breakdowns.posted)} icon="ðŸ“¤" color={COLORS.success} />
+        <SummaryStat label="Drafts" value={formatNumber(breakdowns.draft)} icon="ðŸ“" color={COLORS.warning} />
+        <SummaryStat label="Approved" value={formatNumber(breakdowns.approved)} icon="âœ…" color={COLORS.info} />
+        <SummaryStat label="Dismissed" value={formatNumber(breakdowns.dismissed)} icon="ðŸš«" color={COLORS.muted} />
       </div>
 
       {/* Selected Period Label */}
@@ -663,7 +663,7 @@ export function AnalyticsDashboardInline({
         {/* By Severity */}
         <BreakdownTable
           title="By Severity"
-          icon="⚠️"
+          icon="âš ï¸"
           data={breakdowns.bySeverity}
           total={breakdowns.total}
           colorFn={(key) => SEVERITY_COLORS[key] ?? COLORS.muted}
@@ -673,7 +673,7 @@ export function AnalyticsDashboardInline({
         {/* By Event Type */}
         <BreakdownTable
           title="By Event Type"
-          icon="📋"
+          icon="ðŸ“‹"
           data={breakdowns.byEventType}
           total={breakdowns.total}
           colorFn={() => COLORS.accent}
@@ -683,7 +683,7 @@ export function AnalyticsDashboardInline({
         {/* By Country */}
         <BreakdownTable
           title="By Country"
-          icon="🌍"
+          icon="ðŸŒ"
           data={breakdowns.byCountry}
           total={breakdowns.total}
           colorFn={() => COLORS.info}
@@ -700,7 +700,7 @@ export function AnalyticsDashboardInline({
         color: COLORS.muted,
         borderTop: `1px solid ${COLORS.border}`,
       }}>
-        Data refreshed: {new Date().toLocaleString()} • Total alerts in database: {formatNumber(alerts.length)}
+        Data refreshed: {new Date().toLocaleString()} â€¢ Total alerts in database: {formatNumber(alerts.length)}
       </div>
     </div>
   );

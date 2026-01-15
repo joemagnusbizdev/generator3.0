@@ -146,19 +146,19 @@ export function EnhancedAlertCard({
 
       <div style={metaStyle}>
         {alert.location && (
-          <span>📍 {alert.location}</span>
+          <span>ðŸ“ {alert.location}</span>
         )}
         {alert.country && !alert.location && (
-          <span>🌍 {alert.country}</span>
+          <span>ðŸŒ {alert.country}</span>
         )}
         {alert.region && (
-          <span>🗺️ {alert.region}</span>
+          <span>ðŸ—ºï¸ {alert.region}</span>
         )}
         {alert.event_type && (
-          <span>📋 {alert.event_type}</span>
+          <span>ðŸ“‹ {alert.event_type}</span>
         )}
         {alert.created_at && (
-          <span>🕒 {new Date(alert.created_at).toLocaleDateString()}</span>
+          <span>ðŸ•’ {new Date(alert.created_at).toLocaleDateString()}</span>
         )}
         {alert.status && (
           <span style={{ 
@@ -181,7 +181,7 @@ export function EnhancedAlertCard({
               rel="noopener noreferrer"
               style={linkStyle}
             >
-              View Source →
+              View Source â†’
             </a>
           )}
           {alert.sourceUrl && alert.articleUrl && <span style={{ margin: '0 0.5rem' }}>|</span>}
@@ -192,7 +192,7 @@ export function EnhancedAlertCard({
               rel="noopener noreferrer"
               style={linkStyle}
             >
-              View Article →
+              View Article â†’
             </a>
           )}
         </div>

@@ -296,16 +296,16 @@ export function TrendsView({
 
               <div style={metaStyle}>
                 {trend.country && (
-                  <span>🌍 {trend.country}</span>
+                  <span>ðŸŒ {trend.country}</span>
                 )}
                 {trend.region && (
-                  <span>🗺️ {trend.region}</span>
+                  <span>ðŸ—ºï¸ {trend.region}</span>
                 )}
                 {trend.event_type && (
-                  <span>📋 {trend.event_type}</span>
+                  <span>ðŸ“‹ {trend.event_type}</span>
                 )}
                 {trend.incident_count != null && (
-                  <span>📊 {trend.incident_count} incidents</span>
+                  <span>ðŸ“Š {trend.incident_count} incidents</span>
                 )}
                 {trend.severity && (
                   <span style={{ 
@@ -313,7 +313,7 @@ export function TrendsView({
                     backgroundColor: colors.warning + '20',
                     borderRadius: '4px',
                   }}>
-                    ⚠️ {trend.severity}
+                    âš ï¸ {trend.severity}
                   </span>
                 )}
               </div>
@@ -377,7 +377,7 @@ export function TrendsView({
                     padding: '0.5rem 0.75rem',
                   }}
                 >
-                  {expandedId === trend.id ? '▲ Collapse' : '▼ Details'}
+                  {expandedId === trend.id ? 'â–² Collapse' : 'â–¼ Details'}
                 </button>
                 
                 <button
@@ -390,7 +390,7 @@ export function TrendsView({
                     opacity: exportingId === trend.id ? 0.7 : 1,
                   }}
                 >
-                  {exportingId === trend.id ? '⏳ Generating...' : '📄 Export Report'}
+                  {exportingId === trend.id ? 'â³ Generating...' : 'ðŸ“„ Export Report'}
                 </button>
               </div>
               

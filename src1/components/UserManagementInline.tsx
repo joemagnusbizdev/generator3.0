@@ -94,7 +94,7 @@ export function UserManagementInline({
   if (!permissions.canManageUsers || currentUserRole !== 'admin') {
     return (
       <div style={{ padding: '2rem', textAlign: 'center', color: colors.gray500 }}>
-        <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>🔒 Access Restricted</p>
+        <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>ðŸ”’ Access Restricted</p>
         <p>Only administrators can manage users.</p>
       </div>
     );
@@ -347,20 +347,20 @@ export function UserManagementInline({
     <div style={containerStyle}>
       {/* Header */}
       <div style={headerStyle}>
-        <h2 style={titleStyle}>👥 User Management</h2>
+        <h2 style={titleStyle}>ðŸ‘¥ User Management</h2>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button
             style={secondaryButtonStyle}
             onClick={refresh}
             disabled={loading}
           >
-            🔄 Refresh
+            ðŸ”„ Refresh
           </button>
           <button
             style={primaryButtonStyle}
             onClick={() => setShowAddForm(true)}
           >
-            ➕ Add User
+            âž• Add User
           </button>
         </div>
       </div>
@@ -439,7 +439,7 @@ export function UserManagementInline({
 
             {formError && (
               <div style={{ marginTop: '1rem', color: colors.red600, fontSize: '0.875rem' }}>
-                ⚠️ {formError}
+                âš ï¸ {formError}
               </div>
             )}
 
@@ -537,7 +537,7 @@ export function UserManagementInline({
                         onClick={() => handleDelete(user.id)}
                         disabled={busyId === user.id}
                       >
-                        🗑️ Delete
+                        ðŸ—‘ï¸ Delete
                       </button>
                     </td>
                   </tr>

@@ -142,7 +142,7 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
 
       // If no sourceIds provided, fetch all enabled sources
       if (sourceIds.length === 0) {
-        console.log('⚠️  No sourceIds provided - fetching enabled sources...');
+        console.log('âš ï¸  No sourceIds provided - fetching enabled sources...');
         try {
           const sourcesResponse = await apiFetchJson<{ ok: boolean; sources: Array<{ id: string; enabled: boolean }> }>(
             '/sources',
@@ -154,7 +154,7 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
               .filter(s => s.enabled)
               .map(s => s.id);
             
-            console.log(`✅ Fetched ${sourceIds.length} enabled sources`);
+            console.log(`âœ… Fetched ${sourceIds.length} enabled sources`);
           } else {
             throw new Error('Failed to fetch sources');
           }
@@ -168,7 +168,7 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
         throw new Error('No enabled sources available to scour');
       }
 
-      console.log(`🚀 Starting scour with ${sourceIds.length} sources`);
+      console.log(`ðŸš€ Starting scour with ${sourceIds.length} sources`);
 
       // Start the scour job
       const response = await apiPostJson<{
