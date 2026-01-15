@@ -164,88 +164,26 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
 
         return (
           <div key={item.id} className="border rounded bg-white shadow-sm">
-            {/* Header */}
+            {/* HEADER */}
             <div className="flex items-center gap-3 p-4">
+              {/* Checkbox */}
               <input
                 type="checkbox"
                 checked={selected.has(item.id)}
-                onChange={e => {
-                  e.stopPropagation();
+                onChange={() =>
                   setSelected(s => {
                     const n = new Set(s);
                     n.has(item.id) ? n.delete(item.id) : n.add(item.id);
                     return n;
-                  });
-                }}
+                  })
+                }
               />
 
-              <div
-                className="flex-1 cursor-pointer space-y-1"
-                onClick={() =>
-                  setExpanded(e => ({ ...e, [item.id]: !isOpen }))
-                }
-              >
-                {isEditing ? (
-                  <>
-                    <input
-                      className="w-full border rounded px-2 py-1 text-sm"
-                      value={draft.title || ""}
-                      onClick={e => e.stopPropagation()}
-                      onChange={e =>
-                        setDrafts(d => ({
-                          ...d,
-                          [item.id]: { ...draft, title: e.target.value },
-                        }))
-                      }
-                    />
-                    <div className="flex gap-2">
-                      <input
-                        className="border rounded px-2 py-1 text-xs w-1/2"
-                        value={draft.location || ""}
-                        placeholder="Location"
-                        onClick={e => e.stopPropagation()}
-                        onChange={e =>
-                          setDrafts(d => ({
-                            ...d,
-                            [item.id]: {
-                              ...draft,
-                              location: e.target.value,
-                            },
-                          }))
-                        }
-                      />
-                      <input
-                        className="border rounded px-2 py-1 text-xs w-1/2"
-                        value={draft.country || ""}
-                        placeholder="Country"
-                        onClick={e => e.stopPropagation()}
-                        onChange={e =>
-                          setDrafts(d => ({
-                            ...d,
-                            [item.id]: {
-                              ...draft,
-                              country: e.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="font-medium text-sm">{item.title}</div>
-                    <div className="text-xs text-gray-600">
-                      {item.location}, {item.country}
-                    </div>
-                  </>
-                )}
-              </div>
-
+              {/* Severity */}
               {isEditing ? (
                 <select
                   className="border rounded px-2 py-1 text-sm"
                   value={draft.severity}
-                  onClick={e => e.stopPropagation()}
                   onChange={e =>
                     setDrafts(d => ({
                       ...d,
@@ -268,9 +206,74 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
                   {meta.emoji} {meta.label}
                 </span>
               )}
+
+              {/* Title + Location */}
+              <div className="flex-1">
+                {isEditing ? (
+                  <>
+                    <input
+                      className="w-full border rounded px-2 py-1 text-sm mb-1"
+                      value={draft.title || ""}
+                      onChange={e =>
+                        setDrafts(d => ({
+                          ...d,
+                          [item.id]: { ...draft, title: e.target.value },
+                        }))
+                      }
+                    />
+                    <div className="flex gap-2">
+                      <input
+                        className="border rounded px-2 py-1 text-xs w-1/2"
+                        value={draft.location || ""}
+                        placeholder="Location"
+                        onChange={e =>
+                          setDrafts(d => ({
+                            ...d,
+                            [item.id]: {
+                              ...draft,
+                              location: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                      <input
+                        className="border rounded px-2 py-1 text-xs w-1/2"
+                        value={draft.country || ""}
+                        placeholder="Country"
+                        onChange={e =>
+                          setDrafts(d => ({
+                            ...d,
+                            [item.id]: {
+                              ...draft,
+                              country: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="font-medium text-sm">{item.title}</div>
+                    <div className="text-xs text-gray-600">
+                      {item.location}, {item.country}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* EXPAND BUTTON */}
+              <button
+                onClick={() =>
+                  setExpanded(e => ({ ...e, [item.id]: !isOpen }))
+                }
+                className="text-xs border rounded px-2 py-1 hover:bg-gray-100"
+              >
+                {isOpen ? "▲" : "▼"}
+              </button>
             </div>
 
-            {/* Expanded */}
+            {/* EXPANDED CONTENT */}
             {isOpen && (
               <div className="px-11 pb-4 space-y-3 text-sm border-t pt-3">
                 {isEditing ? (
@@ -286,7 +289,7 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
                       }
                     />
 
-                    {/* Dates + Presets */}
+                    {/* Dates */}
                     <div className="grid grid-cols-2 gap-3 text-xs">
                       <input
                         type="date"
@@ -318,6 +321,7 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
                       />
                     </div>
 
+                    {/* Presets */}
                     <div className="flex gap-2 text-xs">
                       <button
                         onClick={() =>
