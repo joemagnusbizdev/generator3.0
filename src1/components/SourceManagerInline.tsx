@@ -48,7 +48,7 @@ const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
 
       if (response.ok && Array.isArray(response.sources)) {
         setSources(response.sources);
-        console.log(`âœ… Loaded ${response.sources.length} sources`);
+        console.log(`Ã¢Å“â€¦ Loaded ${response.sources.length} sources`);
       } else {
         console.warn('Invalid response format:', response);
         setSources([]);
@@ -67,19 +67,26 @@ const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
   }, [accessToken]);
 
   const handleStartScour = async () => {
+    console.log('🔍 handleStartScour called');
+    console.log('📊 sources state:', sources);
+    console.log('📊 sources.length:', sources.length);
+    console.log('✅ canScour:', canScour);
+    
     if (!canScour) {
       alert('You do not have permission to run scour operations.');
       return;
     }
 
     const enabledSources = sources.filter(s => s.enabled);
+    console.log('✅ enabledSources:', enabledSources.length);
+    console.log('📋 enabledSources IDs:', enabledSources.map(s => s.id));
     
     if (enabledSources.length === 0) {
       alert('No enabled sources available. Please enable at least one source before scouring.');
       return;
     }
 
-    console.log(`ðŸš€ Starting scour with ${enabledSources.length} enabled sources:`, 
+    console.log(`Ã°Å¸Å¡â‚¬ Starting scour with ${enabledSources.length} enabled sources:`, 
       enabledSources.map(s => s.name).join(', ')
     );
 
@@ -188,7 +195,7 @@ const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
             cursor: (isScouring || !canScour || sources.length === 0) ? 'not-allowed' : 'pointer',
           }}
         >
-          {isScouring ? 'â³ Scouring...' : 'ðŸ” Start Scour'}
+          {isScouring ? 'Ã¢ÂÂ³ Scouring...' : 'Ã°Å¸â€Â Start Scour'}
         </button>
 
         <button
@@ -199,7 +206,7 @@ const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
             opacity: loading ? 0.5 : 1,
           }}
         >
-          ðŸ”„ Refresh Sources
+          Ã°Å¸â€â€ž Refresh Sources
         </button>
 
         {sources.length > 0 && (
@@ -226,7 +233,7 @@ const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
           
           {sources.length === 0 ? (
             <div style={emptyStateStyle}>
-              <div style={{ fontSize: '48px', marginBottom: '16px' }}>ðŸ“°</div>
+              <div style={{ fontSize: '48px', marginBottom: '16px' }}>Ã°Å¸â€œÂ°</div>
               <div style={{ fontSize: '16px', fontWeight: 500, marginBottom: '8px' }}>
                 No sources configured
               </div>

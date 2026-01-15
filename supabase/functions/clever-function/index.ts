@@ -1,14 +1,401 @@
 /// <reference lib="deno.unstable" />
 
-import { runScourWorker } from './workers/scourWorker.ts';
-
-
 console.log("=== Function starting ===");
 
+// ============================================================================
+// SCOUR WORKER - Inline (with proper column names)
+// ============================================================================
+
+interface ScourConfig {
+  jobId: string;
+  sourceIds: string[];
+  daysBack: number;
+  supabaseUrl: string;
+  serviceKey: string;
+  openaiKey: string;
+  braveApiKey?: string;
+}
+
+interface Alert {
+  id: string;
+  title: string;
+  summary: string;
+  location: string;
+  country: string;
+  region?: string;
+  event_type: string;
+  severity: 'critical' | 'warning' | 'caution' | 'informative';
+  status: 'draft';
+  source_url: string;
+  article_url?: string;
+  sources?: string;
+  event_start_date?: string;
+  event_end_date?: string;
+  ai_generated: boolean;
+  ai_model: string;
+  ai_confidence?: number;
+  generation_metadata?: any;
+  created_at: string;
+  updated_at: string;
+}
+
+async function querySupabaseForWorker(url: string, serviceKey: string, options: RequestInit = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${serviceKey}`,
+      'apikey': serviceKey,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Supabase error ${response.status}: ${text}`);
+  }
+
+  return response.json();
+}
+
+async function fetchWithBraveSearch(query: string, braveApiKey: string): Promise<string> {
+  try {
+    const response = await fetch(
+      `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10&freshness=pd`,
+      {
+        headers: {
+          'Accept': 'application/json',
+          'X-Subscription-Token': braveApiKey,
+        },
+        signal: AbortSignal.timeout(10000),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Brave Search failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const results = data.web?.results || [];
+    
+    return results.map((r: any) => 
+      `Title: ${r.title}\nDescription: ${r.description}\nURL: ${r.url}\n\n`
+    ).join('');
+  } catch (err) {
+    console.error('Brave Search error:', err);
+    return '';
+  }
+}
+
+async function scrapeUrl(url: string): Promise<string> {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Scrape failed: ${response.status}`);
+    }
+
+    const html = await response.text();
+    return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 15000);
+  } catch (err) {
+    console.error(`Scrape error for ${url}:`, err);
+    return '';
+  }
+}
+
+async function extractAlertsWithAI(
+  content: string,
+  source_url: string,
+  sourceName: string,
+  existingAlerts: Alert[],
+  config: ScourConfig
+): Promise<Alert[]> {
+  const currentDate = new Date().toISOString().split('T')[0];
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - config.daysBack);
+  const cutoffStr = cutoffDate.toISOString().split('T')[0];
+
+  const existingAlertsStr = existingAlerts.slice(0, 50).map(a => 
+    `- ${a.title} (${a.location}, ${a.country}) [${a.status}]`
+  ).join('\n');
+
+  const systemPrompt = `You are MAGNUS travel safety intelligence analyst. Current date: ${currentDate}.
+
+CRITICAL RULES:
+1. ONLY extract events from ${cutoffStr} onwards (last ${config.daysBack} days)
+2. REJECT any event from 2023 or earlier
+3. DO NOT create alerts similar to these existing ones:
+${existingAlertsStr}
+
+PRIORITY TOPICS (Extract Individual Alerts):
+- Natural disasters, severe weather, infrastructure disruptions
+- Transportation disruptions, medical emergencies, political instability
+- Mass casualty incidents, terrorism, war/armed conflict
+- Hate crimes, ANY Critical/Warning severity events
+
+OUTPUT: JSON array of alerts with these MANDATORY fields:
+{
+  "severity": "critical"|"warning"|"caution"|"informative",
+  "country": "Country name",
+  "event_type": "Category",
+  "title": "Alert headline",
+  "location": "City/location",
+  "region": "Regional context",
+  "summary": "2-3 sentences under 150 words",
+  "source_url": "${source_url}",
+  "event_start_date": "2026-01-14T12:00:00Z",
+  "event_end_date": "2026-01-17T12:00:00Z"
+}
+
+event_end_date: Critical=72h, Warning=48h, Caution=36h, Informative=24h from start.
+
+Return ONLY JSON array, no markdown.`;
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.openaiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Source: ${sourceName}\n\nContent:\n${content.slice(0, 12000)}` },
+        ],
+        temperature: 0.2,
+        max_tokens: 2500,
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const aiResponse = data.choices[0]?.message?.content || '[]';
+    
+    console.log(`AI extracted for ${sourceName}:`, aiResponse.slice(0, 300));
+
+    let alerts: any[] = [];
+    
+    try {
+      const cleaned = aiResponse.trim().replace(/^```json\s*/,'').replace(/\s*```$/,'');
+      alerts = JSON.parse(cleaned);
+    } catch {
+      try {
+        const match = aiResponse.match(/\[[\s\S]*\]/);
+        if (match) {
+          alerts = JSON.parse(match[0]);
+        }
+      } catch (e) {
+        console.error('Parse failed:', e);
+        return [];
+      }
+    }
+
+    if (!Array.isArray(alerts)) {
+      return [];
+    }
+
+    const now = new Date().toISOString();
+    return alerts.map(alert => ({
+      id: crypto.randomUUID(),
+      title: alert.title,
+      summary: alert.summary,
+      location: alert.location,
+      country: alert.country,
+      region: alert.region,
+      event_type: alert.event_type,
+      severity: alert.severity,
+      status: 'draft' as const,
+      source_url: source_url,
+      article_url: source_url,
+      sources: sourceName,
+      event_start_date: alert.event_start_date,
+      event_end_date: alert.event_end_date,
+      ai_generated: true,
+      ai_model: 'gpt-4o-mini',
+      ai_confidence: 0.8,
+      generation_metadata: JSON.stringify({
+        extracted_at: now,
+        source_name: sourceName,
+        days_back: config.daysBack,
+      }),
+      created_at: now,
+      updated_at: now,
+    }));
+
+  } catch (err: any) {
+    console.error('AI extraction error:', err);
+    throw err;
+  }
+}
+
+async function checkDuplicate(
+  newAlert: Alert,
+  existingAlert: Alert,
+  openaiKey: string
+): Promise<boolean> {
+  const prompt = `Compare these alerts. Answer ONLY "DUPLICATE" or "SEPARATE":
+
+NEW: ${newAlert.title} (${newAlert.location}, ${newAlert.country})
+EXISTING: ${existingAlert.title} (${existingAlert.location}, ${existingAlert.country})`;
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1,
+        max_tokens: 10,
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    const data = await response.json();
+    const answer = data.choices[0]?.message?.content?.trim().toUpperCase();
+    
+    return answer?.includes('DUPLICATE') || false;
+  } catch {
+    return true;
+  }
+}
+
+async function runScourWorker(config: ScourConfig): Promise<{
+  processed: number;
+  created: number;
+  duplicates: number;
+  errors: string[];
+}> {
+  const stats = {
+    processed: 0,
+    created: 0,
+    duplicates: 0,
+    errors: [] as string[],
+  };
+
+  console.log(`Starting scour ${config.jobId} with ${config.sourceIds.length} sources`);
+
+  try {
+    const existingAlerts: Alert[] = await querySupabaseForWorker(
+      `${config.supabaseUrl}/rest/v1/alerts?select=id,title,location,country,status,summary&limit=500&order=created_at.desc`,
+      config.serviceKey
+    );
+
+    console.log(`Found ${existingAlerts.length} existing alerts`);
+
+    for (const sourceId of config.sourceIds) {
+      try {
+        const sources = await querySupabaseForWorker(
+          `${config.supabaseUrl}/rest/v1/sources?id=eq.${sourceId}&select=*`,
+          config.serviceKey
+        );
+        const source = sources[0];
+
+        if (!source?.url) {
+          stats.errors.push(`Source ${sourceId} not found`);
+          continue;
+        }
+
+        console.log(`Processing ${source.name}...`);
+
+        let content = '';
+        if (config.braveApiKey && source.query) {
+          content = await fetchWithBraveSearch(source.query, config.braveApiKey);
+        }
+        
+        if (!content || content.length < 100) {
+          content = await scrapeUrl(source.url);
+        }
+
+        if (!content || content.length < 50) {
+          stats.errors.push(`No content from ${source.name}`);
+          continue;
+        }
+
+        const extractedAlerts = await extractAlertsWithAI(
+          content,
+          source.url,
+          source.name,
+          existingAlerts,
+          config
+        );
+
+        console.log(`Extracted ${extractedAlerts.length} alerts`);
+
+        for (const alert of extractedAlerts) {
+          let isDuplicate = false;
+
+          for (const existing of existingAlerts) {
+            const titleMatch = existing.title.toLowerCase().includes(alert.title.toLowerCase().slice(0, 30));
+            const locationMatch = existing.location === alert.location && existing.country === alert.country;
+
+            if (titleMatch || locationMatch) {
+              const duplicate = await checkDuplicate(alert, existing, config.openaiKey);
+              if (duplicate) {
+                isDuplicate = true;
+                stats.duplicates++;
+                break;
+              }
+            }
+          }
+
+          if (!isDuplicate) {
+            try {
+              await querySupabaseForWorker(
+                `${config.supabaseUrl}/rest/v1/alerts`,
+                config.serviceKey,
+                {
+                  method: 'POST',
+                  body: JSON.stringify(alert),
+                  headers: { 'Prefer': 'return=representation' },
+                }
+              );
+              
+              existingAlerts.push(alert);
+              stats.created++;
+              console.log(`Created: ${alert.title}`);
+            } catch (insertErr: any) {
+              stats.errors.push(`Insert failed: ${insertErr.message}`);
+            }
+          }
+        }
+
+        stats.processed++;
+
+      } catch (sourceErr: any) {
+        stats.errors.push(`Source error: ${sourceErr.message}`);
+      }
+    }
+
+    return stats;
+
+  } catch (err: any) {
+    console.error(`Fatal scour error:`, err);
+    throw err;
+  }
+}
+
+// ============================================================================
+// MAIN EDGE FUNCTION - ALL ENDPOINTS
+// ============================================================================
+
 Deno.serve(async (req) => {
-  console.log("Request received:", req.method, req.url);
+  console.log("Request:", req.method, req.url);
   
-  // Handle CORS
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
@@ -22,10 +409,7 @@ Deno.serve(async (req) => {
 
   const url = new URL(req.url);
   const path = url.pathname;
-  
-  console.log("Path:", path);
 
-  // Get environment variables
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const wpUrl = Deno.env.get("WP_URL");
@@ -34,10 +418,7 @@ Deno.serve(async (req) => {
 
   if (!supabaseUrl || !serviceKey) {
     return new Response(
-      JSON.stringify({ 
-        ok: false, 
-        error: "Server configuration error",
-      }),
+      JSON.stringify({ ok: false, error: "Server configuration error" }),
       {
         status: 500,
         headers: {
@@ -48,7 +429,6 @@ Deno.serve(async (req) => {
     );
   }
 
-  // Helper function to query Supabase
   async function querySupabase(endpoint: string, options: RequestInit = {}) {
     const dbUrl = `${supabaseUrl}/rest/v1${endpoint}`;
     const response = await fetch(dbUrl, {
@@ -69,7 +449,6 @@ Deno.serve(async (req) => {
     return response.json();
   }
 
-  // Helper to safely query Supabase (returns null if table doesn't exist)
   async function safeQuerySupabase(endpoint: string, options: RequestInit = {}) {
     try {
       return await querySupabase(endpoint, options);
@@ -82,7 +461,6 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Helper to get/set key-value data (for scour jobs)
   async function getKV(key: string) {
     try {
       const result = await querySupabase(`/app_kv?key=eq.${encodeURIComponent(key)}&select=value`);
@@ -114,7 +492,6 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Helper to batch insert with chunking
   async function batchInsert(table: string, records: any[], chunkSize = 100) {
     const results = [];
     for (let i = 0; i < records.length; i += chunkSize) {
@@ -130,9 +507,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // ========================================================================
     // HEALTH
-    // ========================================================================
     if (path === "/health" || path === "/clever-function/health") {
       return new Response(
         JSON.stringify({ 
@@ -143,7 +518,8 @@ Deno.serve(async (req) => {
             AI_ENABLED: Deno.env.get("AI_ENABLED") === "true",
             SCOUR_ENABLED: Deno.env.get("SCOUR_ENABLED") === "true",
             AUTO_SCOUR_ENABLED: Deno.env.get("AUTO_SCOUR_ENABLED") === "true",
-          }
+            WP_CONFIGURED: !!(wpUrl && wpUser && wpPassword),
+          },
         }),
         {
           status: 200,
@@ -155,13 +531,58 @@ Deno.serve(async (req) => {
       );
     }
 
-    // GET /last-scoured
+    // LAST SCOURED
     if ((path === "/last-scoured" || path === "/clever-function/last-scoured") && req.method === "GET") {
       const lastScoured = await getKV("last_scoured_timestamp");
       return new Response(
+        JSON.stringify({ ok: true, lastIso: lastScoured }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          }
+        }
+      );
+    }
+
+    // ANALYTICS
+    if ((path === "/analytics/dashboard" || path === "/clever-function/analytics/dashboard") && req.method === "GET") {
+      const daysBack = parseInt(url.searchParams.get("days") || "30");
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - daysBack);
+      
+      const alerts = await querySupabase(`/alerts?created_at=gte.${cutoffDate.toISOString()}`);
+      const sources = await querySupabase("/sources");
+      
+      const byStatus = alerts.reduce((acc: any, alert: any) => {
+        acc[alert.status] = (acc[alert.status] || 0) + 1;
+        return acc;
+      }, {});
+      
+      const byCountry = alerts.reduce((acc: any, alert: any) => {
+        const country = alert.country || "Unknown";
+        acc[country] = (acc[country] || 0) + 1;
+        return acc;
+      }, {});
+      
+      const bySeverity = alerts.reduce((acc: any, alert: any) => {
+        const severity = alert.severity || "informative";
+        acc[severity] = (acc[severity] || 0) + 1;
+        return acc;
+      }, {});
+      
+      return new Response(
         JSON.stringify({ 
           ok: true, 
-          lastIso: lastScoured 
+          analytics: {
+            totalAlerts: alerts.length,
+            totalSources: sources.length,
+            byStatus,
+            byCountry,
+            bySeverity,
+            period: `Last ${daysBack} days`
+          }
         }),
         {
           status: 200,
@@ -173,11 +594,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ========================================================================
-    // ALERTS
-    // ========================================================================
-    
-    // GET /alerts or /alerts?status=draft&limit=100
+    // ALERTS - GET ALL
     if ((path === "/alerts" || path === "/clever-function/alerts") && req.method === "GET") {
       const status = url.searchParams.get("status");
       const limit = url.searchParams.get("limit") || "1000";
@@ -200,7 +617,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // GET /alerts/review
+    // ALERTS - REVIEW
     if ((path === "/alerts/review" || path === "/clever-function/alerts/review") && req.method === "GET") {
       const alerts = await querySupabase("/alerts?status=eq.draft&order=created_at.desc&limit=200");
       
@@ -216,23 +633,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // GET /alerts/review-queue
-    if ((path === "/alerts/review-queue" || path === "/clever-function/alerts/review-queue") && req.method === "GET") {
-      const alerts = await querySupabase("/alerts?status=eq.draft&order=created_at.desc&limit=200");
-      
-      return new Response(
-        JSON.stringify({ ok: true, alerts }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // POST /alerts/compile
+    // ALERTS - COMPILE
     if ((path === "/alerts/compile" || path === "/clever-function/alerts/compile") && req.method === "POST") {
       const body = await req.json();
       const { alertIds } = body;
@@ -244,10 +645,8 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Fetch the alerts
       const alerts = await querySupabase(`/alerts?id=in.(${alertIds.join(",")})`);
       
-      // Compile into a single document
       const compiled = {
         id: crypto.randomUUID(),
         title: `Compiled Alert Briefing - ${new Date().toLocaleDateString()}`,
@@ -268,9 +667,21 @@ Deno.serve(async (req) => {
       );
     }
 
-    // POST /alerts
+    // ALERTS - CREATE
     if ((path === "/alerts" || path === "/clever-function/alerts") && req.method === "POST") {
       const body = await req.json();
+      
+      if (!body.title || !body.country || !body.location) {
+        return new Response(
+          JSON.stringify({ 
+            ok: false, 
+            error: "Missing required fields: title, country, location" 
+          }),
+          { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
+        );
+      }
+      
+      const now = new Date().toISOString();
       
       const newAlert = await querySupabase("/alerts", {
         method: "POST",
@@ -278,8 +689,8 @@ Deno.serve(async (req) => {
           id: crypto.randomUUID(),
           ...body,
           status: body.status || "draft",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          created_at: body.created_at || now,
+          updated_at: now,
         }),
         headers: {
           "Prefer": "return=representation"
@@ -298,13 +709,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    // PATCH /alerts/:id
+    // ALERTS - UPDATE
     if ((path.startsWith("/alerts/") || path.startsWith("/clever-function/alerts/")) && req.method === "PATCH") {
       const parts = path.split("/");
       const id = parts[parts.length - 1];
       
       if (parts.includes("approve") || parts.includes("dismiss") || parts.includes("post-to-wp")) {
-        // Handle these below
+        // Handled below
       } else {
         const body = await req.json();
         
@@ -329,7 +740,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // POST /alerts/:id/approve
+    // ALERTS - APPROVE
     if ((path.includes("/approve") && req.method === "POST") || 
         (path.includes("/alerts/") && path.includes("/approve"))) {
       const parts = path.split("/");
@@ -359,7 +770,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // POST /alerts/:id/dismiss
+    // ALERTS - DISMISS
     if ((path.includes("/dismiss") && req.method === "POST") || 
         (path.includes("/alerts/") && path.includes("/dismiss"))) {
       const parts = path.split("/");
@@ -389,7 +800,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // POST /alerts/:id/post-to-wp
+    // ALERTS - POST TO WORDPRESS
     if ((path.includes("/post-to-wp") && req.method === "POST") || 
         (path.includes("/alerts/") && path.includes("/post-to-wp"))) {
       const parts = path.split("/");
@@ -437,7 +848,7 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           title: alert.title || "Travel Alert",
-          content: alert.description || "",
+          content: alert.summary || "",
           status: "publish",
         })
       });
@@ -491,7 +902,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // DELETE /alerts/:id
+    // ALERTS - DELETE
     if ((path.startsWith("/alerts/") || path.startsWith("/clever-function/alerts/")) && req.method === "DELETE") {
       const parts = path.split("/");
       const id = parts[parts.length - 1];
@@ -511,11 +922,8 @@ Deno.serve(async (req) => {
         }
       );
     }
-    // ========================================================================
-    // AUTO SCOUR SETTINGS (Admin only)
-    // ========================================================================
 
-    // GET /auto-scour/status
+    // AUTO SCOUR - STATUS
     if ((path === "/auto-scour/status" || path === "/clever-function/auto-scour/status") && req.method === "GET") {
       const enabled = await getKV("auto_scour_enabled");
       const intervalMinutes = await getKV("auto_scour_interval_minutes") || 60;
@@ -539,7 +947,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // POST /auto-scour/toggle
+    // AUTO SCOUR - TOGGLE
     if ((path === "/auto-scour/toggle" || path === "/clever-function/auto-scour/toggle") && req.method === "POST") {
       const body = await req.json();
       const { enabled, intervalMinutes } = body;
@@ -574,9 +982,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // POST /auto-scour/run-now (Admin only - manual trigger)
+    // AUTO SCOUR - RUN NOW
     if ((path === "/auto-scour/run-now" || path === "/clever-function/auto-scour/run-now") && req.method === "POST") {
-      // Get all enabled sources
       const sources = await querySupabase("/sources?enabled=eq.true&order=created_at.desc&limit=1000");
       const sourceIds = sources.map((s: any) => s.id);
       
@@ -592,16 +999,12 @@ Deno.serve(async (req) => {
         id: jobId,
         status: "running",
         sourceIds,
-        maxSources: sourceIds.length,
         daysBack: 14,
-        nextIndex: 0,
         processed: 0,
         created: 0,
         duplicatesSkipped: 0,
-        lowConfidenceSkipped: 0,
         errorCount: 0,
         errors: [],
-        rejections: [],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         total: sourceIds.length,
@@ -609,7 +1012,6 @@ Deno.serve(async (req) => {
       };
 
       await setKV(`scour_job:${jobId}`, job);
-      await setKV("last_scoured_timestamp", new Date().toISOString());
       await setKV("auto_scour_last_run", new Date().toISOString());
       
       return new Response(
@@ -630,12 +1032,7 @@ Deno.serve(async (req) => {
       );
     }
 
-
-    // ========================================================================
-    // SCOUR
-    // ========================================================================
-
-    // POST /scour-sources
+    // SCOUR - START
     if ((path === "/scour-sources" || path === "/clever-function/scour-sources") && req.method === "POST") {
       const body = await req.json();
       const jobId = body.jobId || crypto.randomUUID();
@@ -644,16 +1041,12 @@ Deno.serve(async (req) => {
         id: jobId,
         status: "running",
         sourceIds: body.sourceIds || [],
-        maxSources: body.maxSources,
         daysBack: body.daysBack || 14,
-        nextIndex: 0,
         processed: 0,
         created: 0,
         duplicatesSkipped: 0,
-        lowConfidenceSkipped: 0,
         errorCount: 0,
         errors: [],
-        rejections: [],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         total: body.sourceIds?.length || 0,
@@ -662,14 +1055,51 @@ Deno.serve(async (req) => {
       await setKV(`scour_job:${jobId}`, job);
       await setKV("last_scoured_timestamp", new Date().toISOString());
       
+      const openaiKey = Deno.env.get("OPENAI_API_KEY") || Deno.env.get("OPENAI_KEY");
+      const braveApiKey = Deno.env.get("BRAVE_SEARCH_API_KEY");
+
+      if (!openaiKey) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "OPENAI_API_KEY not configured" }),
+          { status: 500, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
+        );
+      }
+
+      runScourWorker({
+        jobId,
+        sourceIds: body.sourceIds || [],
+        daysBack: body.daysBack || 14,
+        supabaseUrl: supabaseUrl!,
+        serviceKey: serviceKey!,
+        openaiKey,
+        braveApiKey,
+      }).then(async (stats) => {
+        const finalJob = {
+          ...job,
+          status: "done",
+          processed: stats.processed,
+          created: stats.created,
+          duplicatesSkipped: stats.duplicates,
+          errorCount: stats.errors.length,
+          errors: stats.errors,
+          updated_at: new Date().toISOString(),
+        };
+        await setKV(`scour_job:${jobId}`, finalJob);
+        console.log(`Scour ${jobId} done:`, stats);
+      }).catch(async (err) => {
+        console.error(`Scour ${jobId} failed:`, err);
+        const errorJob = {
+          ...job,
+          status: "error",
+          errorCount: 1,
+          errors: [err.message],
+          updated_at: new Date().toISOString(),
+        };
+        await setKV(`scour_job:${jobId}`, errorJob);
+      });
+      
       return new Response(
-        JSON.stringify({ 
-          ok: true, 
-          jobId,
-          status: "running",
-          total: job.total,
-          message: "Scour job started"
-        }),
+        JSON.stringify({ ok: true, jobId, status: "running", total: job.total }),
         {
           status: 200,
           headers: {
@@ -680,52 +1110,21 @@ Deno.serve(async (req) => {
       );
     }
 
-    // GET /scour/status
+    // SCOUR - STATUS
     if ((path === "/scour/status" || path === "/clever-function/scour/status") && req.method === "GET") {
       const jobId = url.searchParams.get("jobId");
       
       if (!jobId) {
         return new Response(
-          JSON.stringify({ ok: false, error: "jobId parameter required" }),
-          {
-            status: 400,
-            headers: {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-            }
-          }
+          JSON.stringify({ ok: false, error: "jobId required" }),
+          { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
         );
       }
 
       const job = await getKV(`scour_job:${jobId}`);
       
-      if (!job) {
-        // Return a default "done" job instead of 404
-        return new Response(
-          JSON.stringify({ 
-            ok: true, 
-            job: {
-              id: jobId,
-              status: "done",
-              total: 0,
-              processed: 0,
-              created: 0,
-              ai_engaged: false,
-              message: "Job completed or not found"
-            }
-          }),
-          {
-            status: 404,
-            headers: {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-            }
-          }
-        );
-      }
-
       return new Response(
-        JSON.stringify({ ok: true, job }),
+        JSON.stringify({ ok: true, job: job || { id: jobId, status: "done", total: 0, processed: 0, created: 0 } }),
         {
           status: 200,
           headers: {
@@ -736,11 +1135,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ========================================================================
-    // SOURCES
-    // ========================================================================
-
-    // GET /sources
+    // SOURCES - GET ALL
     if ((path === "/sources" || path === "/clever-function/sources") && req.method === "GET") {
       const limit = url.searchParams.get("limit") || "1000";
       const sources = await querySupabase(`/sources?order=created_at.desc&limit=${limit}`);
@@ -757,24 +1152,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // GET /sources/stats
-    if ((path === "/sources/stats" || path === "/clever-function/sources/stats") && req.method === "GET") {
-      // Try to get stats, but return empty array if table doesn't exist
-      const stats = await safeQuerySupabase("/scour_stats?order=last_scoured.desc&limit=1000");
-      
-      return new Response(
-        JSON.stringify({ ok: true, stats: stats || [] }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // POST /sources
+    // SOURCES - CREATE
     if ((path === "/sources" || path === "/clever-function/sources") && req.method === "POST") {
       const body = await req.json();
       
@@ -804,7 +1182,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // POST /sources/bulk
+    // SOURCES - BULK UPLOAD
     if ((path === "/sources/bulk" || path === "/clever-function/sources/bulk") && req.method === "POST") {
       const body = await req.json();
       const sourcesData = Array.isArray(body) ? body : body.sources || [];
@@ -844,86 +1222,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // POST /sources/bulk-delete
-    if ((path === "/sources/bulk-delete" || path === "/clever-function/sources/bulk-delete") && req.method === "POST") {
-      const body = await req.json();
-      const { sourceIds } = body;
-      
-      if (!sourceIds || !Array.isArray(sourceIds) || sourceIds.length === 0) {
-        return new Response(
-          JSON.stringify({ ok: false, error: "sourceIds array required" }),
-          { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
-        );
-      }
-
-      await querySupabase(`/sources?id=in.(${sourceIds.join(",")})`, {
-        method: "DELETE",
-      });
-      
-      return new Response(
-        JSON.stringify({ ok: true, deleted: sourceIds.length }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // POST /sources/test
-    if ((path === "/sources/test" || path === "/clever-function/sources/test") && req.method === "POST") {
-      const body = await req.json();
-      const { url: testUrl } = body;
-      
-      if (!testUrl) {
-        return new Response(
-          JSON.stringify({ ok: false, error: "url required" }),
-          { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
-        );
-      }
-
-      try {
-        const testResponse = await fetch(testUrl, {
-          method: "HEAD",
-          signal: AbortSignal.timeout(12000)
-        });
-        
-        return new Response(
-          JSON.stringify({ 
-            ok: true, 
-            reachable: testResponse.ok,
-            status: testResponse.status,
-            statusText: testResponse.statusText
-          }),
-          {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-            }
-          }
-        );
-      } catch (error: any) {
-        return new Response(
-          JSON.stringify({ 
-            ok: false, 
-            reachable: false,
-            error: error.message
-          }),
-          {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-            }
-          }
-        );
-      }
-    }
-
-    // PATCH /sources/:id
+    // SOURCES - UPDATE
     if ((path.startsWith("/sources/") || path.startsWith("/clever-function/sources/")) && req.method === "PATCH") {
       const parts = path.split("/");
       const id = parts[parts.length - 1];
@@ -949,7 +1248,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // DELETE /sources/:id
+    // SOURCES - DELETE
     if ((path.startsWith("/sources/") || path.startsWith("/clever-function/sources/")) && req.method === "DELETE") {
       const parts = path.split("/");
       const id = parts[parts.length - 1];
@@ -970,11 +1269,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ========================================================================
-    // TRENDS
-    // ========================================================================
-
-    // GET /trends
+    // TRENDS - GET ALL
     if ((path === "/trends" || path === "/clever-function/trends") && req.method === "GET") {
       const status = url.searchParams.get("status");
       const limit = url.searchParams.get("limit") || "1000";
@@ -998,7 +1293,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // GET /trends/:id
+    // TRENDS - GET ONE
     if ((path.startsWith("/trends/") || path.startsWith("/clever-function/trends/")) && req.method === "GET") {
       const parts = path.split("/");
       const id = parts[parts.length - 1];
@@ -1030,7 +1325,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // POST /trends
+    // TRENDS - CREATE
     if ((path === "/trends" || path === "/clever-function/trends") && req.method === "POST") {
       const body = await req.json();
       
@@ -1067,7 +1362,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // PATCH /trends/:id
+    // TRENDS - UPDATE
     if ((path.startsWith("/trends/") || path.startsWith("/clever-function/trends/")) && req.method === "PATCH") {
       const parts = path.split("/");
       const id = parts[parts.length - 1];
@@ -1093,7 +1388,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // DELETE /trends/:id
+    // TRENDS - DELETE
     if ((path.startsWith("/trends/") || path.startsWith("/clever-function/trends/")) && req.method === "DELETE") {
       const parts = path.split("/");
       const id = parts[parts.length - 1];
@@ -1114,44 +1409,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ========================================================================
     // 404
-    // ========================================================================
     return new Response(
-      JSON.stringify({ 
-        ok: false, 
-        error: "Not found",
-        path,
-        availableRoutes: [
-          "GET /health",
-          "GET /last-scoured",
-          "GET /alerts",
-          "GET /alerts/review",
-          "GET /alerts/review-queue",
-          "POST /alerts",
-          "POST /alerts/compile",
-          "PATCH /alerts/:id",
-          "POST /alerts/:id/approve",
-          "POST /alerts/:id/dismiss",
-          "POST /alerts/:id/post-to-wp",
-          "DELETE /alerts/:id",
-          "POST /scour-sources",
-          "GET /scour/status",
-          "GET /sources",
-          "GET /sources/stats",
-          "POST /sources",
-          "POST /sources/bulk",
-          "POST /sources/bulk-delete",
-          "POST /sources/test",
-          "PATCH /sources/:id",
-          "DELETE /sources/:id",
-          "GET /trends",
-          "GET /trends/:id",
-          "POST /trends",
-          "PATCH /trends/:id",
-          "DELETE /trends/:id"
-        ]
-      }),
+      JSON.stringify({ ok: false, error: "Not found", path }),
       {
         status: 404,
         headers: {
@@ -1164,11 +1424,7 @@ Deno.serve(async (req) => {
   } catch (error: any) {
     console.error("Exception:", error);
     return new Response(
-      JSON.stringify({ 
-        ok: false, 
-        error: error.message ?? String(error),
-        stack: error.stack,
-      }),
+      JSON.stringify({ ok: false, error: error.message, stack: error.stack }),
       {
         status: 500,
         headers: {
