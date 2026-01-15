@@ -32,8 +32,9 @@ export default function AlertReviewQueueInline() {
     country: 'all',
   });
 
+  // Fetch alerts on mount
   useEffect(() => {
-    console.log('AlertReviewQueue mounted - fetching alerts...');
+    console.log('🔍 AlertReviewQueue mounted - fetching alerts...');
     loadAlerts();
   }, []);
 
@@ -42,8 +43,9 @@ export default function AlertReviewQueueInline() {
       setLoading(true);
       setError(null);
       
-      console.log('Fetching alerts from endpoint...');
+      console.log('📡 Fetching alerts from endpoint...');
       
+      // Get session token
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
       
@@ -51,8 +53,9 @@ export default function AlertReviewQueueInline() {
         throw new Error('Not authenticated - please log in');
       }
       
-      console.log('Token obtained, calling endpoint...');
+      console.log('✅ Token obtained, calling endpoint...');
       
+      // Call the edge function endpoint
       const response = await fetch(
         'https://gnobnyzezkuyptuakztf.supabase.co/functions/v1/clever-function/alerts/review',
         {
@@ -64,39 +67,42 @@ export default function AlertReviewQueueInline() {
         }
       );
       
-      console.log('Response status:', response.status);
+      console.log('📥 Response status:', response.status);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch alerts: ${response.status} ${response.statusText}`);
       }
       
       const data = await response.json();
-      console.log('Response data:', data);
+      console.log('📦 Response data:', data);
       
       if (data.ok && data.alerts) {
-        console.log(`Found ${data.alerts.length} alerts`);
+        console.log(`✅ Found ${data.alerts.length} alerts`);
         setAlerts(data.alerts);
       } else {
-        console.warn('Unexpected response format:', data);
+        console.warn('⚠️ Unexpected response format:', data);
         setAlerts([]);
       }
       
     } catch (err: any) {
-      console.error('Error loading alerts:', err);
+      console.error('❌ Error loading alerts:', err);
       setError(err.message || 'Failed to load alerts');
     } finally {
       setLoading(false);
     }
   };
 
+  // Filter alerts based on current filter settings
   const filteredAlerts = alerts.filter(alert => {
     if (filter.severity !== 'all' && alert.severity !== filter.severity) return false;
     if (filter.country !== 'all' && alert.country !== filter.country) return false;
     return true;
   });
 
+  // Get unique countries for filter dropdown
   const uniqueCountries = Array.from(new Set(alerts.map(a => a.country))).sort();
 
+  // Severity color mapping
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case 'critical': return 'bg-red-100 text-red-800 border-red-300';
@@ -122,7 +128,7 @@ export default function AlertReviewQueueInline() {
     return (
       <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-red-600 text-xl">âš ï¸</span>
+          <span className="text-red-600 text-xl">⚠️</span>
           <h3 className="text-red-800 font-semibold">Error Loading Alerts</h3>
         </div>
         <p className="text-red-700 mb-3">{error}</p>
@@ -139,7 +145,7 @@ export default function AlertReviewQueueInline() {
   if (alerts.length === 0) {
     return (
       <div className="p-8 text-center">
-        <div className="text-6xl mb-4">ðŸ“‹</div>
+        <div className="text-6xl mb-4">📋</div>
         <h3 className="text-xl font-semibold text-gray-700 mb-2">No Alerts Yet</h3>
         <p className="text-gray-500 mb-4">Run a scour to generate travel safety alerts</p>
         <button
@@ -154,6 +160,7 @@ export default function AlertReviewQueueInline() {
 
   return (
     <div className="p-4">
+      {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">Alert Review Queue</h2>
@@ -165,10 +172,11 @@ export default function AlertReviewQueueInline() {
           onClick={loadAlerts}
           className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition flex items-center gap-2"
         >
-          ðŸ”„ Refresh
+          🔄 Refresh
         </button>
       </div>
 
+      {/* Filters */}
       <div className="mb-4 p-4 bg-gray-50 rounded-lg flex gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -204,6 +212,7 @@ export default function AlertReviewQueueInline() {
         </div>
       </div>
 
+      {/* Alerts List */}
       <div className="space-y-3">
         {filteredAlerts.map(alert => (
           <div
@@ -243,11 +252,11 @@ export default function AlertReviewQueueInline() {
               <div className="flex items-center gap-3">
                 {alert.ai_generated && (
                   <span className="flex items-center gap-1">
-                    ðŸ¤– AI ({alert.ai_model}) - {Math.round((alert.ai_confidence || 0) * 100)}%
+                    🤖 AI ({alert.ai_model}) - {Math.round((alert.ai_confidence || 0) * 100)}%
                   </span>
                 )}
                 {alert.sources && (
-                  <span>ðŸ“° {alert.sources}</span>
+                  <span>📰 {alert.sources}</span>
                 )}
               </div>
               <div>
@@ -255,15 +264,16 @@ export default function AlertReviewQueueInline() {
               </div>
             </div>
 
+            {/* Action buttons */}
             <div className="mt-3 flex gap-2">
               <button className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition">
-                âœ“ Approve
+                ✓ Approve
               </button>
               <button className="px-3 py-1 bg-yellow-600 text-white text-sm rounded hover:bg-yellow-700 transition">
-                âœï¸ Edit
+                ✏️ Edit
               </button>
               <button className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition">
-                âœ— Reject
+                ✗ Reject
               </button>
               {alert.article_url && (
                 <a
@@ -272,7 +282,7 @@ export default function AlertReviewQueueInline() {
                   rel="noopener noreferrer"
                   className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition"
                 >
-                  ðŸ”— Source
+                  🔗 Source
                 </a>
               )}
             </div>

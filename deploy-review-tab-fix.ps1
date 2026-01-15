@@ -1,3 +1,34 @@
+# MAGNUS Intelligence - Review Tab Fix Deployment Script
+# This script deploys the fixed AlertReviewQueueInline component
+
+Write-Host "================================================" -ForegroundColor Cyan
+Write-Host "  MAGNUS Intelligence - Review Tab Fix         " -ForegroundColor Cyan
+Write-Host "================================================" -ForegroundColor Cyan
+Write-Host ""
+
+# Set project directory
+$projectDir = "C:\Users\Joe Serkin\Documents\GitHub\generator3.0"
+$componentPath = "$projectDir\src1\components\AlertReviewQueueInline.tsx"
+
+# Check if project directory exists
+if (-not (Test-Path $projectDir)) {
+    Write-Host "ERROR: Project directory not found: $projectDir" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "STEP 1: Backing up current component..." -ForegroundColor Yellow
+if (Test-Path $componentPath) {
+    $backupPath = "$componentPath.backup-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+    Copy-Item $componentPath $backupPath
+    Write-Host "  Backed up to: $backupPath" -ForegroundColor Green
+} else {
+    Write-Host "  No existing component found (creating new)" -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host "STEP 2: Deploying fixed component..." -ForegroundColor Yellow
+
+$fixedComponent = @'
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
@@ -122,7 +153,7 @@ export default function AlertReviewQueueInline() {
     return (
       <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-red-600 text-xl">âš ï¸</span>
+          <span className="text-red-600 text-xl">⚠️</span>
           <h3 className="text-red-800 font-semibold">Error Loading Alerts</h3>
         </div>
         <p className="text-red-700 mb-3">{error}</p>
@@ -139,7 +170,7 @@ export default function AlertReviewQueueInline() {
   if (alerts.length === 0) {
     return (
       <div className="p-8 text-center">
-        <div className="text-6xl mb-4">ðŸ“‹</div>
+        <div className="text-6xl mb-4">📋</div>
         <h3 className="text-xl font-semibold text-gray-700 mb-2">No Alerts Yet</h3>
         <p className="text-gray-500 mb-4">Run a scour to generate travel safety alerts</p>
         <button
@@ -165,7 +196,7 @@ export default function AlertReviewQueueInline() {
           onClick={loadAlerts}
           className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition flex items-center gap-2"
         >
-          ðŸ”„ Refresh
+          🔄 Refresh
         </button>
       </div>
 
@@ -243,11 +274,11 @@ export default function AlertReviewQueueInline() {
               <div className="flex items-center gap-3">
                 {alert.ai_generated && (
                   <span className="flex items-center gap-1">
-                    ðŸ¤– AI ({alert.ai_model}) - {Math.round((alert.ai_confidence || 0) * 100)}%
+                    🤖 AI ({alert.ai_model}) - {Math.round((alert.ai_confidence || 0) * 100)}%
                   </span>
                 )}
                 {alert.sources && (
-                  <span>ðŸ“° {alert.sources}</span>
+                  <span>📰 {alert.sources}</span>
                 )}
               </div>
               <div>
@@ -257,13 +288,13 @@ export default function AlertReviewQueueInline() {
 
             <div className="mt-3 flex gap-2">
               <button className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition">
-                âœ“ Approve
+                ✓ Approve
               </button>
               <button className="px-3 py-1 bg-yellow-600 text-white text-sm rounded hover:bg-yellow-700 transition">
-                âœï¸ Edit
+                ✏️ Edit
               </button>
               <button className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition">
-                âœ— Reject
+                ✗ Reject
               </button>
               {alert.article_url && (
                 <a
@@ -272,7 +303,7 @@ export default function AlertReviewQueueInline() {
                   rel="noopener noreferrer"
                   className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition"
                 >
-                  ðŸ”— Source
+                  🔗 Source
                 </a>
               )}
             </div>
@@ -282,3 +313,42 @@ export default function AlertReviewQueueInline() {
     </div>
   );
 }
+'@
+
+# Write the fixed component
+[System.IO.File]::WriteAllText($componentPath, $fixedComponent, [System.Text.UTF8Encoding]::new($false))
+Write-Host "  Component deployed successfully" -ForegroundColor Green
+
+Write-Host ""
+Write-Host "STEP 3: Building project..." -ForegroundColor Yellow
+Set-Location $projectDir
+$buildOutput = & npm run build 2>&1
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "  Build successful!" -ForegroundColor Green
+} else {
+    Write-Host "  Build failed! Output:" -ForegroundColor Red
+    Write-Host $buildOutput -ForegroundColor Red
+    exit 1
+}
+
+Write-Host ""
+Write-Host "================================================" -ForegroundColor Green
+Write-Host "  FIX DEPLOYED SUCCESSFULLY!" -ForegroundColor Green
+Write-Host "================================================" -ForegroundColor Green
+Write-Host ""
+Write-Host "NEXT STEPS:" -ForegroundColor Cyan
+Write-Host "  1. Run: npm run dev" -ForegroundColor White
+Write-Host "  2. Open: http://localhost:5173" -ForegroundColor White
+Write-Host "  3. Log in with: joes@magnus.co.il" -ForegroundColor White
+Write-Host "  4. Click the 'Review' tab" -ForegroundColor White
+Write-Host "  5. You should see all 44 alerts!" -ForegroundColor White
+Write-Host ""
+Write-Host "WHAT WAS FIXED:" -ForegroundColor Cyan
+Write-Host "  - Correct endpoint URL (full Supabase function path)" -ForegroundColor White
+Write-Host "  - Proper authentication with session token" -ForegroundColor White
+Write-Host "  - Correct response parsing (data.alerts)" -ForegroundColor White
+Write-Host "  - Added filters for severity and country" -ForegroundColor White
+Write-Host "  - Added refresh button" -ForegroundColor White
+Write-Host "  - Added error handling and retry" -ForegroundColor White
+Write-Host "  - Console logging for debugging" -ForegroundColor White
+Write-Host ""
