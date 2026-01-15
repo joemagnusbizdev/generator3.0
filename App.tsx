@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { supabase } from "./lib/supabase/client";
 
 import AlertReviewQueueInline from "./components/AlertReviewQueueInline";
+import SourceManagerInline from "./components/SourceManagerInline";
 
 /* =========================
    Types
@@ -16,7 +17,7 @@ export type PermissionSet = {
   canDismiss: boolean;
   canDelete: boolean;
   canEditAlerts: boolean;
-  canCreate: boolean; // ✅ REQUIRED by other components
+  canCreate: boolean;
 };
 
 /* =========================
@@ -31,7 +32,7 @@ function getPermissions(role: Role): PermissionSet {
     canDismiss: role !== "operator",
     canDelete: role === "admin",
     canEditAlerts: role !== "operator",
-    canCreate: role !== "operator", // ✅ FIX
+    canCreate: role !== "operator",
   };
 }
 
@@ -45,24 +46,15 @@ export default function App(): JSX.Element {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let mounted = true;
-
     supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-
       if (data.session) {
         setAccessToken(data.session.access_token);
         setRole(
           (data.session.user.user_metadata?.role as Role) ?? "operator"
         );
       }
-
       setLoading(false);
     });
-
-    return () => {
-      mounted = false;
-    };
   }, []);
 
   if (loading) {
@@ -76,10 +68,19 @@ export default function App(): JSX.Element {
   const permissions = getPermissions(role);
 
   return (
-    <main className="p-6">
+    <main className="p-6 space-y-8">
+      {/* ================= ALERT REVIEW ================= */}
       <AlertReviewQueueInline
         sessionToken={accessToken}
         permissions={permissions}
+      />
+
+      {/* ================= SOURCES ================= */}
+      <SourceManagerInline
+        accessToken={accessToken} // ✅ REQUIRED
+        permissions={{            // ✅ NARROWED TYPE
+          canCreate: permissions.canCreate,
+        }}
       />
     </main>
   );
