@@ -46,12 +46,12 @@ interface Tab {
 // ============================================================================
 
 const ALL_TABS: Tab[] = [
-  { id: 'review', label: 'Review', icon: 'ðŸ“‹' },
-  { id: 'create', label: 'Create', icon: 'âœï¸' },
-  { id: 'sources', label: 'Sources', icon: 'ðŸ”—' },
-  { id: 'trends', label: 'Trends', icon: 'ðŸ“ˆ' },
-  { id: 'analytics', label: 'Analytics', icon: 'ðŸ“Š' },
-  { id: 'admin', label: 'Admin', icon: 'âš™ï¸' },
+  { id: 'review', label: 'Review', icon: '📋' },
+  { id: 'create', label: 'Create', icon: '✏️' },
+  { id: 'sources', label: 'Sources', icon: '📰' },
+  { id: 'trends', label: 'Trends', icon: '📈' },
+  { id: 'analytics', label: 'Analytics', icon: '📊' },
+  { id: 'admin', label: 'Admin', icon: '⚙️' },
 ];
 
 // ============================================================================
