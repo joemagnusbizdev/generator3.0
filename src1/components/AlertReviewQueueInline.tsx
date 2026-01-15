@@ -70,6 +70,22 @@ ${a.recommendations ? "\n🧭 Recommendations:\n" + a.recommendations : ""}
 }
 
 /* =========================
+   Helpers
+========================= */
+
+function geojsonSummary(geojson: any) {
+  try {
+    if (!geojson || !geojson.type) return "Invalid GeoJSON";
+    if (geojson.type === "FeatureCollection")
+      return `${geojson.features.length} features`;
+    if (geojson.type === "Feature") return "Single feature";
+    return geojson.type;
+  } catch {
+    return "Invalid GeoJSON";
+  }
+}
+
+/* =========================
    Component
 ========================= */
 
@@ -82,8 +98,7 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!permissions.canReview) return;
-    loadAlerts();
+    if (permissions.canReview) loadAlerts();
   }, [permissions.canReview]);
 
   async function loadAlerts() {
@@ -231,8 +246,8 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
 
             {/* Expanded */}
             {open && (
-              <div className="px-6 pb-4 space-y-3 text-sm">
-                {/* Location / Severity / Dates */}
+              <div className="px-6 pb-4 space-y-4 text-sm">
+                {/* Meta */}
                 <div className="grid grid-cols-2 gap-3">
                   <input
                     disabled={!edit}
@@ -257,28 +272,8 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
                     <option value="informative">🔵 Informative</option>
                   </select>
 
-                  <input
-                    type="date"
-                    disabled={!edit}
-                    value={d.event_start_date || ""}
-                    onChange={e =>
-                      setDrafts(ds => ({
-                        ...ds,
-                        [a.id]: { ...d, event_start_date: e.target.value },
-                      }))
-                    }
-                  />
-                  <input
-                    type="date"
-                    disabled={!edit}
-                    value={d.event_end_date || ""}
-                    onChange={e =>
-                      setDrafts(ds => ({
-                        ...ds,
-                        [a.id]: { ...d, event_end_date: e.target.value },
-                      }))
-                    }
-                  />
+                  <input type="date" disabled={!edit} value={d.event_start_date || ""} />
+                  <input type="date" disabled={!edit} value={d.event_end_date || ""} />
                 </div>
 
                 {/* Summary */}
@@ -294,6 +289,31 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
                   }
                 />
 
+                {/* Recommendations */}
+                <div>
+                  <div className="font-semibold mb-1">Recommendations</div>
+                  <textarea
+                    disabled={!edit}
+                    className="w-full border p-2 min-h-[80px]"
+                    value={d.recommendations || ""}
+                    onChange={e =>
+                      setDrafts(ds => ({
+                        ...ds,
+                        [a.id]: { ...d, recommendations: e.target.value },
+                      }))
+                    }
+                  />
+                </div>
+
+                {/* GeoJSON */}
+            {a.geojson && (
+  <div>
+    <div className="font-semibold mb-1">Affected Area</div>
+    <GeoJsonPreview geojson={a.geojson} />
+  </div>
+)}
+
+
                 {/* Sources */}
                 <div className="text-xs text-gray-600">
                   {a.sources && <div><strong>Sources:</strong> {a.sources}</div>}
@@ -305,6 +325,23 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
                 </div>
 
                 {/* Actions */}
+
+<button
+  onClick={async () => {
+    const res = await fetch(`${API_BASE}/alerts/${a.id}/generate-recommendations`, {
+      method: "POST",
+    });
+    const data = await res.json();
+    setAlerts(prev =>
+      prev.map(x =>
+        x.id === a.id ? { ...x, recommendations: data.recommendations } : x
+      )
+    );
+  }}
+  className="px-3 py-1 border rounded"
+>
+  Generate Recommendations
+</button>
                 <div className="flex gap-2 flex-wrap pt-2">
                   {edit ? (
                     <>
