@@ -393,8 +393,7 @@ export default function App(): JSX.Element {
       case 'review':
         return (
           <AlertReviewQueueInline
-            sessionToken={accessToken ?? ''}
-            permissions={{
+                        permissions={{
               canReview: permissions.canReview,
               canScour: permissions.canScour,
               canApproveAndPost: permissions.canApproveAndPost,
