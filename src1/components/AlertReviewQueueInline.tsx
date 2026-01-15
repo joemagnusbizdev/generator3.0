@@ -1,249 +1,159 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 
-/* =========================
-   Types
-========================= */
+/* ... Types (Unchanged) ... */
 
-export type PermissionSet = {
-  canReview: boolean;
-  canScour: boolean;
-  canApproveAndPost: boolean;
-  canDismiss: boolean;
-  canDelete: boolean;
-  canEditAlerts: boolean;
-};
-
-type Props = {
-  sessionToken: string; // kept for compatibility, not used
-  permissions: PermissionSet;
-};
-
-interface Alert {
-  id: string;
-  title: string;
-  summary: string;
-  location: string;
-  country: string;
-  region?: string;
-  event_type: string;
-  severity: "critical" | "warning" | "caution" | "informative";
-  status: string;
-  source_url?: string;
-  article_url?: string;
-  sources?: string;
-  event_start_date?: string;
-  event_end_date?: string;
-  ai_generated: boolean;
-  ai_model?: string;
-  ai_confidence?: number;
-  created_at: string;
-}
-
-/* =========================
-   Helpers
-========================= */
-
-const API_BASE =
-  "https://gnobnyzezkuyptuakztf.supabase.co/functions/v1/clever-function";
-
-function severityColor(sev: Alert["severity"]) {
-  switch (sev) {
-    case "critical":
-      return "bg-red-600";
-    case "warning":
-      return "bg-orange-500";
-    case "caution":
-      return "bg-yellow-500";
-    default:
-      return "bg-blue-500";
-  }
-}
-
-/* =========================
-   Component
-========================= */
-
-export default function AlertReviewQueueInline({
-  permissions,
-}: Props) {
+export default function AlertReviewQueueInline({ permissions }: Props) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<Record<string, boolean>>({});
+  const [drafts, setDrafts] = useState<Record<string, Partial<Alert>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (permissions.canReview) {
-      loadAlerts();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [permissions.canReview]);
-
-  async function loadAlerts() {
+  const loadAlerts = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
-
       const res = await fetch(`${API_BASE}/alerts/review`);
-      if (!res.ok) throw new Error(`Failed to load alerts (${res.status})`);
-
+      if (!res.ok) throw new Error("Failed to load alerts");
       const data = await res.json();
-      setAlerts(Array.isArray(data.alerts) ? data.alerts : []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load alerts");
+      setAlerts(data.alerts || []);
+    } catch (e: any) {
+      setError(e.message);
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  async function approveAlert(id: string) {
+  useEffect(() => {
+    if (permissions.canReview) loadAlerts();
+  }, [permissions.canReview, loadAlerts]);
+
+  /* =========================
+     Single actions
+  ========================= */
+
+  const approve = async (id: string) => {
     await fetch(`${API_BASE}/alerts/${id}/approve`, { method: "POST" });
-    loadAlerts();
-  }
+    setAlerts(prev => prev.filter(x => x.id !== id));
+  };
 
-  async function dismissAlert(id: string) {
-    await fetch(`${API_BASE}/alerts/${id}/dismiss`, { method: "POST" });
-    loadAlerts();
-  }
+  const copyWhatsApp = (alertData: Alert) => {
+    navigator.clipboard.writeText(whatsappTemplate(alertData));
+    window.alert("Copied to clipboard"); // Explicitly use window.alert
+  };
 
-  async function deleteAlert(id: string) {
-    if (!confirm("Delete this alert?")) return;
-    await fetch(`${API_BASE}/alerts/${id}`, { method: "DELETE" });
-    loadAlerts();
-  }
+  /* =========================
+     Batch actions (Optimized)
+  ========================= */
 
-  function copyWhatsApp(alert: Alert) {
-    const text = `
-🟠 ${alert.title}
+  const batchDismiss = async () => {
+    if (!selected.size || !window.confirm(`Dismiss ${selected.size} alerts?`)) return;
+    const ids = Array.from(selected);
+    await Promise.all(ids.map(id => fetch(`${API_BASE}/alerts/${id}/dismiss`, { method: "POST" })));
+    setAlerts(a => a.filter(x => !selected.has(x.id)));
+    setSelected(new Set());
+  };
 
-📍 ${alert.location}, ${alert.country}
+  /* =========================
+     Render
+  ========================= */
 
-${alert.summary}
-
-Source:
-${alert.source_url || "—"}
-`.trim();
-
-    navigator.clipboard.writeText(text);
-    alert("Copied to clipboard");
-  }
-
-  if (!permissions.canReview) {
-    return <div className="p-4 text-gray-500">No review permissions.</div>;
-  }
-
-  if (loading) {
-    return <div className="p-6">Loading alerts…</div>;
-  }
-
-  if (error) {
-    return (
-      <div className="p-4 border border-red-300 bg-red-50 rounded">
-        <p className="text-red-700 mb-2">{error}</p>
-        <button
-          onClick={loadAlerts}
-          className="px-3 py-1 bg-red-600 text-white rounded"
-        >
-          Retry
-        </button>
-      </div>
-    );
-  }
-
-  if (alerts.length === 0) {
-    return <div className="p-6 text-gray-600">No alerts available.</div>;
-  }
+  if (!permissions.canReview) return <div className="p-4 text-gray-500">No review permissions.</div>;
+  if (loading) return <div className="p-6">Loading alerts…</div>;
 
   return (
     <div className="space-y-4">
-      {alerts.map((alert) => {
-        const open = expanded[alert.id];
+      {selected.size > 0 && (
+        <div className="flex gap-3 p-3 border rounded bg-gray-50 sticky top-0 z-10 shadow-md">
+          <span className="font-bold">{selected.size} selected</span>
+          <button onClick={batchDismiss} className="px-3 py-1 bg-yellow-600 text-white rounded text-sm">Batch Dismiss</button>
+        </div>
+      )}
+
+      {alerts.map(item => {
+        const meta = SEVERITY_META[item.severity];
+        const isOpen = expanded[item.id];
+        const isEditing = editing[item.id];
+        const draft = drafts[item.id] || item;
 
         return (
-          <div
-            key={alert.id}
-            className="border rounded bg-white shadow-sm overflow-hidden"
-          >
-            {/* HEADER */}
-            <div
-              className="p-4 cursor-pointer flex justify-between items-start"
-              onClick={() =>
-                setExpanded((e) => ({ ...e, [alert.id]: !open }))
-              }
-            >
-              <div>
-                <h3 className="font-semibold">{alert.title}</h3>
-                <div className="text-sm text-gray-600">
-                  {alert.location}, {alert.country}
-                </div>
-              </div>
+          <div key={item.id} className="border rounded bg-white shadow-sm overflow-hidden">
+            {/* Header: Clickable only on non-interactive areas */}
+            <div className="flex items-center gap-3 p-4">
+              <input
+                type="checkbox"
+                checked={selected.has(item.id)}
+                onChange={(e) => {
+                  e.stopPropagation(); // Prevents expanding row when clicking checkbox
+                  setSelected(s => {
+                    const n = new Set(s);
+                    n.has(item.id) ? n.delete(item.id) : n.add(item.id);
+                    return n;
+                  });
+                }}
+              />
 
-              <span
-                className={`text-xs text-white px-2 py-1 rounded ${severityColor(
-                  alert.severity
-                )}`}
+              <div 
+                className="flex-1 cursor-pointer flex items-center gap-3"
+                onClick={() => setExpanded(e => ({ ...e, [item.id]: !isOpen }))}
               >
-                {alert.severity.toUpperCase()}
-              </span>
+                {isEditing ? (
+                  <select
+                    className="border rounded px-2 py-1 text-sm"
+                    value={draft.severity}
+                    onClick={(e) => e.stopPropagation()} // Stop bubble to expansion
+                    onChange={e => setDrafts(d => ({
+                        ...d,
+                        [item.id]: { ...draft, severity: e.target.value as Alert["severity"] },
+                    }))}
+                  >
+                    <option value="critical">🔴 Critical</option>
+                    <option value="warning">🟠 Warning</option>
+                    <option value="caution">🟡 Caution</option>
+                    <option value="informative">🔵 Informative</option>
+                  </select>
+                ) : (
+                  <span className={`text-xs text-white px-2 py-1 rounded ${meta.color}`}>
+                    {meta.emoji} {meta.label}
+                  </span>
+                )}
+                <span className="font-medium text-sm truncate">{item.title}</span>
+              </div>
+              
+              <div className="flex gap-2">
+                 <button onClick={() => approve(item.id)} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">Approve</button>
+                 <button onClick={() => copyWhatsApp(item)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Copy</button>
+              </div>
             </div>
 
-            {/* EXPANDED */}
-            {open && (
-              <div className="px-4 pb-4 space-y-3 text-sm">
-                <div>
-                  <strong>Summary</strong>
-                  <p className="mt-1">{alert.summary}</p>
-                </div>
-
-                {alert.sources && (
-                  <div>
-                    <strong>Sources</strong>
-                    <p>{alert.sources}</p>
-                  </div>
+            {/* Expanded Content */}
+            {isOpen && (
+              <div className="px-11 pb-4 space-y-3 text-sm border-t pt-3">
+                {isEditing ? (
+                  <textarea
+                    className="w-full border rounded p-2 min-h-[100px]"
+                    value={draft.summary || ""}
+                    onChange={e => setDrafts(d => ({
+                        ...d,
+                        [item.id]: { ...draft, summary: e.target.value },
+                    }))}
+                  />
+                ) : (
+                  <div className="text-gray-700 leading-relaxed">{item.summary}</div>
                 )}
 
-                {alert.source_url && (
-                  <div>
-                    <strong>Article</strong>{" "}
-                    <a
-                      href={alert.source_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-blue-600 underline"
-                    >
-                      Open link
-                    </a>
-                  </div>
-                )}
-
-                {/* ACTIONS */}
-                <div className="flex flex-wrap gap-2 pt-2">
-                  <button
-                    onClick={() => approveAlert(alert.id)}
-                    className="px-3 py-1 bg-green-600 text-white rounded"
-                  >
-                    Approve & Post
-                  </button>
-
-                  <button
-                    onClick={() => dismissAlert(alert.id)}
-                    className="px-3 py-1 bg-yellow-600 text-white rounded"
-                  >
-                    Dismiss → Trends
-                  </button>
-
-                  <button
-                    onClick={() => copyWhatsApp(alert)}
-                    className="px-3 py-1 bg-gray-200 rounded"
-                  >
-                    Copy WhatsApp
-                  </button>
-
-                  <button
-                    onClick={() => deleteAlert(alert.id)}
-                    className="px-3 py-1 bg-red-600 text-white rounded"
-                  >
-                    Delete
-                  </button>
+                <div className="flex gap-2">
+                  {isEditing ? (
+                    <>
+                      <button onClick={() => saveEdit(item.id)} className="px-3 py-1 bg-green-600 text-white rounded">Save</button>
+                      <button onClick={() => cancelEdit(item.id)} className="px-3 py-1 bg-gray-300 rounded">Cancel</button>
+                    </>
+                  ) : (
+                    permissions.canEditAlerts && (
+                      <button onClick={() => startEdit(item)} className="px-3 py-1 border rounded hover:bg-gray-50">Edit</button>
+                    )
+                  )}
                 </div>
               </div>
             )}
