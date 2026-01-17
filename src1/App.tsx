@@ -1,29 +1,23 @@
-// src1/App.tsx
 import React, { useEffect, useState } from "react";
 import { supabase } from "./lib/supabase/client";
 
-import AlertReviewQueueInline, {
-  type PermissionSet,
-} from "./components/AlertReviewQueueInline";
+import AlertReviewQueueInline from "./components/AlertReviewQueueInline";
 import AlertCreateInline from "./components/AlertCreateInline";
 import SourceManagerInline from "./components/SourceManagerInline";
-import TrendsView from "./TrendsView";
+import TrendsView from "./components/TrendsView";
 import AnalyticsDashboardInline from "./components/AnalyticsDashboardInline";
 import UserManagementInline from "./components/UserManagementInline";
-import ScourStatusBarInline from "./components/ScourStatusBarInline";
-
-import {
-  TabsInline,
-  TabsListInline,
-  TabsTriggerInline,
-  TabsContentInline,
-} from "./components/ui/tabs-inline";
-
-/* =========================
-   Roles & Permissions
-========================= */
 
 type Role = "operator" | "analyst" | "admin";
+
+export type PermissionSet = {
+  canReview: boolean;
+  canScour: boolean;
+  canApproveAndPost: boolean;
+  canDismiss: boolean;
+  canDelete: boolean;
+  canEditAlerts: boolean;
+};
 
 function getPermissions(role: Role): PermissionSet {
   return {
@@ -36,17 +30,18 @@ function getPermissions(role: Role): PermissionSet {
   };
 }
 
-/* =========================
-   App
-========================= */
+const API_BASE =
+  "https://gnobnyzezkuyptuakztf.supabase.co/functions/v1/clever-function";
 
-export default function App(): JSX.Element {
+export default function App() {
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [role, setRole] = useState<Role>("operator");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
+        setAccessToken(data.session.access_token);
         setRole(
           (data.session.user.user_metadata?.role as Role) ?? "operator"
         );
@@ -55,91 +50,47 @@ export default function App(): JSX.Element {
     });
   }, []);
 
-  if (loading) {
-    return <div className="p-6">Loading…</div>;
-  }
+  if (loading) return <div className="p-6">Loading…</div>;
+  if (!accessToken) return <div className="p-6">Please log in.</div>;
 
   const permissions = getPermissions(role);
 
   return (
-    <main className="p-6 space-y-4">
-      {/* Global scour status */}
-      <ScourStatusBarInline permissions={permissions} />
+    <main className="p-6 space-y-10">
+      <AlertReviewQueueInline permissions={permissions} />
 
-      <TabsInline
-        defaultValue={permissions.canReview ? "review" : "create"}
-        className="space-y-6"
-      >
-        <TabsListInline>
-          {permissions.canReview && (
-            <TabsTriggerInline value="review">
-              Review
-            </TabsTriggerInline>
-          )}
-          <TabsTriggerInline value="create">
-            Create
-          </TabsTriggerInline>
-          <TabsTriggerInline value="sources">
-            Sources
-          </TabsTriggerInline>
-          <TabsTriggerInline value="trends">
-            Trends
-          </TabsTriggerInline>
-          <TabsTriggerInline value="analytics">
-            Analytics
-          </TabsTriggerInline>
-          {role === "admin" && (
-            <TabsTriggerInline value="admin">
-              Admin
-            </TabsTriggerInline>
-          )}
-        </TabsListInline>
+      <AlertCreateInline
+        accessToken={accessToken}
+        permissions={{ canCreate: permissions.canEditAlerts }}
+      />
 
-        {/* ================= REVIEW ================= */}
-        {permissions.canReview && (
-          <TabsContentInline value="review">
-            <AlertReviewQueueInline permissions={permissions} />
-          </TabsContentInline>
-        )}
+      <SourceManagerInline
+        accessToken={accessToken}
+        permissions={{
+          canManageSources: permissions.canEditAlerts,
+          canScour: permissions.canScour,
+        }}
+      />
 
-        {/* ================= CREATE ================= */}
-        <TabsContentInline value="create">
-          <AlertCreateInline />
-        </TabsContentInline>
+      <TrendsView />
 
-        {/* ================= SOURCES ================= */}
-        <TabsContentInline value="sources">
-          <SourceManagerInline
-            permissions={{
-              canManageSources: role !== "operator",
-              canScour: permissions.canScour,
-            }}
-          />
-        </TabsContentInline>
+      <AnalyticsDashboardInline
+        apiBase={API_BASE}
+        permissions={{
+          canAccessAnalytics: true,
+          canViewDetailedStats: true,
+          canExportAnalytics: permissions.canApproveAndPost,
+        }}
+      />
 
-        {/* ================= TRENDS ================= */}
-        <TabsContentInline value="trends">
-          <TrendsView />
-        </TabsContentInline>
-
-        {/* ================= ANALYTICS ================= */}
-        <TabsContentInline value="analytics">
-          <AnalyticsDashboardInline
-            apiBase="https://gnobnyzezkuyptuakztf.supabase.co/functions/v1/clever-function"
-            permissions={permissions}
-          />
-        </TabsContentInline>
-
-        {/* ================= ADMIN ================= */}
-        {role === "admin" && (
-          <TabsContentInline value="admin">
-            <UserManagementInline
-              currentUserRole={role}
-              permissions={permissions}
-            />
-          </TabsContentInline>
-        )}
-      </TabsInline>
+      <UserManagementInline
+        currentUserRole={role}
+        permissions={{
+          canManageUsers: role === "admin",
+          canViewUsers: role !== "operator",
+          canChangeRoles: role === "admin",
+        }}
+      />
     </main>
   );
 }
