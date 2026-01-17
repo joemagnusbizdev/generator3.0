@@ -1,4 +1,4 @@
-﻿/**
+/**
  * TrendsView - Display and manage trends
  */
 import React, { useState, useEffect, useCallback } from 'react';
@@ -434,5 +434,6 @@ export function TrendsView({
 }
 
 export default TrendsView;
+
 
 

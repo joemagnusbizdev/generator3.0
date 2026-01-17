@@ -1,4 +1,4 @@
-﻿/**
+/**
  * AnalyticsDashboardInline - Analytics Dashboard
  * 
  * Displays alert metrics with breakdowns by:
@@ -707,5 +707,6 @@ export function AnalyticsDashboardInline({
 }
 
 export default AnalyticsDashboardInline;
+
 
 

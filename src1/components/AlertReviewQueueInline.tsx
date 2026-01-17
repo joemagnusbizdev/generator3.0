@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import GeoJsonPreview from "./GeoJsonPreview";
 
 /* =========================
@@ -339,4 +339,5 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
     </div>
   );
 }
+
 

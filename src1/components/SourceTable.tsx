@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { apiPatchJson } from '../lib/utils/api';
 
 export interface Source {
@@ -179,4 +179,5 @@ export function SourceTable({ sources, onSourceUpdated, accessToken }: SourceTab
     </div>
   );
 }
+
 

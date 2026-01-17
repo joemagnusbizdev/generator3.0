@@ -1,4 +1,4 @@
-﻿/**
+/**
  * UserManagementInline - Admin user management component
  * 
  * Users are stored in Supabase Auth with:
@@ -583,5 +583,6 @@ export function UserManagementInline({
 }
 
 export default UserManagementInline;
+
 
 

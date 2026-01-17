@@ -1,4 +1,4 @@
-﻿// src1/App.tsx
+// src1/App.tsx
 import React, { useEffect, useState } from "react";
 import { supabase } from "./lib/supabase/client";
 
@@ -82,7 +82,7 @@ export default function App(): JSX.Element {
   const API_BASE =
     "https://gnobnyzezkuyptuakztf.supabase.co/functions/v1/clever-function";
 
-  return (
+  return (<ScourProvider accessToken={accessToken}>
   <ScourProvider>
     <main className="p-4 space-y-4">
       {/* =========================
@@ -168,3 +168,5 @@ export default function App(): JSX.Element {
 
 
 }
+
+

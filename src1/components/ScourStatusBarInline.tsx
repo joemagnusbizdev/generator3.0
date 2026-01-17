@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 
 const API_BASE =
   "https://gnobnyzezkuyptuakztf.supabase.co/functions/v1/clever-function";
@@ -22,5 +22,6 @@ export default function ScourStatusBarInline() {
     </div>
   );
 }
+
 
 

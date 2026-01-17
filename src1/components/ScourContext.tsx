@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { apiFetchJson, apiPostJson } from '../lib/utils/api';
 
 // ============================================================================
@@ -244,4 +244,5 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
 };
 
 export default ScourContext;
+
 

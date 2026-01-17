@@ -1,4 +1,4 @@
-﻿/**
+/**
  * EnhancedAlertCard - Display component for alert items
  */
 import React from 'react';
@@ -234,5 +234,6 @@ export function EnhancedAlertCard({
 }
 
 export default EnhancedAlertCard;
+
 
 

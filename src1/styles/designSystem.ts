@@ -1,4 +1,4 @@
-﻿import { CSSProperties } from 'react';
+import { CSSProperties } from 'react';
 import { colors } from './inline';
 
 // Typography System - MAGNUS Brand
@@ -463,5 +463,6 @@ export const merge = (...styles: CSSProperties[]): CSSProperties => {
 
 // Re-export colors for convenience
 export { colors } from './inline';
+
 
 

@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { parseExcelToSources } from '../lib/excelParser';
 import { bulkUploadSources } from '../lib/utils/api';
 
@@ -166,4 +166,5 @@ export function SourceBulkUpload({ onUploadComplete, accessToken }: SourceBulkUp
     </div>
   );
 }
+
 

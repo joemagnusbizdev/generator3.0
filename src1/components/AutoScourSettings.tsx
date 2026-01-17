@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { apiFetchJson, apiPostJson } from '../lib/utils/api';
 
 interface AutoScourSettingsProps {
@@ -249,4 +249,5 @@ export function AutoScourSettings({ accessToken, isAdmin }: AutoScourSettingsPro
     </div>
   );
 }
+
 

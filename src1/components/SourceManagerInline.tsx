@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { apiFetchJson } from '../lib/utils/api';
 import { useScour } from './ScourContext';
 import { SourceBulkUpload } from './SourceBulkUpload';
@@ -27,7 +27,7 @@ const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
   accessToken,
   permissions 
 }) => {
-  const [sources, setSources] = useState<Source[]>([]);
+  const [query, setQuery] = useState("");`nconst [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -79,7 +79,7 @@ const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
 
     const enabledSources = sources.filter(s => s.enabled);
     console.log('Ã¢Å“â€¦ enabledSources:', enabledSources.length);
-    console.log('Ã°Å¸â€œâ€¹ enabledSources IDs:', enabledSources.map(s => s.id));
+    console.log('Ã°Å¸â€œâ€¹ enabledSources IDs:', enabledsources.filter(s => [s.name,s.country,s.region].join(" ").toLowerCase().includes(query.toLowerCase())).map(s => s.id));
     
     if (enabledSources.length === 0) {
       alert('No enabled sources available. Please enable at least one source before scouring.');
@@ -87,12 +87,12 @@ const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
     }
 
     console.log(`ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â¡ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Starting scour with ${enabledSources.length} enabled sources:`, 
-      enabledSources.map(s => s.name).join(', ')
+      enabledsources.filter(s => [s.name,s.country,s.region].join(" ").toLowerCase().includes(query.toLowerCase())).map(s => s.name).join(', ')
     );
 
     try {
       await startScour(accessToken, {
-        sourceIds: enabledSources.map(s => s.id),
+        sourceIds: enabledsources.filter(s => [s.name,s.country,s.region].join(" ").toLowerCase().includes(query.toLowerCase())).map(s => s.id),
         daysBack: 14
       });
     } catch (err: any) {
@@ -255,4 +255,9 @@ const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
 };
 
 export default SourceManagerInline;
+
+
+
+
+
 

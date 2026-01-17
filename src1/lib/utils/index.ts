@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Utils barrel export
  */
 export { 
@@ -7,5 +7,6 @@ export {
   apiPostJson, 
   apiPatchJson 
 } from './api';
+
 
 

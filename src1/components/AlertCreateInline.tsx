@@ -6,7 +6,7 @@
  * - country (required) - For WP export and geo context
  * - location (required) - Specific location within country
  * - summary (required) - 2-3 sentences, concrete what/where
- * - advice (required) - 4-6 practical bullet points
+ * - recommendations (required) - 4-6 practical bullet points
  * - sources (recommended) - 1-3 URLs with optional titles
  * - severity (required) - critical/warning/caution/informative
  * - event_type - Type of event (conflict, natural disaster, etc.)
@@ -35,7 +35,7 @@ interface AlertFormData {
   region: string;
   location: string;
   summary: string;
-  advice: string[];
+  recommendations: string[];
   sources: SourceInput[];
   severity: Severity;
   event_type: string;
@@ -134,7 +134,7 @@ const initialFormData: AlertFormData = {
   region: '',
   location: '',
   summary: '',
-  advice: ['', '', '', ''],
+  recommendations: ['', '', '', ''],
   sources: [{ url: '', title: '' }],
   severity: 'informative',
   event_type: '',
@@ -184,8 +184,8 @@ export default function AlertCreateInline({
     if (!formData.summary.trim()) errors.push('Summary is required');
     if (formData.summary.length < 50) errors.push('Summary should be at least 50 characters');
     
-    const validAdvice = formData.advice.filter(a => a.trim());
-    if (validAdvice.length < 2) errors.push('At least 2 advice items are required');
+    const validAdvice = formData.recommendations.filter(a => a.trim());
+    if (validAdvice.length < 2) errors.push('At least 2 recommendations items are required');
     
     const validSources = formData.sources.filter(s => s.url.trim());
     if (validSources.length === 0) errors.push('At least 1 source URL is recommended for WP export');
@@ -229,23 +229,23 @@ export default function AlertCreateInline({
 
   const updateAdvice = useCallback((index: number, value: string) => {
     setFormData(prev => {
-      const newAdvice = [...prev.advice];
+      const newAdvice = [...prev.recommendations];
       newAdvice[index] = value;
-      return { ...prev, advice: newAdvice };
+      return { ...prev, recommendations: newAdvice };
     });
   }, []);
 
   const addAdvice = useCallback(() => {
     setFormData(prev => ({
       ...prev,
-      advice: [...prev.advice, ''],
+      recommendations: [...prev.recommendations, ''],
     }));
   }, []);
 
   const removeAdvice = useCallback((index: number) => {
     setFormData(prev => ({
       ...prev,
-      advice: prev.advice.filter((_, i) => i !== index),
+      recommendations: prev.recommendations.filter((_, i) => i !== index),
     }));
   }, []);
 
@@ -303,7 +303,7 @@ export default function AlertCreateInline({
         region: formData.region.trim() || null,
         location: formData.location.trim(),
         summary: formData.summary.trim(),
-        advice: formData.advice.filter(a => a.trim()).map(a => a.trim()),
+        recommendations: formData.recommendations.filter(a => a.trim()).map(a => a.trim()),
         sources: formData.sources
           .filter(s => s.url.trim())
           .map(s => ({
@@ -531,14 +531,14 @@ export default function AlertCreateInline({
       <p><strong>Country:</strong> ${formData.country || '(not set)'}</p>
       ${formData.location ? `<p><strong>Location:</strong> ${formData.location}</p>` : ''}
       ${formData.summary ? `<p>${formData.summary}</p>` : ''}
-      ${formData.advice.filter(a => a.trim()).length > 0 
-        ? `<h3>Advice</h3><ul>${formData.advice.filter(a => a.trim()).map(a => `<li>${a}</li>`).join('')}</ul>` 
+      ${formData.recommendations.filter(a => a.trim()).length > 0 
+        ? `<h3>recommendations</h3><ul>${formData.recommendations.filter(a => a.trim()).map(a => `<li>${a}</li>`).join('')}</ul>` 
         : ''}
     `;
 
     return (
       <div style={sectionStyle}>
-        <h3 style={sectionTitleStyle}>Ã°Å¸â€œâ€ž WordPress Export Preview</h3>
+        <h3 style={sectionTitleStyle}>ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Å¾ WordPress Export Preview</h3>
         <div style={{ 
           padding: '1rem', 
           backgroundColor: colors.gray50, 
@@ -590,20 +590,20 @@ export default function AlertCreateInline({
 
       {success && (
         <div style={successBoxStyle}>
-          <strong>Ã¢Å“â€œ</strong> {success}
+          <strong>ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“</strong> {success}
         </div>
       )}
 
       {validation.warnings.length > 0 && (
         <div style={warningBoxStyle}>
-          <strong>Ã¢Å¡Â Ã¯Â¸Â Warning:</strong> {validation.warnings.join('. ')}
+          <strong>ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Warning:</strong> {validation.warnings.join('. ')}
         </div>
       )}
 
       <form onSubmit={handleSubmit}>
         {/* Basic Info Section */}
         <div style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>Ã°Å¸â€œâ€¹ Basic Information</h3>
+          <h3 style={sectionTitleStyle}>ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Â¹ Basic Information</h3>
           
           <div style={fieldStyle}>
             <label style={labelStyle}>
@@ -707,7 +707,7 @@ export default function AlertCreateInline({
 
         {/* Content Section */}
         <div style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>Ã°Å¸â€œÂ Content</h3>
+          <h3 style={sectionTitleStyle}>ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â Content</h3>
           
           <div style={fieldStyle}>
             <label style={labelStyle}>
@@ -727,18 +727,18 @@ export default function AlertCreateInline({
 
           <div style={fieldStyle}>
             <label style={labelStyle}>
-              Advice <span style={requiredStyle}>*</span> (minimum 2 items)
+              recommendations <span style={requiredStyle}>*</span> (minimum 2 items)
             </label>
-            {formData.advice.map((item, index) => (
+            {formData.recommendations.map((item, index) => (
               <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
                 <input
                   type="text"
                   value={item}
                   onChange={e => updateAdvice(index, e.target.value)}
                   style={{ ...inputStyle, flex: 1 }}
-                  placeholder={`Advice item ${index + 1} (e.g., "Avoid the affected area")`}
+                  placeholder={`recommendations item ${index + 1} (e.g., "Avoid the affected area")`}
                 />
-                {formData.advice.length > 2 && (
+                {formData.recommendations.length > 2 && (
                   <button
                     type="button"
                     onClick={() => removeAdvice(index)}
@@ -751,12 +751,12 @@ export default function AlertCreateInline({
                       cursor: 'pointer',
                     }}
                   >
-                    Ã¢Å“â€¢
+                    ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¢
                   </button>
                 )}
               </div>
             ))}
-            {formData.advice.length < 8 && (
+            {formData.recommendations.length < 8 && (
               <button
                 type="button"
                 onClick={addAdvice}
@@ -765,7 +765,7 @@ export default function AlertCreateInline({
                   marginTop: '0.5rem',
                 }}
               >
-                + Add Advice
+                + Add recommendations
               </button>
             )}
             <div style={helpTextStyle}>
@@ -776,7 +776,7 @@ export default function AlertCreateInline({
 
         {/* Sources Section */}
         <div style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>Ã°Å¸â€â€” Sources</h3>
+          <h3 style={sectionTitleStyle}>ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬â€ Sources</h3>
           
           {formData.sources.map((source, index) => (
             <div key={index} style={{ 
@@ -817,7 +817,7 @@ export default function AlertCreateInline({
                     cursor: 'pointer',
                   }}
                 >
-                  Ã¢Å“â€¢
+                  ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¢
                 </button>
               )}
             </div>
@@ -841,7 +841,7 @@ export default function AlertCreateInline({
 
         {/* Geo Section */}
         <div style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>Ã°Å¸â€”ÂºÃ¯Â¸Â Geographic Data (Optional)</h3>
+          <h3 style={sectionTitleStyle}>ÃƒÂ°Ã…Â¸Ã¢â‚¬â€Ã‚ÂºÃƒÂ¯Ã‚Â¸Ã‚Â Geographic Data (Optional)</h3>
           
           <div style={gridStyle}>
             <div style={fieldStyle}>
@@ -902,7 +902,7 @@ export default function AlertCreateInline({
 
         {/* Dates Section */}
         <div style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>Ã°Å¸â€œâ€¦ Event Dates (Optional)</h3>
+          <h3 style={sectionTitleStyle}>ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Â¦ Event Dates (Optional)</h3>
           
           <div style={gridStyle}>
             <div style={fieldStyle}>
@@ -979,5 +979,13 @@ export default function AlertCreateInline({
 
 // Named export for flexibility
 export { AlertCreateInline };
+
+
+
+
+
+
+
+
 
 

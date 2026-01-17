@@ -1,4 +1,4 @@
-﻿import { MapContainer as RLMapContainer, TileLayer, GeoJSON } from "react-leaflet";
+import { MapContainer as RLMapContainer, TileLayer, GeoJSON } from "react-leaflet";
 
 /**
  * Type escape for react-leaflet MapContainer
@@ -29,5 +29,6 @@ export default function GeoJsonPreview({ geojson }: Props) {
     </div>
   );
 }
+
 
 

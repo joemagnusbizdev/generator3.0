@@ -1,4 +1,4 @@
-﻿import { projectId, functionName } from "./info";
+import { projectId, functionName } from "./info";
 
 /**
  * Constructs the full API URL for a given endpoint
@@ -105,5 +105,6 @@ export async function apiDelete<T = any>(endpoint: string, token: string): Promi
 
   return await res.json();
 }
+
 
 

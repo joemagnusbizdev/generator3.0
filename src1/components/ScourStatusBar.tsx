@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 
 interface ScourStatusBarProps {
   job: {
@@ -71,4 +71,5 @@ export function ScourStatusBar({ job, isRunning }: ScourStatusBarProps) {
     </div>
   );
 }
+
 
