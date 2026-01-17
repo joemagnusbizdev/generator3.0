@@ -1,8 +1,6 @@
-// src1/App.tsx
-import React, { useEffect, useState } from "react";
-import { supabase } from "./lib/supabase/client";
+﻿import React, { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
 
-/* Components */
 import AlertReviewQueueInline from "./components/AlertReviewQueueInline";
 import AlertCreateInline from "./components/AlertCreateInline";
 import SourceManagerInline from "./components/SourceManagerInline";
@@ -12,50 +10,28 @@ import UserManagementInline from "./components/UserManagementInline";
 import ScourStatusBarInline from "./components/ScourStatusBarInline";
 import { ScourProvider } from "./components/ScourContext";
 
-/* =========================
-   Roles & Permissions
-========================= */
-
 type Role = "operator" | "analyst" | "admin";
-type Tab =
-  | "review"
-  | "create"
-  | "sources"
-  | "trends"
-  | "analytics"
-  | "admin";
+type Tab = "review" | "create" | "sources" | "trends" | "analytics" | "admin";
 
-export type PermissionSet = {
-  canReview: boolean;
-  canScour: boolean;
-  canApproveAndPost: boolean;
-  canDismiss: boolean;
-  canDelete: boolean;
-  canEditAlerts: boolean;
-  canCreate: boolean;
-  canManageSources: boolean;
-  canAccessAnalytics: boolean;
-  canManageUsers: boolean;
-};
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
-function getPermissions(role: Role): PermissionSet {
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+function getPermissions(role: Role) {
   return {
-    canReview: role !== "operator",
-    canScour: role !== "operator",
-    canApproveAndPost: role === "admin",
-    canDismiss: role !== "operator",
-    canDelete: role === "admin",
-    canEditAlerts: role !== "operator",
+    canReview: true,
     canCreate: role !== "operator",
-    canManageSources: role !== "operator",
+    canManageSources: role === "admin",
+    canScour: role !== "operator",
     canAccessAnalytics: role !== "operator",
     canManageUsers: role === "admin",
+    canApproveAndPost: role !== "operator",
+    canDismiss: true,
+    canDelete: role === "admin",
+    canEditAlerts: role !== "operator",
   };
 }
-
-/* =========================
-   App
-========================= */
 
 export default function App(): JSX.Element {
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -75,98 +51,78 @@ export default function App(): JSX.Element {
     });
   }, []);
 
-  if (loading) return <div className="p-6">Loadingâ€¦</div>;
+  if (loading) return <div className="p-6">Loading...</div>;
   if (!accessToken) return <div className="p-6">Please log in.</div>;
 
   const permissions = getPermissions(role);
+
   const API_BASE =
     "https://gnobnyzezkuyptuakztf.supabase.co/functions/v1/clever-function";
 
-  return (<ScourProvider accessToken={accessToken}>
-  <ScourProvider>
-    <main className="p-4 space-y-4">
-      {/* =========================
-          Scour Status Bar
-      ========================= */}
-      <ScourStatusBarInline />
+  return (
+    <ScourProvider accessToken={accessToken}>
+      <main className="p-4 space-y-4">
+        <ScourStatusBarInline />
 
-      {/* =========================
-          Tabs
-      ========================= */}
-      <div className="flex gap-2 border-b pb-2">
-        {permissions.canReview && (
-          <button onClick={() => setTab("review")}>Review</button>
+        <div className="flex gap-2 border-b pb-2">
+          {permissions.canReview && (
+            <button onClick={() => setTab("review")}>Review</button>
+          )}
+          {permissions.canCreate && (
+            <button onClick={() => setTab("create")}>Create</button>
+          )}
+          {permissions.canManageSources && (
+            <button onClick={() => setTab("sources")}>Sources</button>
+          )}
+          <button onClick={() => setTab("trends")}>Trends</button>
+          {permissions.canAccessAnalytics && (
+            <button onClick={() => setTab("analytics")}>Analytics</button>
+          )}
+          {permissions.canManageUsers && (
+            <button onClick={() => setTab("admin")}>Admin</button>
+          )}
+        </div>
+
+        {tab === "review" && (
+          <AlertReviewQueueInline permissions={permissions} />
         )}
 
-        {permissions.canCreate && (
-          <button onClick={() => setTab("create")}>Create</button>
+        {tab === "create" && (
+          <AlertCreateInline
+            accessToken={accessToken}
+            permissions={{ canCreate: permissions.canCreate }}
+          />
         )}
 
-        {permissions.canManageSources && (
-          <button onClick={() => setTab("sources")}>Sources</button>
+        {tab === "sources" && (
+          <SourceManagerInline
+            accessToken={accessToken}
+            permissions={{
+              canManageSources: permissions.canManageSources,
+              canScour: permissions.canScour,
+            }}
+          />
         )}
 
-        <button onClick={() => setTab("trends")}>Trends</button>
+        {tab === "trends" && <TrendsView />}
 
-        {permissions.canAccessAnalytics && (
-          <button onClick={() => setTab("analytics")}>Analytics</button>
-        )}
-
-        {permissions.canManageUsers && (
-          <button onClick={() => setTab("admin")}>Admin</button>
-        )}
-      </div>
-
-      {/* =========================
-          Views
-      ========================= */}
-      {tab === "review" && (
-        <AlertReviewQueueInline permissions={permissions} />
-      )}
-
-      {tab === "create" && (
-        <AlertCreateInline
-          accessToken={accessToken}
-          permissions={{ canCreate: permissions.canCreate }}
-        />
-      )}
-
-      {tab === "sources" && (
-        <SourceManagerInline
-          accessToken={accessToken}
-          permissions={{
-            canManageSources: permissions.canManageSources,
-            canScour: permissions.canScour,
-          }}
-        />
-      )}
-
-      {tab === "trends" && <TrendsView />}
-
-      {tab === "analytics" && (
-        <AnalyticsDashboardInline
+        {tab === "analytics" && (
+          <AnalyticsDashboardInline
           apiBase={API_BASE}
-          permissions={{
-            canAccessAnalytics: permissions.canAccessAnalytics,
-          }}
+          permissions={{ canAccessAnalytics: permissions.canAccessAnalytics }}
         />
-      )}
+        )}
 
-      {tab === "admin" && (
-        <UserManagementInline
-          currentUserRole={role}
-          permissions={{
-            canManageUsers: permissions.canManageUsers,
-          }}
-        />
-      )}
-    </main>
-  </ScourProvider>
-);
-
-
-
-
+        {tab === "admin" && (
+          <UserManagementInline
+            currentUserRole={role}
+            permissions={{ canManageUsers: permissions.canManageUsers }}
+          />
+        )}
+      </main>
+    </ScourProvider>
+  );
 }
+
 
 
