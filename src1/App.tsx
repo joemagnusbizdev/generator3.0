@@ -1,25 +1,26 @@
+// src1/App.tsx
 import React, { useEffect, useState } from "react";
 import { supabase } from "./lib/supabase/client";
 
 import AlertReviewQueueInline, {
   type PermissionSet,
 } from "./components/AlertReviewQueueInline";
-import SourceManagerInline from "./components/SourceManagerInline";
 import AlertCreateInline from "./components/AlertCreateInline";
+import SourceManagerInline from "./components/SourceManagerInline";
 import TrendsView from "./TrendsView";
 import AnalyticsDashboardInline from "./components/AnalyticsDashboardInline";
 import UserManagementInline from "./components/UserManagementInline";
 import ScourStatusBarInline from "./components/ScourStatusBarInline";
 
 import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "./components/ui/tabs";
+  TabsInline,
+  TabsListInline,
+  TabsTriggerInline,
+  TabsContentInline,
+} from "./components/ui/tabs-inline";
 
 /* =========================
-   Permissions
+   Roles & Permissions
 ========================= */
 
 type Role = "operator" | "analyst" | "admin";
@@ -62,51 +63,83 @@ export default function App(): JSX.Element {
 
   return (
     <main className="p-6 space-y-4">
-      {/* Status bar always visible */}
+      {/* Global scour status */}
       <ScourStatusBarInline permissions={permissions} />
 
-      <Tabs defaultValue={permissions.canReview ? "review" : "create"}>
-        <TabsList>
+      <TabsInline
+        defaultValue={permissions.canReview ? "review" : "create"}
+        className="space-y-6"
+      >
+        <TabsListInline>
           {permissions.canReview && (
-            <TabsTrigger value="review">Review</TabsTrigger>
+            <TabsTriggerInline value="review">
+              Review
+            </TabsTriggerInline>
           )}
-          <TabsTrigger value="create">Create</TabsTrigger>
-          <TabsTrigger value="sources">Sources</TabsTrigger>
-          <TabsTrigger value="trends">Trends</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTriggerInline value="create">
+            Create
+          </TabsTriggerInline>
+          <TabsTriggerInline value="sources">
+            Sources
+          </TabsTriggerInline>
+          <TabsTriggerInline value="trends">
+            Trends
+          </TabsTriggerInline>
+          <TabsTriggerInline value="analytics">
+            Analytics
+          </TabsTriggerInline>
           {role === "admin" && (
-            <TabsTrigger value="admin">Admin</TabsTrigger>
+            <TabsTriggerInline value="admin">
+              Admin
+            </TabsTriggerInline>
           )}
-        </TabsList>
+        </TabsListInline>
 
+        {/* ================= REVIEW ================= */}
         {permissions.canReview && (
-          <TabsContent value="review">
+          <TabsContentInline value="review">
             <AlertReviewQueueInline permissions={permissions} />
-          </TabsContent>
+          </TabsContentInline>
         )}
 
-        <TabsContent value="create">
-          <AlertCreateInline permissions={permissions} />
-        </TabsContent>
+        {/* ================= CREATE ================= */}
+        <TabsContentInline value="create">
+          <AlertCreateInline />
+        </TabsContentInline>
 
-        <TabsContent value="sources">
-          <SourceManagerInline permissions={permissions} />
-        </TabsContent>
+        {/* ================= SOURCES ================= */}
+        <TabsContentInline value="sources">
+          <SourceManagerInline
+            permissions={{
+              canManageSources: role !== "operator",
+              canScour: permissions.canScour,
+            }}
+          />
+        </TabsContentInline>
 
-        <TabsContent value="trends">
+        {/* ================= TRENDS ================= */}
+        <TabsContentInline value="trends">
           <TrendsView />
-        </TabsContent>
+        </TabsContentInline>
 
-        <TabsContent value="analytics">
-          <AnalyticsDashboardInline />
-        </TabsContent>
+        {/* ================= ANALYTICS ================= */}
+        <TabsContentInline value="analytics">
+          <AnalyticsDashboardInline
+            apiBase="https://gnobnyzezkuyptuakztf.supabase.co/functions/v1/clever-function"
+            permissions={permissions}
+          />
+        </TabsContentInline>
 
+        {/* ================= ADMIN ================= */}
         {role === "admin" && (
-          <TabsContent value="admin">
-            <UserManagementInline />
-          </TabsContent>
+          <TabsContentInline value="admin">
+            <UserManagementInline
+              currentUserRole={role}
+              permissions={permissions}
+            />
+          </TabsContentInline>
         )}
-      </Tabs>
+      </TabsInline>
     </main>
   );
 }
