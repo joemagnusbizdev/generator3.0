@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+﻿import * as XLSX from 'xlsx';
 
 export interface ParsedSource {
   name: string;
@@ -36,6 +36,7 @@ export async function parseExcelToSources(file: File): Promise<ParsedSource[]> {
     reader.readAsArrayBuffer(file);
   });
 }
+
 
 
 

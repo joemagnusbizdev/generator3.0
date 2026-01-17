@@ -1,4 +1,4 @@
-// Complete inline styles system - MAGNUS Brand Colors
+﻿// Complete inline styles system - MAGNUS Brand Colors
 // Backwards-compatible exports: colors, styles, combine
 // Modern TS/React compatibility (react-jsx): no React global required
 
@@ -189,6 +189,7 @@ export const combine = (...styleObjects: StyleLike[]): CSSProperties => {
   const filtered = styleObjects.filter(Boolean) as CSSProperties[];
   return Object.assign({}, ...filtered);
 };
+
 
 
 

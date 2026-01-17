@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { apiFetchJson, apiPostJson } from '../lib/utils/api';
 
 interface AutoScourSettingsProps {
@@ -177,7 +177,7 @@ export function AutoScourSettings({ accessToken, isAdmin }: AutoScourSettingsPro
     <div style={containerStyle}>
       <div style={headerStyle}>
         <div style={titleStyle}>
-          <span>Ã¢Å¡Â¡</span>
+          <span>ÃƒÂ¢Ã…Â¡Ã‚Â¡</span>
           <span>Auto Scour (Admin)</span>
           <span style={badgeStyle}>
             {status.enabled ? 'ENABLED' : 'DISABLED'}
@@ -196,7 +196,7 @@ export function AutoScourSettings({ accessToken, isAdmin }: AutoScourSettingsPro
         <div>
           <strong>Env Status:</strong>{' '}
           <span style={{ color: status.envEnabled ? '#10b981' : '#ef4444' }}>
-            {status.envEnabled ? 'Ã¢Å“â€œ Enabled' : 'Ã¢Å“â€” Disabled'}
+            {status.envEnabled ? 'ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“ Enabled' : 'ÃƒÂ¢Ã…â€œÃ¢â‚¬â€ Disabled'}
           </span>
         </div>
       </div>
@@ -211,7 +211,7 @@ export function AutoScourSettings({ accessToken, isAdmin }: AutoScourSettingsPro
             cursor: toggling ? 'not-allowed' : 'pointer',
           }}
         >
-          {toggling ? 'Ã¢Å¸Â³ Toggling...' : status.enabled ? 'Ã¢ÂÂ¸ Disable Auto Scour' : 'Ã¢â€“Â¶ Enable Auto Scour'}
+          {toggling ? 'ÃƒÂ¢Ã…Â¸Ã‚Â³ Toggling...' : status.enabled ? 'ÃƒÂ¢Ã‚ÂÃ‚Â¸ Disable Auto Scour' : 'ÃƒÂ¢Ã¢â‚¬â€œÃ‚Â¶ Enable Auto Scour'}
         </button>
 
         {status.enabled && (
@@ -224,12 +224,12 @@ export function AutoScourSettings({ accessToken, isAdmin }: AutoScourSettingsPro
               cursor: running ? 'not-allowed' : 'pointer',
             }}
           >
-            {running ? 'Ã¢Å¸Â³ Running...' : 'Ã°Å¸Å¡â‚¬ Run Now'}
+            {running ? 'ÃƒÂ¢Ã…Â¸Ã‚Â³ Running...' : 'ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬ Run Now'}
           </button>
         )}
 
         <div style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#6b7280' }}>
-          {status.enabled ? 'Ã°Å¸Å¸Â¢ Automatically scouring sources' : 'Ã°Å¸â€Â´ Manual scour only'}
+          {status.enabled ? 'ÃƒÂ°Ã…Â¸Ã…Â¸Ã‚Â¢ Automatically scouring sources' : 'ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â´ Manual scour only'}
         </div>
       </div>
 
@@ -242,12 +242,13 @@ export function AutoScourSettings({ accessToken, isAdmin }: AutoScourSettingsPro
           borderRadius: '0.375rem',
           fontSize: '0.875rem',
         }}>
-          Ã¢Å¡Â Ã¯Â¸Â <strong>Warning:</strong> AUTO_SCOUR_ENABLED environment variable is disabled in edge function.
+          ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â <strong>Warning:</strong> AUTO_SCOUR_ENABLED environment variable is disabled in edge function.
           Set it to "true" in Supabase dashboard for cron to work.
         </div>
       )}
     </div>
   );
 }
+
 
 

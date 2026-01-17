@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { apiPatchJson } from '../lib/utils/api';
 
 export interface Source {
@@ -100,9 +100,9 @@ export function SourceTable({ sources, onSourceUpdated, accessToken }: SourceTab
                   {testResult && (
                     <div style={{ marginTop: '0.25rem', fontSize: '0.75rem' }}>
                       {testResult.ok ? (
-                        <span style={{ color: '#16a34a' }}>Ã¢Å“â€œ OK {testResult.status ? `(${testResult.status})` : ''}</span>
+                        <span style={{ color: '#16a34a' }}>ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“ OK {testResult.status ? `(${testResult.status})` : ''}</span>
                       ) : (
-                        <span style={{ color: '#dc2626' }}>Ã¢Å“â€” UNREACHABLE</span>
+                        <span style={{ color: '#dc2626' }}>ÃƒÂ¢Ã…â€œÃ¢â‚¬â€ UNREACHABLE</span>
                       )}
                     </div>
                   )}
@@ -179,5 +179,6 @@ export function SourceTable({ sources, onSourceUpdated, accessToken }: SourceTab
     </div>
   );
 }
+
 
 

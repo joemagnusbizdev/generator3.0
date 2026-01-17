@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AnalyticsDashboardInline - Analytics Dashboard
  * 
  * Displays alert metrics with breakdowns by:
@@ -184,7 +184,7 @@ function PeriodCard({ title, subtitle, total, posted, comparison, isActive, onCl
           alignItems: 'center',
           gap: '4px',
         }}>
-          {comparison.direction === 'up' ? 'Ã¢â€ â€˜' : comparison.direction === 'down' ? 'Ã¢â€ â€œ' : 'Ã¢â€ â€™'}
+          {comparison.direction === 'up' ? 'ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Ëœ' : comparison.direction === 'down' ? 'ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Å“' : 'ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢'}
           {comparison.value}% {comparison.label}
         </div>
       )}
@@ -388,7 +388,7 @@ export function AnalyticsDashboardInline({
   if (!permissions.canAccessAnalytics) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center', color: colors.gray500 }}>
-        <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>Ã°Å¸â€â€™ Access Restricted</p>
+        <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬â„¢ Access Restricted</p>
         <p>You don't have permission to view analytics.</p>
       </div>
     );
@@ -559,7 +559,7 @@ export function AnalyticsDashboardInline({
             margin: 0,
             marginBottom: '0.25rem',
           }}>
-            Ã°Å¸â€œÅ  Analytics Dashboard
+            ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã…Â  Analytics Dashboard
           </h2>
           <p style={{ margin: 0, fontSize: '0.875rem', color: COLORS.muted }}>
             Alert metrics by time period
@@ -575,7 +575,7 @@ export function AnalyticsDashboardInline({
             gap: '0.5rem',
           }}
         >
-          Ã¢â€ Â» Refresh
+          ÃƒÂ¢Ã¢â‚¬Â Ã‚Â» Refresh
         </button>
       </div>
 
@@ -634,11 +634,11 @@ export function AnalyticsDashboardInline({
         gap: '0.75rem',
         marginBottom: '2rem',
       }}>
-        <SummaryStat label="Total Alerts" value={formatNumber(breakdowns.total)} icon="Ã°Å¸â€œâ€¹" color={COLORS.primary} />
-        <SummaryStat label="Posted to WP" value={formatNumber(breakdowns.posted)} icon="Ã°Å¸â€œÂ¤" color={COLORS.success} />
-        <SummaryStat label="Drafts" value={formatNumber(breakdowns.draft)} icon="Ã°Å¸â€œÂ" color={COLORS.warning} />
-        <SummaryStat label="Approved" value={formatNumber(breakdowns.approved)} icon="Ã¢Å“â€¦" color={COLORS.info} />
-        <SummaryStat label="Dismissed" value={formatNumber(breakdowns.dismissed)} icon="Ã°Å¸Å¡Â«" color={COLORS.muted} />
+        <SummaryStat label="Total Alerts" value={formatNumber(breakdowns.total)} icon="ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Â¹" color={COLORS.primary} />
+        <SummaryStat label="Posted to WP" value={formatNumber(breakdowns.posted)} icon="ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¤" color={COLORS.success} />
+        <SummaryStat label="Drafts" value={formatNumber(breakdowns.draft)} icon="ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â" color={COLORS.warning} />
+        <SummaryStat label="Approved" value={formatNumber(breakdowns.approved)} icon="ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦" color={COLORS.info} />
+        <SummaryStat label="Dismissed" value={formatNumber(breakdowns.dismissed)} icon="ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â«" color={COLORS.muted} />
       </div>
 
       {/* Selected Period Label */}
@@ -663,7 +663,7 @@ export function AnalyticsDashboardInline({
         {/* By Severity */}
         <BreakdownTable
           title="By Severity"
-          icon="Ã¢Å¡Â Ã¯Â¸Â"
+          icon="ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â"
           data={breakdowns.bySeverity}
           total={breakdowns.total}
           colorFn={(key) => SEVERITY_COLORS[key] ?? COLORS.muted}
@@ -673,7 +673,7 @@ export function AnalyticsDashboardInline({
         {/* By Event Type */}
         <BreakdownTable
           title="By Event Type"
-          icon="Ã°Å¸â€œâ€¹"
+          icon="ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Â¹"
           data={breakdowns.byEventType}
           total={breakdowns.total}
           colorFn={() => COLORS.accent}
@@ -683,7 +683,7 @@ export function AnalyticsDashboardInline({
         {/* By Country */}
         <BreakdownTable
           title="By Country"
-          icon="Ã°Å¸Å’Â"
+          icon="ÃƒÂ°Ã…Â¸Ã…â€™Ã‚Â"
           data={breakdowns.byCountry}
           total={breakdowns.total}
           colorFn={() => COLORS.info}
@@ -700,13 +700,14 @@ export function AnalyticsDashboardInline({
         color: COLORS.muted,
         borderTop: `1px solid ${COLORS.border}`,
       }}>
-        Data refreshed: {new Date().toLocaleString()} Ã¢â‚¬Â¢ Total alerts in database: {formatNumber(alerts.length)}
+        Data refreshed: {new Date().toLocaleString()} ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Total alerts in database: {formatNumber(alerts.length)}
       </div>
     </div>
   );
 }
 
 export default AnalyticsDashboardInline;
+
 
 
 

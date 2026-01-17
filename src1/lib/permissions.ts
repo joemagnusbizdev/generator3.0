@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Permissions System
  * 
  * Role-based access control for the MAGNUS Intelligence Alert Generator
@@ -360,6 +360,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
 // ============================================================================
 
 export type { PermissionSet as Permissions };
+
 
 
 

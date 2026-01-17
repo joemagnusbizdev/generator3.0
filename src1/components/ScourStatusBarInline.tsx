@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 
 const API_BASE =
   "https://gnobnyzezkuyptuakztf.supabase.co/functions/v1/clever-function";
@@ -18,10 +18,11 @@ export default function ScourStatusBarInline() {
 
   return (
     <div className="p-2 bg-gray-100 border rounded text-sm">
-      ðŸ” Scour: {status.job.processed}/{status.job.total} processed
+      Ã°Å¸â€Â Scour: {status.job.processed}/{status.job.total} processed
     </div>
   );
 }
+
 
 
 

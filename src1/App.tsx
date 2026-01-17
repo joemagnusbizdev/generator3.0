@@ -4,10 +4,9 @@ import { createClient } from "@supabase/supabase-js";
 import AlertReviewQueueInline from "./components/AlertReviewQueueInline";
 import AlertCreateInline from "./components/AlertCreateInline";
 import SourceManagerInline from "./components/SourceManagerInline";
-import TrendsView from "./components/TrendsView";
+import ScourStatusBarInline from "./components/ScourStatusBarInline";
 import AnalyticsDashboardInline from "./components/AnalyticsDashboardInline";
 import UserManagementInline from "./components/UserManagementInline";
-import ScourStatusBarInline from "./components/ScourStatusBarInline";
 import { ScourProvider } from "./components/ScourContext";
 
 type Role = "operator" | "analyst" | "admin";
@@ -20,16 +19,12 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 function getPermissions(role: Role) {
   return {
-    canReview: true,
-    canCreate: role !== "operator",
+    canReview: role !== "operator",
+    canCreate: true,
     canManageSources: role === "admin",
     canScour: role !== "operator",
     canAccessAnalytics: role !== "operator",
     canManageUsers: role === "admin",
-    canApproveAndPost: role !== "operator",
-    canDismiss: true,
-    canDelete: role === "admin",
-    canEditAlerts: role !== "operator",
   };
 }
 
@@ -40,47 +35,33 @@ export default function App(): JSX.Element {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-  let mounted = true;
-
-  supabase.auth.getSession().then(({ data }) => {
-    if (!mounted) return;
-    if (data.session) {
-      setAccessToken(data.session.access_token);
-      setRole(
-        (data.session.user.user_metadata?.role as Role) ?? "operator"
-      );
-    }
-    setLoading(false);
-  });
-
-  const { data: listener } = supabase.auth.onAuthStateChange(
-    (_event, session) => {
-      if (!mounted) return;
-      if (session) {
-        setAccessToken(session.access_token);
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        setAccessToken(data.session.access_token);
         setRole(
-          (session.user.user_metadata?.role as Role) ?? "operator"
+          (data.session.user.user_metadata?.role as Role) ?? "operator"
         );
-      } else {
-        setAccessToken(null);
-        setRole("operator");
       }
-    }
-  );
+      setLoading(false);
+    });
+  }, []);
 
-  return () => {
-    mounted = false;
-    listener.subscription.unsubscribe();
-  };
-}, []);
+  if (loading) {
+    return <div className="p-6">Loading...</div>;
+  }
 
-  if (loading) return <div className="p-6">Loading...</div>;
-  if (!accessToken) return <div className="p-6">Please log in.</div>;
+  if (!accessToken) {
+    return <div className="p-6">Please sign in.</div>;
+  }
 
-  const permissions = getPermissions(role);
-
-  const API_BASE =
-    "https://gnobnyzezkuyptuakztf.supabase.co/functions/v1/clever-function";
+  const permissions = {
+  ...getPermissions(role),
+  canApproveAndPost: role === "admin" || role === "analyst",
+  canDismiss: role !== "operator",
+  canDelete: role === "admin",
+  canEditAlerts: role !== "operator",
+};
+  const API_BASE = import.meta.env.VITE_API_BASE as string;
 
   return (
     <ScourProvider accessToken={accessToken}>
@@ -127,13 +108,12 @@ export default function App(): JSX.Element {
           />
         )}
 
-        {tab === "trends" && <TrendsView />}
-
+        
         {tab === "analytics" && (
           <AnalyticsDashboardInline
-          apiBase={API_BASE}
-          permissions={{ canAccessAnalytics: permissions.canAccessAnalytics }}
-        />
+            apiBase={API_BASE}
+            permissions={{ canAccessAnalytics: permissions.canAccessAnalytics }}
+          />
         )}
 
         {tab === "admin" && (
@@ -146,12 +126,5 @@ export default function App(): JSX.Element {
     </ScourProvider>
   );
 }
-
-
-
-
-
-
-
 
 

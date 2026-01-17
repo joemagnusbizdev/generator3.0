@@ -1,4 +1,4 @@
-/**
+﻿/**
  * TrendsView - Display and manage trends
  */
 import React, { useState, useEffect, useCallback } from 'react';
@@ -296,16 +296,16 @@ export function TrendsView({
 
               <div style={metaStyle}>
                 {trend.country && (
-                  <span>Ã°Å¸Å’Â {trend.country}</span>
+                  <span>ÃƒÂ°Ã…Â¸Ã…â€™Ã‚Â {trend.country}</span>
                 )}
                 {trend.region && (
-                  <span>Ã°Å¸â€”ÂºÃ¯Â¸Â {trend.region}</span>
+                  <span>ÃƒÂ°Ã…Â¸Ã¢â‚¬â€Ã‚ÂºÃƒÂ¯Ã‚Â¸Ã‚Â {trend.region}</span>
                 )}
                 {trend.event_type && (
-                  <span>Ã°Å¸â€œâ€¹ {trend.event_type}</span>
+                  <span>ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Â¹ {trend.event_type}</span>
                 )}
                 {trend.incident_count != null && (
-                  <span>Ã°Å¸â€œÅ  {trend.incident_count} incidents</span>
+                  <span>ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã…Â  {trend.incident_count} incidents</span>
                 )}
                 {trend.severity && (
                   <span style={{ 
@@ -313,7 +313,7 @@ export function TrendsView({
                     backgroundColor: colors.warning + '20',
                     borderRadius: '4px',
                   }}>
-                    Ã¢Å¡Â Ã¯Â¸Â {trend.severity}
+                    ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â {trend.severity}
                   </span>
                 )}
               </div>
@@ -377,7 +377,7 @@ export function TrendsView({
                     padding: '0.5rem 0.75rem',
                   }}
                 >
-                  {expandedId === trend.id ? 'Ã¢â€“Â² Collapse' : 'Ã¢â€“Â¼ Details'}
+                  {expandedId === trend.id ? 'ÃƒÂ¢Ã¢â‚¬â€œÃ‚Â² Collapse' : 'ÃƒÂ¢Ã¢â‚¬â€œÃ‚Â¼ Details'}
                 </button>
                 
                 <button
@@ -390,7 +390,7 @@ export function TrendsView({
                     opacity: exportingId === trend.id ? 0.7 : 1,
                   }}
                 >
-                  {exportingId === trend.id ? 'Ã¢ÂÂ³ Generating...' : 'Ã°Å¸â€œâ€ž Export Report'}
+                  {exportingId === trend.id ? 'ÃƒÂ¢Ã‚ÂÃ‚Â³ Generating...' : 'ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Å¾ Export Report'}
                 </button>
               </div>
               
@@ -434,6 +434,7 @@ export function TrendsView({
 }
 
 export default TrendsView;
+
 
 
 

@@ -1,5 +1,5 @@
-// ============================================================================
-// SECTION 1 / 4 â€” FOUNDATION (ENV Â· CORS Â· TYPES Â· HELPERS)
+﻿// ============================================================================
+// SECTION 1 / 4 Ã¢â‚¬â€ FOUNDATION (ENV Ã‚Â· CORS Ã‚Â· TYPES Ã‚Â· HELPERS)
 // DROP-IN: paste this at the TOP of your edge function file
 // ============================================================================
 
@@ -108,10 +108,10 @@ export function utf8Safe(s?: string | null) {
   if (!s) return s;
   // normalize common broken sequences
   return s
-    .replace(/\u00c3\u00a0/g, "Ã ")
-    .replace(/\u00c3\u00a9/g, "Ã©")
-    .replace(/\u00c3\u00b6/g, "Ã¶")
-    .replace(/\u00c3\u00bc/g, "Ã¼")
+    .replace(/\u00c3\u00a0/g, "ÃƒÂ ")
+    .replace(/\u00c3\u00a9/g, "ÃƒÂ©")
+    .replace(/\u00c3\u00b6/g, "ÃƒÂ¶")
+    .replace(/\u00c3\u00bc/g, "ÃƒÂ¼")
     .replace(/\u00ef\u00bf\u00bd/g, "");
 }
 
@@ -232,12 +232,12 @@ export function wpAuthHeader() {
 // END SECTION 1 / 4
 // ============================================================================
 // ============================================================================
-// SECTION 2 / 4 â€” AI EXTRACTION Â· SCRAPING Â· SCOUR ENGINE
+// SECTION 2 / 4 Ã¢â‚¬â€ AI EXTRACTION Ã‚Â· SCRAPING Ã‚Â· SCOUR ENGINE
 // DROP-IN: paste DIRECTLY AFTER SECTION 1
 // ============================================================================
 
 /* ---------------------------------------------------------------------------
-   HTML â†’ TEXT SCRAPER
+   HTML Ã¢â€ â€™ TEXT SCRAPER
 --------------------------------------------------------------------------- */
 
 function stripHtml(html: string): string {
@@ -514,7 +514,7 @@ export async function runScourWorker(
 // END SECTION 2 / 4
 // ============================================================================
 // ============================================================================
-// SECTION 3 / 4 â€” WORDPRESS (ACF) + ALERT ACTION HELPERS
+// SECTION 3 / 4 Ã¢â‚¬â€ WORDPRESS (ACF) + ALERT ACTION HELPERS
 // DROP-IN: paste DIRECTLY AFTER SECTION 2
 // ============================================================================
 
@@ -537,7 +537,7 @@ async function patchAlertById(id: string, patch: Record<string, any>) {
 }
 
 // ---------------------------------------------------------------------------
-// WORDPRESS â€” ACF SCHEMA MAPPING (LOCKED)
+// WORDPRESS Ã¢â‚¬â€ ACF SCHEMA MAPPING (LOCKED)
 // ACF field names you provided:
 // mainland (Select)
 // intelligence_topics (Select)
@@ -672,7 +672,7 @@ export async function approveOnly(alertId: string) {
 // END SECTION 3 / 4
 // ============================================================================
 // ============================================================================
-// SECTION 4 / 4 â€” SINGLE Deno.serve ROUTER (ALL ENDPOINTS)
+// SECTION 4 / 4 Ã¢â‚¬â€ SINGLE Deno.serve ROUTER (ALL ENDPOINTS)
 // DROP-IN: paste DIRECTLY AFTER SECTION 3
 // ============================================================================
 
@@ -786,7 +786,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // ALERTS â€” GET ALL
+    // ALERTS Ã¢â‚¬â€ GET ALL
     // ------------------------------------------------------------------------
     if (path === "/alerts" && method === "GET") {
       const status = url.searchParams.get("status");
@@ -798,7 +798,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // ALERTS â€” REVIEW (DRAFT)
+    // ALERTS Ã¢â‚¬â€ REVIEW (DRAFT)
     // ------------------------------------------------------------------------
     if (path === "/alerts/review" && method === "GET") {
       const alerts = await querySupabaseRest(
@@ -808,7 +808,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // ALERTS â€” COMPILE
+    // ALERTS Ã¢â‚¬â€ COMPILE
     // ------------------------------------------------------------------------
     if (path === "/alerts/compile" && method === "POST") {
       const body = await req.json().catch(() => ({}));
@@ -829,7 +829,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // ALERTS â€” CREATE
+    // ALERTS Ã¢â‚¬â€ CREATE
     // ------------------------------------------------------------------------
     if (path === "/alerts" && method === "POST") {
       const body = await req.json().catch(() => ({}));
@@ -854,7 +854,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // ALERTS â€” UPDATE (PATCH /alerts/:id)
+    // ALERTS Ã¢â‚¬â€ UPDATE (PATCH /alerts/:id)
     // ------------------------------------------------------------------------
     if (path.startsWith("/alerts/") && method === "PATCH") {
       const id = parseIdFromPath(path);
@@ -876,7 +876,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // ALERTS â€” DELETE (DELETE /alerts/:id)
+    // ALERTS Ã¢â‚¬â€ DELETE (DELETE /alerts/:id)
     // ------------------------------------------------------------------------
     if (path.startsWith("/alerts/") && method === "DELETE") {
       const id = parseIdFromPath(path);
@@ -890,7 +890,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // ALERTS â€” DISMISS (POST /alerts/:id/dismiss)
+    // ALERTS Ã¢â‚¬â€ DISMISS (POST /alerts/:id/dismiss)
     // ------------------------------------------------------------------------
     if (path.endsWith("/dismiss") && method === "POST") {
       const id = parseIdFromPath(path);
@@ -900,7 +900,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // ALERTS â€” APPROVE (POST /alerts/:id/approve)  âœ… PUBLISHES TO WP (canonical)
+    // ALERTS Ã¢â‚¬â€ APPROVE (POST /alerts/:id/approve)  Ã¢Å“â€¦ PUBLISHES TO WP (canonical)
     // ------------------------------------------------------------------------
     if (path.endsWith("/approve") && method === "POST") {
       const id = parseIdFromPath(path);
@@ -922,7 +922,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // SCOUR â€” START (POST /scour-sources)
+    // SCOUR Ã¢â‚¬â€ START (POST /scour-sources)
     // Body: { sourceIds?: string[], daysBack?: number, jobId?: string }
     // ------------------------------------------------------------------------
     if (path === "/scour-sources" && method === "POST") {
@@ -968,7 +968,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // SCOUR â€” STATUS (GET /scour/status?jobId=...)
+    // SCOUR Ã¢â‚¬â€ STATUS (GET /scour/status?jobId=...)
     // If jobId missing, returns last job (last_scour_job_id).
     // ------------------------------------------------------------------------
     if (path === "/scour/status" && method === "GET") {
@@ -987,7 +987,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // AUTO-SCOUR â€” STATUS (GET /auto-scour/status)
+    // AUTO-SCOUR Ã¢â‚¬â€ STATUS (GET /auto-scour/status)
     // ------------------------------------------------------------------------
     if (path === "/auto-scour/status" && method === "GET") {
       const enabled = await getKV("auto_scour_enabled");
@@ -1004,7 +1004,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // AUTO-SCOUR â€” TOGGLE (POST /auto-scour/toggle)
+    // AUTO-SCOUR Ã¢â‚¬â€ TOGGLE (POST /auto-scour/toggle)
     // Body: { enabled: boolean, intervalMinutes?: number }
     // ------------------------------------------------------------------------
     if (path === "/auto-scour/toggle" && method === "POST") {
@@ -1030,7 +1030,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // AUTO-SCOUR â€” RUN NOW (POST /auto-scour/run-now)
+    // AUTO-SCOUR Ã¢â‚¬â€ RUN NOW (POST /auto-scour/run-now)
     // Starts a scour over enabled sources.
     // ------------------------------------------------------------------------
     if (path === "/auto-scour/run-now" && method === "POST") {
@@ -1077,7 +1077,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // SOURCES â€” GET ALL
+    // SOURCES Ã¢â‚¬â€ GET ALL
     // ------------------------------------------------------------------------
     if (path === "/sources" && method === "GET") {
       const limit = url.searchParams.get("limit") || "1000";
@@ -1086,7 +1086,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // SOURCES â€” CREATE
+    // SOURCES Ã¢â‚¬â€ CREATE
     // ------------------------------------------------------------------------
     if (path === "/sources" && method === "POST") {
       const body = await req.json().catch(() => ({}));
@@ -1106,7 +1106,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // SOURCES â€” BULK UPLOAD (with URL validation)
+    // SOURCES Ã¢â‚¬â€ BULK UPLOAD (with URL validation)
     // ------------------------------------------------------------------------
     if (path === "/sources/bulk" && method === "POST") {
       const body = await req.json().catch(() => ({}));
@@ -1137,7 +1137,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // SOURCES â€” BULK DELETE
+    // SOURCES Ã¢â‚¬â€ BULK DELETE
     // Body: { sourceIds: string[] }
     // ------------------------------------------------------------------------
     if (path === "/sources/bulk-delete" && method === "POST") {
@@ -1160,7 +1160,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // SOURCES â€” DELETE INVALID
+    // SOURCES Ã¢â‚¬â€ DELETE INVALID
     // ------------------------------------------------------------------------
     if (path === "/sources/delete-invalid" && method === "POST") {
       const allSources = (await querySupabaseRest(`/sources?select=id,name,url`)) || [];
@@ -1190,7 +1190,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // SOURCES â€” UPDATE (PATCH /sources/:id)
+    // SOURCES Ã¢â‚¬â€ UPDATE (PATCH /sources/:id)
     // ------------------------------------------------------------------------
     if (path.startsWith("/sources/") && method === "PATCH") {
       const id = path.split("/").pop()!;
@@ -1206,7 +1206,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // SOURCES â€” DELETE (DELETE /sources/:id)
+    // SOURCES Ã¢â‚¬â€ DELETE (DELETE /sources/:id)
     // ------------------------------------------------------------------------
     if (path.startsWith("/sources/") && method === "DELETE") {
       const id = path.split("/").pop()!;
@@ -1215,7 +1215,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // TRENDS â€” GET ALL
+    // TRENDS Ã¢â‚¬â€ GET ALL
     // ------------------------------------------------------------------------
     if (path === "/trends" && method === "GET") {
       const status = url.searchParams.get("status");
@@ -1227,7 +1227,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // TRENDS â€” GET ONE
+    // TRENDS Ã¢â‚¬â€ GET ONE
     // ------------------------------------------------------------------------
     if (path.startsWith("/trends/") && method === "GET") {
       const id = path.split("/").pop()!;
@@ -1237,7 +1237,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // TRENDS â€” CREATE
+    // TRENDS Ã¢â‚¬â€ CREATE
     // ------------------------------------------------------------------------
     if (path === "/trends" && method === "POST") {
       const body = await req.json().catch(() => ({}));
@@ -1257,7 +1257,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // TRENDS â€” UPDATE
+    // TRENDS Ã¢â‚¬â€ UPDATE
     // ------------------------------------------------------------------------
     if (path.startsWith("/trends/") && method === "PATCH") {
       const id = path.split("/").pop()!;
@@ -1271,7 +1271,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------------
-    // TRENDS â€” DELETE
+    // TRENDS Ã¢â‚¬â€ DELETE
     // ------------------------------------------------------------------------
     if (path.startsWith("/trends/") && method === "DELETE") {
       const id = path.split("/").pop()!;
@@ -1288,6 +1288,7 @@ Deno.serve(async (req) => {
 // ============================================================================
 // END SECTION 4 / 4
 // ============================================================================
+
 
 
 

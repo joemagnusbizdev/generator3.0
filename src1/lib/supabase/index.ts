@@ -1,4 +1,4 @@
-/// <reference lib="deno.unstable" />
+﻿/// <reference lib="deno.unstable" />
 
 console.log("=== Function starting ===");
 
@@ -1045,6 +1045,7 @@ Deno.serve(async (req) => {
     );
   }
 });
+
 
 
 
