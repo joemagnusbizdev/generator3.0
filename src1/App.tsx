@@ -40,16 +40,39 @@ export default function App(): JSX.Element {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        setAccessToken(data.session.access_token);
+  let mounted = true;
+
+  supabase.auth.getSession().then(({ data }) => {
+    if (!mounted) return;
+    if (data.session) {
+      setAccessToken(data.session.access_token);
+      setRole(
+        (data.session.user.user_metadata?.role as Role) ?? "operator"
+      );
+    }
+    setLoading(false);
+  });
+
+  const { data: listener } = supabase.auth.onAuthStateChange(
+    (_event, session) => {
+      if (!mounted) return;
+      if (session) {
+        setAccessToken(session.access_token);
         setRole(
-          (data.session.user.user_metadata?.role as Role) ?? "operator"
+          (session.user.user_metadata?.role as Role) ?? "operator"
         );
+      } else {
+        setAccessToken(null);
+        setRole("operator");
       }
-      setLoading(false);
-    });
-  }, []);
+    }
+  );
+
+  return () => {
+    mounted = false;
+    listener.subscription.unsubscribe();
+  };
+}, []);
 
   if (loading) return <div className="p-6">Loading...</div>;
   if (!accessToken) return <div className="p-6">Please log in.</div>;
@@ -123,6 +146,7 @@ export default function App(): JSX.Element {
     </ScourProvider>
   );
 }
+
 
 
 
