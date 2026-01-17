@@ -83,32 +83,43 @@ export default function App(): JSX.Element {
     "https://gnobnyzezkuyptuakztf.supabase.co/functions/v1/clever-function";
 
   return (
-  <ScourProvider accessToken={accessToken}>
+  <ScourProvider>
     <main className="p-4 space-y-4">
-      {/* Scour Status Bar */}
+      {/* =========================
+          Scour Status Bar
+      ========================= */}
       <ScourStatusBarInline />
 
-      {/* Tabs */}
+      {/* =========================
+          Tabs
+      ========================= */}
       <div className="flex gap-2 border-b pb-2">
         {permissions.canReview && (
           <button onClick={() => setTab("review")}>Review</button>
         )}
+
         {permissions.canCreate && (
           <button onClick={() => setTab("create")}>Create</button>
         )}
+
         {permissions.canManageSources && (
           <button onClick={() => setTab("sources")}>Sources</button>
         )}
+
         <button onClick={() => setTab("trends")}>Trends</button>
+
         {permissions.canAccessAnalytics && (
           <button onClick={() => setTab("analytics")}>Analytics</button>
         )}
+
         {permissions.canManageUsers && (
           <button onClick={() => setTab("admin")}>Admin</button>
         )}
       </div>
 
-      {/* Views */}
+      {/* =========================
+          Views
+      ========================= */}
       {tab === "review" && (
         <AlertReviewQueueInline permissions={permissions} />
       )}
@@ -135,19 +146,25 @@ export default function App(): JSX.Element {
       {tab === "analytics" && (
         <AnalyticsDashboardInline
           apiBase={API_BASE}
-          permissions={{ canAccessAnalytics: permissions.canAccessAnalytics }}
+          permissions={{
+            canAccessAnalytics: permissions.canAccessAnalytics,
+          }}
         />
       )}
 
       {tab === "admin" && (
         <UserManagementInline
           currentUserRole={role}
-          permissions={{ canManageUsers: permissions.canManageUsers }}
+          permissions={{
+            canManageUsers: permissions.canManageUsers,
+          }}
         />
       )}
     </main>
   </ScourProvider>
 );
 
-}
 
+
+
+}

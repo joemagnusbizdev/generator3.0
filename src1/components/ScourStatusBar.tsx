@@ -71,3 +71,4 @@ export function ScourStatusBar({ job, isRunning }: ScourStatusBarProps) {
     </div>
   );
 }
+

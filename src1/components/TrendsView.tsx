@@ -435,3 +435,4 @@ export function TrendsView({
 
 export default TrendsView;
 
+

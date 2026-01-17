@@ -16,3 +16,4 @@ export const supabase = createClient(
   SUPABASE_ANON_KEY
 );
 
+

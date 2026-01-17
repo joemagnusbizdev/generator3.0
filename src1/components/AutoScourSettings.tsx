@@ -249,3 +249,4 @@ export function AutoScourSettings({ accessToken, isAdmin }: AutoScourSettingsPro
     </div>
   );
 }
+

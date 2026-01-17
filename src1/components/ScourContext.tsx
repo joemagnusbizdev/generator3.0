@@ -244,3 +244,4 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
 };
 
 export default ScourContext;
+

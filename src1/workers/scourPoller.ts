@@ -134,3 +134,4 @@ self.onmessage = (event: MessageEvent) => {
 // Export empty object for module compatibility
 export {};
 
+

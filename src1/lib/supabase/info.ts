@@ -24,3 +24,4 @@ if (!publicAnonKey) {
 // Full Supabase URL
 export const supabaseUrl = projectId ? `https://${projectId}.supabase.co` : "";
 
+
