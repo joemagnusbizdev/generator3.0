@@ -1,5 +1,5 @@
-// Supabase project configuration
-// Set these in Vercel (Project Settings â†’ Environment Variables) and in your local .env file.
+﻿// Supabase project configuration
+// Set these in Vercel (Project Settings Ã¢â€ â€™ Environment Variables) and in your local .env file.
 // Required:
 //   VITE_SUPABASE_PROJECT_ID
 //   VITE_SUPABASE_ANON_KEY
@@ -23,3 +23,4 @@ if (!publicAnonKey) {
 
 // Full Supabase URL
 export const supabaseUrl = projectId ? `https://${projectId}.supabase.co` : "";
+

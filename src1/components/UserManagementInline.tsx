@@ -1,4 +1,4 @@
-/**
+﻿/**
  * UserManagementInline - Admin user management component
  * 
  * Users are stored in Supabase Auth with:
@@ -94,7 +94,7 @@ export function UserManagementInline({
   if (!permissions.canManageUsers || currentUserRole !== 'admin') {
     return (
       <div style={{ padding: '2rem', textAlign: 'center', color: colors.gray500 }}>
-        <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>ðŸ”’ Access Restricted</p>
+        <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>Ã°Å¸â€â€™ Access Restricted</p>
         <p>Only administrators can manage users.</p>
       </div>
     );
@@ -347,20 +347,20 @@ export function UserManagementInline({
     <div style={containerStyle}>
       {/* Header */}
       <div style={headerStyle}>
-        <h2 style={titleStyle}>ðŸ‘¥ User Management</h2>
+        <h2 style={titleStyle}>Ã°Å¸â€˜Â¥ User Management</h2>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button
             style={secondaryButtonStyle}
             onClick={refresh}
             disabled={loading}
           >
-            ðŸ”„ Refresh
+            Ã°Å¸â€â€ž Refresh
           </button>
           <button
             style={primaryButtonStyle}
             onClick={() => setShowAddForm(true)}
           >
-            âž• Add User
+            Ã¢Å¾â€¢ Add User
           </button>
         </div>
       </div>
@@ -439,7 +439,7 @@ export function UserManagementInline({
 
             {formError && (
               <div style={{ marginTop: '1rem', color: colors.red600, fontSize: '0.875rem' }}>
-                âš ï¸ {formError}
+                Ã¢Å¡Â Ã¯Â¸Â {formError}
               </div>
             )}
 
@@ -537,7 +537,7 @@ export function UserManagementInline({
                         onClick={() => handleDelete(user.id)}
                         disabled={busyId === user.id}
                       >
-                        ðŸ—‘ï¸ Delete
+                        Ã°Å¸â€”â€˜Ã¯Â¸Â Delete
                       </button>
                     </td>
                   </tr>
@@ -583,3 +583,4 @@ export function UserManagementInline({
 }
 
 export default UserManagementInline;
+

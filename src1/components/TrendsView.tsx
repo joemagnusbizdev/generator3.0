@@ -1,4 +1,4 @@
-/**
+﻿/**
  * TrendsView - Display and manage trends
  */
 import React, { useState, useEffect, useCallback } from 'react';
@@ -296,16 +296,16 @@ export function TrendsView({
 
               <div style={metaStyle}>
                 {trend.country && (
-                  <span>ðŸŒ {trend.country}</span>
+                  <span>Ã°Å¸Å’Â {trend.country}</span>
                 )}
                 {trend.region && (
-                  <span>ðŸ—ºï¸ {trend.region}</span>
+                  <span>Ã°Å¸â€”ÂºÃ¯Â¸Â {trend.region}</span>
                 )}
                 {trend.event_type && (
-                  <span>ðŸ“‹ {trend.event_type}</span>
+                  <span>Ã°Å¸â€œâ€¹ {trend.event_type}</span>
                 )}
                 {trend.incident_count != null && (
-                  <span>ðŸ“Š {trend.incident_count} incidents</span>
+                  <span>Ã°Å¸â€œÅ  {trend.incident_count} incidents</span>
                 )}
                 {trend.severity && (
                   <span style={{ 
@@ -313,7 +313,7 @@ export function TrendsView({
                     backgroundColor: colors.warning + '20',
                     borderRadius: '4px',
                   }}>
-                    âš ï¸ {trend.severity}
+                    Ã¢Å¡Â Ã¯Â¸Â {trend.severity}
                   </span>
                 )}
               </div>
@@ -377,7 +377,7 @@ export function TrendsView({
                     padding: '0.5rem 0.75rem',
                   }}
                 >
-                  {expandedId === trend.id ? 'â–² Collapse' : 'â–¼ Details'}
+                  {expandedId === trend.id ? 'Ã¢â€“Â² Collapse' : 'Ã¢â€“Â¼ Details'}
                 </button>
                 
                 <button
@@ -390,7 +390,7 @@ export function TrendsView({
                     opacity: exportingId === trend.id ? 0.7 : 1,
                   }}
                 >
-                  {exportingId === trend.id ? 'â³ Generating...' : 'ðŸ“„ Export Report'}
+                  {exportingId === trend.id ? 'Ã¢ÂÂ³ Generating...' : 'Ã°Å¸â€œâ€ž Export Report'}
                 </button>
               </div>
               
@@ -434,3 +434,4 @@ export function TrendsView({
 }
 
 export default TrendsView;
+

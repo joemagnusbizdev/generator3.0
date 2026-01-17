@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { apiFetchJson } from '../lib/utils/api';
 import { useScour } from './ScourContext';
 import { SourceBulkUpload } from './SourceBulkUpload';
@@ -48,7 +48,7 @@ const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
 
       if (response.ok && Array.isArray(response.sources)) {
         setSources(response.sources);
-        console.log(`ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Loaded ${response.sources.length} sources`);
+        console.log(`ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Loaded ${response.sources.length} sources`);
       } else {
         console.warn('Invalid response format:', response);
         setSources([]);
@@ -67,10 +67,10 @@ const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
   }, [accessToken]);
 
   const handleStartScour = async () => {
-    console.log('ðŸ” handleStartScour called');
-    console.log('ðŸ“Š sources state:', sources);
-    console.log('ðŸ“Š sources.length:', sources.length);
-    console.log('âœ… canScour:', canScour);
+    console.log('Ã°Å¸â€Â handleStartScour called');
+    console.log('Ã°Å¸â€œÅ  sources state:', sources);
+    console.log('Ã°Å¸â€œÅ  sources.length:', sources.length);
+    console.log('Ã¢Å“â€¦ canScour:', canScour);
     
     if (!canScour) {
       alert('You do not have permission to run scour operations.');
@@ -78,15 +78,15 @@ const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
     }
 
     const enabledSources = sources.filter(s => s.enabled);
-    console.log('âœ… enabledSources:', enabledSources.length);
-    console.log('ðŸ“‹ enabledSources IDs:', enabledSources.map(s => s.id));
+    console.log('Ã¢Å“â€¦ enabledSources:', enabledSources.length);
+    console.log('Ã°Å¸â€œâ€¹ enabledSources IDs:', enabledSources.map(s => s.id));
     
     if (enabledSources.length === 0) {
       alert('No enabled sources available. Please enable at least one source before scouring.');
       return;
     }
 
-    console.log(`ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬ Starting scour with ${enabledSources.length} enabled sources:`, 
+    console.log(`ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â¡ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Starting scour with ${enabledSources.length} enabled sources:`, 
       enabledSources.map(s => s.name).join(', ')
     );
 
@@ -195,7 +195,7 @@ const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
             cursor: (isScouring || !canScour || sources.length === 0) ? 'not-allowed' : 'pointer',
           }}
         >
-          {isScouring ? 'ÃƒÂ¢Ã‚ÂÃ‚Â³ Scouring...' : 'ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â Start Scour'}
+          {isScouring ? 'ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â³ Scouring...' : 'ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â Start Scour'}
         </button>
 
         <button
@@ -206,7 +206,7 @@ const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
             opacity: loading ? 0.5 : 1,
           }}
         >
-          ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Å¾ Refresh Sources
+          ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾ Refresh Sources
         </button>
 
         {sources.length > 0 && (
@@ -233,7 +233,7 @@ const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
           
           {sources.length === 0 ? (
             <div style={emptyStateStyle}>
-              <div style={{ fontSize: '48px', marginBottom: '16px' }}>ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â°</div>
+              <div style={{ fontSize: '48px', marginBottom: '16px' }}>ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€šÃ‚Â°</div>
               <div style={{ fontSize: '16px', fontWeight: 500, marginBottom: '8px' }}>
                 No sources configured
               </div>

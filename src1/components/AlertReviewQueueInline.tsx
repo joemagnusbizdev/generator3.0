@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import GeoJsonPreview from "./GeoJsonPreview";
 
 /* =========================
@@ -57,7 +57,7 @@ const SEVERITY_META: Record<
   { emoji: string; label: string; color: string }
 > = {
   critical: { emoji: "🔴", label: "CRITICAL", color: "bg-red-600" },
-  warning: { emoji: "🟠", label: "WARNING", color: "bg-orange-500" },
+  warning: { emoji: "ðŸŸ ", label: "WARNING", color: "bg-orange-500" },
   caution: { emoji: "🟡", label: "CAUTION", color: "bg-yellow-500" },
   informative: { emoji: "🔵", label: "INFO", color: "bg-blue-500" },
 };
@@ -65,7 +65,7 @@ const SEVERITY_META: Record<
 function formatDateRange(a: Alert) {
   const start = a.event_start_date || "";
   const end = a.event_end_date || "";
-  if (start && end) return `${start} → ${end}`;
+  if (start && end) return `${start} â†’ ${end}`;
   if (start && !end) return `${start} (ongoing)`;
   if (!start && end) return `until ${end}`;
   return "Ongoing";
@@ -104,6 +104,23 @@ ${sources ? `Sources:\n${sources}` : ""}
 /* =========================
    Component
 ========================= */
+{permissions.canScour && (
+  <div className="flex justify-end mb-3">
+    <button
+      onClick={async () => {
+        await fetch(`${API_BASE}/scour-sources`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        window.alert("Scour started");
+      }}
+      className="px-4 py-2 bg-indigo-600 text-white rounded"
+    >
+      Run Scour
+    </button>
+  </div>
+)}
 
 export default function AlertReviewQueueInline({ permissions }: Props) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -227,7 +244,7 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
     return <div className="p-4 text-gray-500">No review permissions</div>;
   }
 
-  if (loading) return <div className="p-6">Loading alerts…</div>;
+  if (loading) return <div className="p-6">Loading alertsâ€¦</div>;
 
   if (error) {
     return (
@@ -343,7 +360,7 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
                     }
                   >
                     <option value="critical">🔴 Critical</option>
-                    <option value="warning">🟠 Warning</option>
+                    <option value="warning">ðŸŸ  Warning</option>
                     <option value="caution">🟡 Caution</option>
                     <option value="informative">🔵 Informative</option>
                   </select>
@@ -378,7 +395,7 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
                 {/* Topic */}
                 <div className="text-xs text-gray-600">
                   <strong>Topic:</strong> {a.event_type || "General"}{" "}
-                  • <strong>When:</strong> {formatDateRange(a)}
+                  â€¢ <strong>When:</strong> {formatDateRange(a)}
                 </div>
 
                 {/* Summary */}
@@ -432,7 +449,7 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
                       rel="noreferrer"
                       className="underline"
                     >
-                      View article →
+                      View article â†’
                     </a>
                   )}
                 </div>
@@ -533,3 +550,4 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
     </div>
   );
 }
+

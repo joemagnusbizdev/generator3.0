@@ -1,4 +1,4 @@
-/**
+﻿/**
  * EnhancedAlertCard - Display component for alert items
  */
 import React from 'react';
@@ -146,19 +146,19 @@ export function EnhancedAlertCard({
 
       <div style={metaStyle}>
         {alert.location && (
-          <span>ðŸ“ {alert.location}</span>
+          <span>Ã°Å¸â€œÂ {alert.location}</span>
         )}
         {alert.country && !alert.location && (
-          <span>ðŸŒ {alert.country}</span>
+          <span>Ã°Å¸Å’Â {alert.country}</span>
         )}
         {alert.region && (
-          <span>ðŸ—ºï¸ {alert.region}</span>
+          <span>Ã°Å¸â€”ÂºÃ¯Â¸Â {alert.region}</span>
         )}
         {alert.event_type && (
-          <span>ðŸ“‹ {alert.event_type}</span>
+          <span>Ã°Å¸â€œâ€¹ {alert.event_type}</span>
         )}
         {alert.created_at && (
-          <span>ðŸ•’ {new Date(alert.created_at).toLocaleDateString()}</span>
+          <span>Ã°Å¸â€¢â€™ {new Date(alert.created_at).toLocaleDateString()}</span>
         )}
         {alert.status && (
           <span style={{ 
@@ -181,7 +181,7 @@ export function EnhancedAlertCard({
               rel="noopener noreferrer"
               style={linkStyle}
             >
-              View Source â†’
+              View Source Ã¢â€ â€™
             </a>
           )}
           {alert.sourceUrl && alert.articleUrl && <span style={{ margin: '0 0.5rem' }}>|</span>}
@@ -192,7 +192,7 @@ export function EnhancedAlertCard({
               rel="noopener noreferrer"
               style={linkStyle}
             >
-              View Article â†’
+              View Article Ã¢â€ â€™
             </a>
           )}
         </div>
@@ -234,3 +234,4 @@ export function EnhancedAlertCard({
 }
 
 export default EnhancedAlertCard;
+

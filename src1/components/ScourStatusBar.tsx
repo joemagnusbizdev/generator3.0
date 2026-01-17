@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 
 interface ScourStatusBarProps {
   job: {
@@ -28,7 +28,7 @@ export function ScourStatusBar({ job, isRunning }: ScourStatusBarProps) {
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
         <h4 style={{ margin: 0, fontSize: '1rem' }}>
-          {isComplete ? 'âœ… Scour Complete' : 'ðŸ”„ Scour in Progress'}
+          {isComplete ? 'Ã¢Å“â€¦ Scour Complete' : 'Ã°Å¸â€â€ž Scour in Progress'}
         </h4>
         {job?.ai_engaged && (
           <span style={{
@@ -39,7 +39,7 @@ export function ScourStatusBar({ job, isRunning }: ScourStatusBarProps) {
             fontSize: '0.75rem',
             fontWeight: 'bold'
           }}>
-            ðŸ¤– AI ENGAGED
+            Ã°Å¸Â¤â€“ AI ENGAGED
           </span>
         )}
       </div>
@@ -64,7 +64,7 @@ export function ScourStatusBar({ job, isRunning }: ScourStatusBarProps) {
 
           <div style={{ fontSize: '0.875rem', color: '#666' }}>
             <strong>{job.processed}</strong> / {job.total} sources processed
-            {job.created > 0 && ` â€¢ ${job.created} alerts created`}
+            {job.created > 0 && ` Ã¢â‚¬Â¢ ${job.created} alerts created`}
           </div>
         </>
       )}

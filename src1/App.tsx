@@ -1,4 +1,4 @@
-// src1/App.tsx
+﻿// src1/App.tsx
 import React, { useEffect, useState } from "react";
 import { supabase } from "./lib/supabase/client";
 
@@ -75,7 +75,7 @@ export default function App(): JSX.Element {
     });
   }, []);
 
-  if (loading) return <div className="p-6">Loading…</div>;
+  if (loading) return <div className="p-6">Loadingâ€¦</div>;
   if (!accessToken) return <div className="p-6">Please log in.</div>;
 
   const permissions = getPermissions(role);
@@ -150,3 +150,4 @@ export default function App(): JSX.Element {
 );
 
 }
+

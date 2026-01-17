@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Web Worker for polling scour job status
  * This worker runs in a separate thread to avoid blocking the UI
  */
@@ -133,3 +133,4 @@ self.onmessage = (event: MessageEvent) => {
 
 // Export empty object for module compatibility
 export {};
+
