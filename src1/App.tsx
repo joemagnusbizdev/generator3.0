@@ -83,69 +83,70 @@ export default function App(): JSX.Element {
     "https://gnobnyzezkuyptuakztf.supabase.co/functions/v1/clever-function";
 
   return (
-    <ScourProvider apiBase={API_BASE} accessToken={accessToken}>
-      <main className="p-4 space-y-4">
-        {/* Scour Status Bar */}
-        <ScourStatusBarInline />
+  <ScourProvider accessToken={accessToken}>
+    <main className="p-4 space-y-4">
+      {/* Scour Status Bar */}
+      <ScourStatusBarInline />
 
-        {/* Tabs */}
-        <div className="flex gap-2 border-b pb-2">
-          {permissions.canReview && (
-            <button onClick={() => setTab("review")}>Review</button>
-          )}
-          {permissions.canCreate && (
-            <button onClick={() => setTab("create")}>Create</button>
-          )}
-          {permissions.canManageSources && (
-            <button onClick={() => setTab("sources")}>Sources</button>
-          )}
-          <button onClick={() => setTab("trends")}>Trends</button>
-          {permissions.canAccessAnalytics && (
-            <button onClick={() => setTab("analytics")}>Analytics</button>
-          )}
-          {permissions.canManageUsers && (
-            <button onClick={() => setTab("admin")}>Admin</button>
-          )}
-        </div>
-
-        {/* Views */}
-        {tab === "review" && (
-          <AlertReviewQueueInline permissions={permissions} />
+      {/* Tabs */}
+      <div className="flex gap-2 border-b pb-2">
+        {permissions.canReview && (
+          <button onClick={() => setTab("review")}>Review</button>
         )}
-
-        {tab === "create" && (
-          <AlertCreateInline
-            accessToken={accessToken}
-            permissions={{ canCreate: permissions.canCreate }}
-          />
+        {permissions.canCreate && (
+          <button onClick={() => setTab("create")}>Create</button>
         )}
-
-        {tab === "sources" && (
-          <SourceManagerInline
-            accessToken={accessToken}
-            permissions={{
-              canManageSources: permissions.canManageSources,
-              canScour: permissions.canScour,
-            }}
-          />
+        {permissions.canManageSources && (
+          <button onClick={() => setTab("sources")}>Sources</button>
         )}
-
-        {tab === "trends" && <TrendsView />}
-
-        {tab === "analytics" && (
-          <AnalyticsDashboardInline
-            apiBase={API_BASE}
-            permissions={{ canAccessAnalytics: permissions.canAccessAnalytics }}
-          />
+        <button onClick={() => setTab("trends")}>Trends</button>
+        {permissions.canAccessAnalytics && (
+          <button onClick={() => setTab("analytics")}>Analytics</button>
         )}
-
-        {tab === "admin" && (
-          <UserManagementInline
-            currentUserRole={role}
-            permissions={{ canManageUsers: permissions.canManageUsers }}
-          />
+        {permissions.canManageUsers && (
+          <button onClick={() => setTab("admin")}>Admin</button>
         )}
-      </main>
-    </ScourProvider>
-  );
+      </div>
+
+      {/* Views */}
+      {tab === "review" && (
+        <AlertReviewQueueInline permissions={permissions} />
+      )}
+
+      {tab === "create" && (
+        <AlertCreateInline
+          accessToken={accessToken}
+          permissions={{ canCreate: permissions.canCreate }}
+        />
+      )}
+
+      {tab === "sources" && (
+        <SourceManagerInline
+          accessToken={accessToken}
+          permissions={{
+            canManageSources: permissions.canManageSources,
+            canScour: permissions.canScour,
+          }}
+        />
+      )}
+
+      {tab === "trends" && <TrendsView />}
+
+      {tab === "analytics" && (
+        <AnalyticsDashboardInline
+          apiBase={API_BASE}
+          permissions={{ canAccessAnalytics: permissions.canAccessAnalytics }}
+        />
+      )}
+
+      {tab === "admin" && (
+        <UserManagementInline
+          currentUserRole={role}
+          permissions={{ canManageUsers: permissions.canManageUsers }}
+        />
+      )}
+    </main>
+  </ScourProvider>
+);
+
 }
