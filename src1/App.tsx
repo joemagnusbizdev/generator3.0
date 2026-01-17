@@ -1,4 +1,6 @@
 ﻿import React, { useEffect, useState } from "react";
+import { Auth } from "@supabase/auth-ui-react";
+import { ThemeSupa } from "@supabase/auth-ui-shared";
 import { createClient } from "@supabase/supabase-js";
 
 import AlertReviewQueueInline from "./components/AlertReviewQueueInline";
@@ -75,7 +77,19 @@ export default function App(): JSX.Element {
 }, []);
 
   if (loading) return <div className="p-6">Loading...</div>;
-  if (!accessToken) return <div className="p-6">Please log in.</div>;
+  if (!accessToken) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="w-full max-w-md bg-white p-6 rounded shadow">
+        <Auth
+          supabaseClient={supabase}
+          appearance={{ theme: ThemeSupa }}
+          providers={[]}
+        />
+      </div>
+    </div>
+  );
+}
 
   const permissions = getPermissions(role);
 
@@ -146,6 +160,7 @@ export default function App(): JSX.Element {
     </ScourProvider>
   );
 }
+
 
 
 
