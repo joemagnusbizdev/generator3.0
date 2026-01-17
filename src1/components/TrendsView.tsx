@@ -296,16 +296,16 @@ export function TrendsView({
 
               <div style={metaStyle}>
                 {trend.country && (
-                  <span>ÃƒÂ°Ã…Â¸Ã…â€™Ã‚Â {trend.country}</span>
+                  <span> {trend.country}</span>
                 )}
                 {trend.region && (
-                  <span>ÃƒÂ°Ã…Â¸Ã¢â‚¬â€Ã‚ÂºÃƒÂ¯Ã‚Â¸Ã‚Â {trend.region}</span>
+                  <span> {trend.region}</span>
                 )}
                 {trend.event_type && (
-                  <span>ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Â¹ {trend.event_type}</span>
+                  <span> {trend.event_type}</span>
                 )}
                 {trend.incident_count != null && (
-                  <span>ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã…Â  {trend.incident_count} incidents</span>
+                  <span> {trend.incident_count} incidents</span>
                 )}
                 {trend.severity && (
                   <span style={{ 
@@ -313,7 +313,7 @@ export function TrendsView({
                     backgroundColor: colors.warning + '20',
                     borderRadius: '4px',
                   }}>
-                    ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â {trend.severity}
+                     {trend.severity}
                   </span>
                 )}
               </div>
@@ -377,7 +377,7 @@ export function TrendsView({
                     padding: '0.5rem 0.75rem',
                   }}
                 >
-                  {expandedId === trend.id ? 'ÃƒÂ¢Ã¢â‚¬â€œÃ‚Â² Collapse' : 'ÃƒÂ¢Ã¢â‚¬â€œÃ‚Â¼ Details'}
+                  {expandedId === trend.id ? ' Collapse' : ' Details'}
                 </button>
                 
                 <button
@@ -390,7 +390,7 @@ export function TrendsView({
                     opacity: exportingId === trend.id ? 0.7 : 1,
                   }}
                 >
-                  {exportingId === trend.id ? 'ÃƒÂ¢Ã‚ÂÃ‚Â³ Generating...' : 'ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Å¾ Export Report'}
+                  {exportingId === trend.id ? ' Generating...' : ' Export Report'}
                 </button>
               </div>
               
@@ -434,6 +434,7 @@ export function TrendsView({
 }
 
 export default TrendsView;
+
 
 
 

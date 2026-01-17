@@ -18,10 +18,11 @@ export default function ScourStatusBarInline() {
 
   return (
     <div className="p-2 bg-gray-100 border rounded text-sm">
-      Ã°Å¸â€Â Scour: {status.job.processed}/{status.job.total} processed
+       Scour: {status.job.processed}/{status.job.total} processed
     </div>
   );
 }
+
 
 
 

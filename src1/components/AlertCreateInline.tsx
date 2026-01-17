@@ -538,7 +538,7 @@ export default function AlertCreateInline({
 
     return (
       <div style={sectionStyle}>
-        <h3 style={sectionTitleStyle}>ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Å¾ WordPress Export Preview</h3>
+        <h3 style={sectionTitleStyle}> WordPress Export Preview</h3>
         <div style={{ 
           padding: '1rem', 
           backgroundColor: colors.gray50, 
@@ -590,20 +590,20 @@ export default function AlertCreateInline({
 
       {success && (
         <div style={successBoxStyle}>
-          <strong>ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“</strong> {success}
+          <strong></strong> {success}
         </div>
       )}
 
       {validation.warnings.length > 0 && (
         <div style={warningBoxStyle}>
-          <strong>ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Warning:</strong> {validation.warnings.join('. ')}
+          <strong> Warning:</strong> {validation.warnings.join('. ')}
         </div>
       )}
 
       <form onSubmit={handleSubmit}>
         {/* Basic Info Section */}
         <div style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Â¹ Basic Information</h3>
+          <h3 style={sectionTitleStyle}> Basic Information</h3>
           
           <div style={fieldStyle}>
             <label style={labelStyle}>
@@ -707,7 +707,7 @@ export default function AlertCreateInline({
 
         {/* Content Section */}
         <div style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â Content</h3>
+          <h3 style={sectionTitleStyle}> Content</h3>
           
           <div style={fieldStyle}>
             <label style={labelStyle}>
@@ -751,7 +751,7 @@ export default function AlertCreateInline({
                       cursor: 'pointer',
                     }}
                   >
-                    ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¢
+                    
                   </button>
                 )}
               </div>
@@ -776,7 +776,7 @@ export default function AlertCreateInline({
 
         {/* Sources Section */}
         <div style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬â€ Sources</h3>
+          <h3 style={sectionTitleStyle}> Sources</h3>
           
           {formData.sources.map((source, index) => (
             <div key={index} style={{ 
@@ -817,7 +817,7 @@ export default function AlertCreateInline({
                     cursor: 'pointer',
                   }}
                 >
-                  ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¢
+                  
                 </button>
               )}
             </div>
@@ -841,7 +841,7 @@ export default function AlertCreateInline({
 
         {/* Geo Section */}
         <div style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>ÃƒÂ°Ã…Â¸Ã¢â‚¬â€Ã‚ÂºÃƒÂ¯Ã‚Â¸Ã‚Â Geographic Data (Optional)</h3>
+          <h3 style={sectionTitleStyle}> Geographic Data (Optional)</h3>
           
           <div style={gridStyle}>
             <div style={fieldStyle}>
@@ -902,7 +902,7 @@ export default function AlertCreateInline({
 
         {/* Dates Section */}
         <div style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Â¦ Event Dates (Optional)</h3>
+          <h3 style={sectionTitleStyle}> Event Dates (Optional)</h3>
           
           <div style={gridStyle}>
             <div style={fieldStyle}>
@@ -979,6 +979,7 @@ export default function AlertCreateInline({
 
 // Named export for flexibility
 export { AlertCreateInline };
+
 
 
 

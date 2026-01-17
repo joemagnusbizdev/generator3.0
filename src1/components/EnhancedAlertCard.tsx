@@ -146,19 +146,19 @@ export function EnhancedAlertCard({
 
       <div style={metaStyle}>
         {alert.location && (
-          <span>ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â {alert.location}</span>
+          <span> {alert.location}</span>
         )}
         {alert.country && !alert.location && (
-          <span>ÃƒÂ°Ã…Â¸Ã…â€™Ã‚Â {alert.country}</span>
+          <span> {alert.country}</span>
         )}
         {alert.region && (
-          <span>ÃƒÂ°Ã…Â¸Ã¢â‚¬â€Ã‚ÂºÃƒÂ¯Ã‚Â¸Ã‚Â {alert.region}</span>
+          <span> {alert.region}</span>
         )}
         {alert.event_type && (
-          <span>ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Â¹ {alert.event_type}</span>
+          <span> {alert.event_type}</span>
         )}
         {alert.created_at && (
-          <span>ÃƒÂ°Ã…Â¸Ã¢â‚¬Â¢Ã¢â‚¬â„¢ {new Date(alert.created_at).toLocaleDateString()}</span>
+          <span> {new Date(alert.created_at).toLocaleDateString()}</span>
         )}
         {alert.status && (
           <span style={{ 
@@ -181,7 +181,7 @@ export function EnhancedAlertCard({
               rel="noopener noreferrer"
               style={linkStyle}
             >
-              View Source ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢
+              View Source 
             </a>
           )}
           {alert.sourceUrl && alert.articleUrl && <span style={{ margin: '0 0.5rem' }}>|</span>}
@@ -192,7 +192,7 @@ export function EnhancedAlertCard({
               rel="noopener noreferrer"
               style={linkStyle}
             >
-              View Article ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢
+              View Article 
             </a>
           )}
         </div>
@@ -234,6 +234,7 @@ export function EnhancedAlertCard({
 }
 
 export default EnhancedAlertCard;
+
 
 
 

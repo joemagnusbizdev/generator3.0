@@ -28,7 +28,7 @@ export function ScourStatusBar({ job, isRunning }: ScourStatusBarProps) {
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
         <h4 style={{ margin: 0, fontSize: '1rem' }}>
-          {isComplete ? 'ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Scour Complete' : 'ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Å¾ Scour in Progress'}
+          {isComplete ? ' Scour Complete' : ' Scour in Progress'}
         </h4>
         {job?.ai_engaged && (
           <span style={{
@@ -39,7 +39,7 @@ export function ScourStatusBar({ job, isRunning }: ScourStatusBarProps) {
             fontSize: '0.75rem',
             fontWeight: 'bold'
           }}>
-            ÃƒÂ°Ã…Â¸Ã‚Â¤Ã¢â‚¬â€œ AI ENGAGED
+             AI ENGAGED
           </span>
         )}
       </div>
@@ -64,13 +64,14 @@ export function ScourStatusBar({ job, isRunning }: ScourStatusBarProps) {
 
           <div style={{ fontSize: '0.875rem', color: '#666' }}>
             <strong>{job.processed}</strong> / {job.total} sources processed
-            {job.created > 0 && ` ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ ${job.created} alerts created`}
+            {job.created > 0 && `  ${job.created} alerts created`}
           </div>
         </>
       )}
     </div>
   );
 }
+
 
 
 

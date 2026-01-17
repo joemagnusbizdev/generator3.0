@@ -100,9 +100,9 @@ export function SourceTable({ sources, onSourceUpdated, accessToken }: SourceTab
                   {testResult && (
                     <div style={{ marginTop: '0.25rem', fontSize: '0.75rem' }}>
                       {testResult.ok ? (
-                        <span style={{ color: '#16a34a' }}>ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“ OK {testResult.status ? `(${testResult.status})` : ''}</span>
+                        <span style={{ color: '#16a34a' }}> OK {testResult.status ? `(${testResult.status})` : ''}</span>
                       ) : (
-                        <span style={{ color: '#dc2626' }}>ÃƒÂ¢Ã…â€œÃ¢â‚¬â€ UNREACHABLE</span>
+                        <span style={{ color: '#dc2626' }}> UNREACHABLE</span>
                       )}
                     </div>
                   )}
@@ -179,6 +179,7 @@ export function SourceTable({ sources, onSourceUpdated, accessToken }: SourceTab
     </div>
   );
 }
+
 
 
 

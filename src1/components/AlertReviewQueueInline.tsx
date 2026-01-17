@@ -56,16 +56,16 @@ const SEVERITY_META: Record<
   Alert["severity"],
   { emoji: string; label: string; color: string }
 > = {
-  critical: { emoji: "Ã°Å¸â€Â´", label: "CRITICAL", color: "bg-red-600" },
-  warning: { emoji: "Ã°Å¸Å¸Â ", label: "WARNING", color: "bg-orange-500" },
-  caution: { emoji: "Ã°Å¸Å¸Â¡", label: "CAUTION", color: "bg-yellow-500" },
-  informative: { emoji: "Ã°Å¸â€Âµ", label: "INFO", color: "bg-blue-500" },
+  critical: { emoji: "", label: "CRITICAL", color: "bg-red-600" },
+  warning: { emoji: "", label: "WARNING", color: "bg-orange-500" },
+  caution: { emoji: "", label: "CAUTION", color: "bg-yellow-500" },
+  informative: { emoji: "", label: "INFO", color: "bg-blue-500" },
 };
 
 function formatDateRange(a: Alert) {
   const start = a.event_start_date || "";
   const end = a.event_end_date || "";
-  if (start && end) return `${start} Ã¢â€ â€™ ${end}`;
+  if (start && end) return `${start}  ${end}`;
   if (start && !end) return `${start} (ongoing)`;
   if (!start && end) return `until ${end}`;
   return "Ongoing";
@@ -194,7 +194,7 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
     return <div className="p-4 text-gray-500">No review permissions</div>;
   }
 
-  if (loading) return <div className="p-6">Loading alertsÃ¢â‚¬Â¦</div>;
+  if (loading) return <div className="p-6">Loading alerts</div>;
 
   if (error) {
     return (
@@ -349,6 +349,7 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
     </div>
   );
 }
+
 
 
 

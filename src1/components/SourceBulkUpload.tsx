@@ -147,7 +147,7 @@ export function SourceBulkUpload({ onUploadComplete, accessToken }: SourceBulkUp
           marginTop: '1rem',
           border: '1px solid #c3e6cb'
         }}>
-          Ã¢Å“â€¦ {success}
+           {success}
         </div>
       )}
 
@@ -160,12 +160,13 @@ export function SourceBulkUpload({ onUploadComplete, accessToken }: SourceBulkUp
           marginTop: '1rem',
           border: '1px solid #f5c6cb'
         }}>
-          Ã¢ÂÅ’ {error}
+           {error}
         </div>
       )}
     </div>
   );
 }
+
 
 
 
