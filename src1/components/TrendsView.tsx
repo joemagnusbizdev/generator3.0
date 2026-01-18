@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useState } from "react";
-import { apiFetchJson } from "../lib/utils/api";
+import { apiFetchJson, apiPostJson } from "../lib/utils/api";
 
 interface Trend {
   id: string;
@@ -10,39 +10,51 @@ interface Trend {
   last_seen_at: string;
 }
 
-export default function TrendsView({
-  accessToken,
-}: {
-  accessToken?: string;
-}) {
+export default function TrendsView({ accessToken }: { accessToken?: string }) {
   const [trends, setTrends] = useState<Trend[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const load = async () => {
     if (!accessToken) return;
+    setLoading(true);
+    const res = await apiFetchJson<{ ok: boolean; trends: Trend[] }>(
+      "/trends",
+      accessToken
+    );
+    setTrends(res.trends || []);
+    setLoading(false);
+  };
 
-    apiFetchJson<Trend[]>("/trends", accessToken)
-      .then(setTrends)
-      .finally(() => setLoading(false));
+  useEffect(() => {
+    load();
   }, [accessToken]);
+
+  const rebuild = async () => {
+    await apiPostJson("/trends/rebuild", {}, accessToken);
+    load();
+  };
 
   if (loading) return <div className="p-4">Loading trends…</div>;
 
-  if (!trends.length) {
-    return (
-      <div className="p-6 text-gray-500">
-        No trends detected (requires ≥ 3 related alerts in 7 days)
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-3">
-      {trends.map((t) => (
-        <div
-          key={t.id}
-          className="border rounded p-4 bg-white shadow-sm"
+      <div className="flex justify-end">
+        <button
+          onClick={rebuild}
+          className="px-3 py-1 bg-indigo-600 text-white rounded"
         >
+          Rebuild Trends
+        </button>
+      </div>
+
+      {!trends.length && (
+        <div className="text-gray-500 p-4">
+          No trends detected yet
+        </div>
+      )}
+
+      {trends.map((t) => (
+        <div key={t.id} className="border rounded p-4 bg-white">
           <div className="font-semibold">
             {t.country} — {t.category}
           </div>
