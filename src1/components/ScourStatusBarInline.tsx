@@ -2,32 +2,63 @@
 import { useScour } from "./ScourContext";
 
 export default function ScourStatusBarInline() {
-  const { isScouring, scourJob, lastResult, lastError } = useScour();
+  const {
+    isScouring,
+    scourJob,
+    lastResult,
+    lastError,
+    lastStartedAt,
+    lastFinishedAt,
+  } = useScour();
 
-  if (!isScouring && !scourJob && !lastResult && !lastError) return null;
+  // 🚨 KEY FIX: never hide while job exists
+  if (
+    !isScouring &&
+    !scourJob &&
+    !lastResult &&
+    !lastError
+  ) {
+    return null;
+  }
 
   return (
-    <div className="p-3 rounded border bg-gray-50 text-sm">
+    <div className="border rounded bg-slate-50 px-4 py-3 text-sm space-y-1">
+      <div className="font-semibold">
+        🔍 AI Scour Status
+      </div>
+
       {isScouring && scourJob && (
         <div>
-          <strong>Scouring:</strong>{" "}
-          {scourJob.processed}/{scourJob.total} processed
+          Running… {scourJob.processed}/{scourJob.total} sources processed
         </div>
       )}
 
-      {lastResult && (
-        <div>
-          <strong>Scour complete:</strong>{" "}
-          {lastResult.created} created ·{" "}
-          {lastResult.duplicatesSkipped} duplicates
+      {!isScouring && lastResult && (
+        <div className="text-green-700">
+          ✅ Completed — {lastResult.created} alerts created ·{" "}
+          {lastResult.duplicatesSkipped} duplicates skipped
         </div>
       )}
 
       {lastError && (
-        <div className="text-red-600">
-          <strong>Error:</strong> {lastError}
+        <div className="text-red-700">
+          ❌ {lastError}
+        </div>
+      )}
+
+      {lastStartedAt && (
+        <div className="text-xs text-gray-500">
+          Started: {new Date(lastStartedAt).toLocaleString()}
+        </div>
+      )}
+
+      {lastFinishedAt && (
+        <div className="text-xs text-gray-500">
+          Finished: {new Date(lastFinishedAt).toLocaleString()}
         </div>
       )}
     </div>
   );
+}
+
 }

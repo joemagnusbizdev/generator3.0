@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useState } from "react";
+﻿import { useScour } from "./ScourContext";
+import React, { useEffect, useState } from "react";
 import GeoJsonPreview from "./GeoJsonPreview";
 
 /* =========================
@@ -210,10 +211,9 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
     );
   }
 
-  import { useScour } from "./ScourContext";
 
-/* …inside component… */
-const { startScour, isScouring } = useScour();
+
+const { startScour, isScouring, accessToken } = useScour() as any;
 
 return (
   <div className="space-y-4">
@@ -344,4 +344,8 @@ return (
     })}
   </div>
 );
+
+
+}
+
 
