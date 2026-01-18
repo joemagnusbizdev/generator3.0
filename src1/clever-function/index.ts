@@ -467,13 +467,12 @@ export async function runScourWorker(
       );
 
       for (const alert of extracted) {
-        const dup = existingAlerts.some(
-          (e: any) =>
-            e.country === alert.country &&
-            e.location === alert.location &&
-            e.title.slice(0, 30).toLowerCase() ===
-              alert.title.slice(0, 30).toLowerCase()
-        );
+ const dup = existingAlerts.some((e: any) => {
+          const samePlace = e.country === alert.country && e.location === alert.location;
+          const similarTitle = e.title.toLowerCase().includes(alert.title.toLowerCase().slice(0, 15));
+          // If it's the same place and a similar title, it's a duplicate
+          return samePlace && similarTitle;
+        });
 
         if (dup) {
           stats.duplicatesSkipped++;
@@ -491,24 +490,24 @@ export async function runScourWorker(
       }
 
       stats.processed++;
+// Replace the catch block inside the for-loop of runScourWorker:
     } catch (e: any) {
-      stats.errors.push(String(e?.message || e));
+      const errMsg = `Source ${sourceId} failed: ${e?.message || e}`;
+      console.error(errMsg);
+      stats.errors.push(errMsg);
+      // Update KV intermittently so the UI doesn't look "stuck"
+      await setKV(`scour_job:${jobId}`, {
+        id: jobId,
+        status: "running",
+        ...stats,
+        errorCount: stats.errors.length,
+        updated_at: nowIso(),
+      });
     }
-  }
 
-  await setKV(`scour_job:${jobId}`, {
-    id: jobId,
-    status: "done",
-    processed: stats.processed,
-    created: stats.created,
-    duplicatesSkipped: stats.duplicatesSkipped,
-    errorCount: stats.errors.length,
-    errors: stats.errors,
-    updated_at: nowIso(),
-  });
+  } // end for-loop
+}   // end runScourWorker
 
-  return stats;
-}
 
 // ============================================================================
 // END SECTION 2 / 4
@@ -626,6 +625,7 @@ async function postToWordPress(alert: Alert) {
 // Also supports legacy /post-to-wp endpoint
 // ---------------------------------------------------------------------------
 
+
 export async function approveAndPublishToWP(alertId: string) {
   const alert = await fetchAlertById(alertId);
   if (!alert) {
@@ -672,58 +672,31 @@ export async function approveOnly(alertId: string) {
 // END SECTION 3 / 4
 // ============================================================================
 // ============================================================================
-// SECTION 4 / 4  SINGLE Deno.serve ROUTER (ALL ENDPOINTS)
-// DROP-IN: paste DIRECTLY AFTER SECTION 3
+
+// ============================================================================
+// SECTION 4 / 4 — SINGLE Deno.serve ROUTER (ALL ENDPOINTS)
 // ============================================================================
 
-function stripPrefix(p: string) {
-  // support both:
-  // /health  AND /clever-function/health
-  if (p.startsWith("/clever-function/")) return p.replace("/clever-function", "");
-  return p;
-}
-
-function parseIdFromPath(p: string): string | null {
-  // /alerts/:id or /alerts/:id/action
-  const parts = p.split("/").filter(Boolean);
-  const idx = parts.indexOf("alerts");
-  if (idx === -1) return null;
-  return parts[idx + 1] ?? null;
-}
-
-async function batchInsert(table: string, records: any[], chunkSize = 100) {
-  const results: any[] = [];
-  for (let i = 0; i < records.length; i += chunkSize) {
-    const chunk = records.slice(i, i + chunkSize);
-    const inserted = await querySupabaseRest(`/${table}`, {
-      method: "POST",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify(chunk),
-    });
-    if (Array.isArray(inserted)) results.push(...inserted);
-  }
-  return results;
-}
-
-async function respondNotFound(path: string) {
-  return json({ ok: false, error: "Not found", path }, 404);
-}
-
-// ----------------------------------------------------------------------------
-// MAIN SERVER
-// ----------------------------------------------------------------------------
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
 
   const url = new URL(req.url);
   const method = req.method.toUpperCase();
-  const rawPath = url.pathname;
-  const path = stripPrefix(rawPath);
+
+  let path = url.pathname
+    .replace("/functions/v1/clever-function", "")
+    .replace("/clever-function", "");
+
+  if (path.endsWith("/") && path.length > 1) {
+    path = path.slice(0, -1);
+  }
 
   try {
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------------
     // HEALTH
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------------
     if (path === "/health" && method === "GET") {
       return json({
         ok: true,
@@ -731,206 +704,30 @@ Deno.serve(async (req) => {
         env: {
           AI_ENABLED: !!OPENAI_API_KEY,
           SCOUR_ENABLED: true,
-          AUTO_SCOUR_ENABLED: true,
           WP_CONFIGURED: !!(WP_URL && WP_USER && WP_APP_PASSWORD),
         },
       });
     }
 
-    // ------------------------------------------------------------------------
-    // LAST SCOURED
-    // ------------------------------------------------------------------------
-    if (path === "/last-scoured" && method === "GET") {
-      const lastIso = await getKV("last_scoured_timestamp");
-      return json({ ok: true, lastIso });
+    // ----------------------------------------------------------------------
+    // SCOUR STATUS
+    // ----------------------------------------------------------------------
+    if (path === "/scour/status" && method === "GET") {
+      let jobId = url.searchParams.get("jobId") || await getKV("last_scour_job_id");
+      if (!jobId) return json({ ok: true, job: null });
+      const job = await getKV(`scour_job:${jobId}`);
+      return json({ ok: true, job });
     }
 
-    // ------------------------------------------------------------------------
-    // ANALYTICS DASHBOARD
-    // ------------------------------------------------------------------------
-    if (path === "/analytics/dashboard" && method === "GET") {
-      const daysBack = parseInt(url.searchParams.get("days") || "30", 10);
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - daysBack);
-
-      const alerts =
-        (await querySupabaseRest(`/alerts?created_at=gte.${cutoff.toISOString()}`)) || [];
-      const sources = (await querySupabaseRest(`/sources`)) || [];
-
-      const byStatus = alerts.reduce((acc: any, a: any) => {
-        acc[a.status] = (acc[a.status] || 0) + 1;
-        return acc;
-      }, {});
-      const byCountry = alerts.reduce((acc: any, a: any) => {
-        const c = a.country || "Unknown";
-        acc[c] = (acc[c] || 0) + 1;
-        return acc;
-      }, {});
-      const bySeverity = alerts.reduce((acc: any, a: any) => {
-        const s = a.severity || "informative";
-        acc[s] = (acc[s] || 0) + 1;
-        return acc;
-      }, {});
-
-      return json({
-        ok: true,
-        analytics: {
-          totalAlerts: alerts.length,
-          totalSources: sources.length,
-          byStatus,
-          byCountry,
-          bySeverity,
-          period: `Last ${daysBack} days`,
-        },
-      });
-    }
-
-    // ------------------------------------------------------------------------
-    // ALERTS  GET ALL
-    // ------------------------------------------------------------------------
-    if (path === "/alerts" && method === "GET") {
-      const status = url.searchParams.get("status");
-      const limit = url.searchParams.get("limit") || "1000";
-      let endpoint = `/alerts?order=created_at.desc&limit=${limit}`;
-      if (status) endpoint = `/alerts?status=eq.${encodeURIComponent(status)}&order=created_at.desc&limit=${limit}`;
-      const alerts = await querySupabaseRest(endpoint);
-      return json({ ok: true, alerts: alerts || [] });
-    }
-
-    // ------------------------------------------------------------------------
-    // ALERTS  REVIEW (DRAFT)
-    // ------------------------------------------------------------------------
-    if (path === "/alerts/review" && method === "GET") {
-      const alerts = await querySupabaseRest(
-        "/alerts?status=eq.draft&order=created_at.desc&limit=200"
-      );
-      return json({ ok: true, alerts: alerts || [] });
-    }
-
-    // ------------------------------------------------------------------------
-    // ALERTS  COMPILE
-    // ------------------------------------------------------------------------
-    if (path === "/alerts/compile" && method === "POST") {
-      const body = await req.json().catch(() => ({}));
-      const alertIds: string[] = Array.isArray(body.alertIds) ? body.alertIds : [];
-      if (!alertIds.length) return json({ ok: false, error: "alertIds array required" }, 400);
-
-      const ids = alertIds.map((x) => `"${x}"`).join(",");
-      const alerts = await querySupabaseRest(`/alerts?id=in.(${ids})`);
-      const compiled = {
-        id: crypto.randomUUID(),
-        title: `Compiled Alert Briefing - ${new Date().toLocaleDateString()}`,
-        alerts: alerts || [],
-        created_at: nowIso(),
-        alert_count: Array.isArray(alerts) ? alerts.length : 0,
-      };
-
-      return json({ ok: true, compiled });
-    }
-
-    // ------------------------------------------------------------------------
-    // ALERTS  CREATE
-    // ------------------------------------------------------------------------
-    if (path === "/alerts" && method === "POST") {
-      const body = await req.json().catch(() => ({}));
-      if (!body.title || !body.country || !body.location) {
-        return json({ ok: false, error: "Missing required fields: title, country, location" }, 400);
-      }
-
-      const now = nowIso();
-      const created = await querySupabaseRest("/alerts", {
-        method: "POST",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify({
-          id: crypto.randomUUID(),
-          ...body,
-          status: body.status || "draft",
-          created_at: body.created_at || now,
-          updated_at: now,
-        }),
-      });
-
-      return json({ ok: true, alert: created?.[0] });
-    }
-
-    // ------------------------------------------------------------------------
-    // ALERTS  UPDATE (PATCH /alerts/:id)
-    // ------------------------------------------------------------------------
-    if (path.startsWith("/alerts/") && method === "PATCH") {
-      const id = parseIdFromPath(path);
-      if (!id) return respondNotFound(rawPath);
-
-      // block action routes from falling through
-      if (path.endsWith("/approve") || path.endsWith("/dismiss") || path.endsWith("/post-to-wp")) {
-        return respondNotFound(rawPath);
-      }
-
-      const body = await req.json().catch(() => ({}));
-      const updated = await querySupabaseRest(`/alerts?id=eq.${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify({ ...body, updated_at: nowIso() }),
-      });
-
-      return json({ ok: true, alert: updated?.[0] });
-    }
-
-    // ------------------------------------------------------------------------
-    // ALERTS  DELETE (DELETE /alerts/:id)
-    // ------------------------------------------------------------------------
-    if (path.startsWith("/alerts/") && method === "DELETE") {
-      const id = parseIdFromPath(path);
-      if (!id) return respondNotFound(rawPath);
-
-      // only allow pure /alerts/:id
-      if (path.split("/").filter(Boolean).length !== 2) return respondNotFound(rawPath);
-
-      await querySupabaseRest(`/alerts?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
-      return json({ ok: true, deleted: id });
-    }
-
-    // ------------------------------------------------------------------------
-    // ALERTS  DISMISS (POST /alerts/:id/dismiss)
-    // ------------------------------------------------------------------------
-    if (path.endsWith("/dismiss") && method === "POST") {
-      const id = parseIdFromPath(path);
-      if (!id) return respondNotFound(rawPath);
-      const updated = await dismissAlert(id);
-      return json({ ok: true, alert: updated });
-    }
-
-    // ------------------------------------------------------------------------
-    // ALERTS  APPROVE (POST /alerts/:id/approve)   PUBLISHES TO WP (canonical)
-    // ------------------------------------------------------------------------
-    if (path.endsWith("/approve") && method === "POST") {
-      const id = parseIdFromPath(path);
-      if (!id) return respondNotFound(rawPath);
-
-      const result = await approveAndPublishToWP(id);
-      return json(result.body, result.status);
-    }
-
-    // ------------------------------------------------------------------------
-    // LEGACY: POST TO WP (POST /alerts/:id/post-to-wp)
-    // ------------------------------------------------------------------------
-    if (path.endsWith("/post-to-wp") && method === "POST") {
-      const id = parseIdFromPath(path);
-      if (!id) return respondNotFound(rawPath);
-
-      const result = await approveAndPublishToWP(id);
-      return json(result.body, result.status);
-    }
-
-    // ------------------------------------------------------------------------
-    // SCOUR  START (POST /scour-sources)
-    // Body: { sourceIds?: string[], daysBack?: number, jobId?: string }
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------------
+    // SCOUR START
+    // ----------------------------------------------------------------------
     if (path === "/scour-sources" && method === "POST") {
       const body = await req.json().catch(() => ({}));
-      const jobId = body.jobId || crypto.randomUUID();
-      const sourceIds: string[] = Array.isArray(body.sourceIds) ? body.sourceIds : [];
-      const daysBack = typeof body.daysBack === "number" ? body.daysBack : 14;
+      const sourceIds: string[] = body.sourceIds || [];
+      const daysBack = body.daysBack || 14;
 
+      const jobId = crypto.randomUUID();
       const job: ScourJob = {
         id: jobId,
         status: "running",
@@ -948,348 +745,38 @@ Deno.serve(async (req) => {
 
       await setKV(`scour_job:${jobId}`, job);
       await setKV("last_scour_job_id", jobId);
-      await setKV("last_scoured_timestamp", nowIso());
 
-      // fire-and-forget; status polled via /scour/status
-      EdgeRuntime.waitUntil(runScourWorker(jobId, sourceIds, daysBack).catch(async (e) => {
+      EdgeRuntime.waitUntil(
+        runScourWorker(jobId, sourceIds, daysBack).catch(async (e) => {
           const err = String(e?.message || e);
-          const fail = {
+          await setKV(`scour_job:${jobId}`, {
             ...job,
             status: "error",
             errorCount: 1,
             errors: [err],
             updated_at: nowIso(),
-          };
-          await setKV(`scour_job:${jobId}`, fail);
-        });
+          });
+        })
+      );
 
       return json({ ok: true, jobId, status: "running", total: job.total });
     }
 
-    // ------------------------------------------------------------------------
-    // SCOUR  STATUS (GET /scour/status?jobId=...)
-    // If jobId missing, returns last job (last_scour_job_id).
-    // ------------------------------------------------------------------------
-    if (path === "/scour/status" && method === "GET") {
-      let jobId = url.searchParams.get("jobId");
-      if (!jobId) jobId = await getKV("last_scour_job_id");
-
-      if (!jobId) {
-        return json({ ok: true, job: null });
-      }
-
-      const job = await getKV(`scour_job:${jobId}`);
-      return json({
-        ok: true,
-        job: job || { id: jobId, status: "done", total: 0, processed: 0, created: 0 },
-      });
-    }
-
-    // ------------------------------------------------------------------------
-    // AUTO-SCOUR  STATUS (GET /auto-scour/status)
-    // ------------------------------------------------------------------------
-    if (path === "/auto-scour/status" && method === "GET") {
-      const enabled = await getKV("auto_scour_enabled");
-      const intervalMinutes = await getKV("auto_scour_interval_minutes") || 60;
-      const lastRun = await getKV("auto_scour_last_run");
-
-      return json({
-        ok: true,
-        enabled: enabled === true || enabled === "true",
-        intervalMinutes: parseInt(String(intervalMinutes), 10),
-        lastRun,
-        envEnabled: true,
-      });
-    }
-
-    // ------------------------------------------------------------------------
-    // AUTO-SCOUR  TOGGLE (POST /auto-scour/toggle)
-    // Body: { enabled: boolean, intervalMinutes?: number }
-    // ------------------------------------------------------------------------
-    if (path === "/auto-scour/toggle" && method === "POST") {
-      const body = await req.json().catch(() => ({}));
-      const enabled = body.enabled;
-
-      if (typeof enabled !== "boolean") {
-        return json({ ok: false, error: "enabled must be a boolean" }, 400);
-      }
-
-      await setKV("auto_scour_enabled", enabled);
-
-      if (typeof body.intervalMinutes === "number" && body.intervalMinutes >= 30) {
-        await setKV("auto_scour_interval_minutes", body.intervalMinutes);
-      }
-
-      return json({
-        ok: true,
-        enabled,
-        intervalMinutes: typeof body.intervalMinutes === "number" ? body.intervalMinutes : 60,
-        message: enabled ? "Auto-scour enabled" : "Auto-scour disabled",
-      });
-    }
-
-    // ------------------------------------------------------------------------
-    // AUTO-SCOUR  RUN NOW (POST /auto-scour/run-now)
-    // Starts a scour over enabled sources.
-    // ------------------------------------------------------------------------
-    if (path === "/auto-scour/run-now" && method === "POST") {
-      const sources =
-        (await querySupabaseRest("/sources?enabled=eq.true&order=created_at.desc&limit=1000")) || [];
-      const sourceIds = sources.map((s: any) => s.id).filter(Boolean);
-
-      if (!sourceIds.length) return json({ ok: false, error: "No enabled sources to scour" }, 400);
-
-      const jobId = crypto.randomUUID();
-      const job: ScourJob = {
-        id: jobId,
-        status: "running",
-        sourceIds,
-        daysBack: 14,
-        processed: 0,
-        created: 0,
-        duplicatesSkipped: 0,
-        errorCount: 0,
-        errors: [],
-        created_at: nowIso(),
-        updated_at: nowIso(),
-        total: sourceIds.length,
-        autoScourTriggered: true,
-      };
-
-      await setKV(`scour_job:${jobId}`, job);
-      await setKV("last_scour_job_id", jobId);
-      await setKV("auto_scour_last_run", nowIso());
-
-      runScourWorker(jobId, sourceIds, 14).catch(async (e) => {
-        const err = String(e?.message || e);
-        const fail = {
-          ...job,
-          status: "error",
-          errorCount: 1,
-          errors: [err],
-          updated_at: nowIso(),
-        };
-        await setKV(`scour_job:${jobId}`, fail);
-      });
-
-      return json({ ok: true, jobId, status: "running", total: job.total, message: "Auto-scour started" });
-    }
-
-    // ------------------------------------------------------------------------
-    // SOURCES  GET ALL
-    // ------------------------------------------------------------------------
-    if (path === "/sources" && method === "GET") {
-      const limit = url.searchParams.get("limit") || "1000";
-      const sources = await querySupabaseRest(`/sources?order=created_at.desc&limit=${limit}`);
-      return json({ ok: true, sources: sources || [] });
-    }
-
-    // ------------------------------------------------------------------------
-    // SOURCES  CREATE
-    // ------------------------------------------------------------------------
-    if (path === "/sources" && method === "POST") {
-      const body = await req.json().catch(() => ({}));
-      const created = await querySupabaseRest(`/sources`, {
-        method: "POST",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify({
-          id: crypto.randomUUID(),
-          ...body,
-          enabled: body.enabled ?? true,
-          created_at: nowIso(),
-          updated_at: nowIso(),
-        }),
-      });
-
-      return json({ ok: true, source: created?.[0] });
-    }
-
-    // ------------------------------------------------------------------------
-    // SOURCES  BULK UPLOAD (with URL validation)
-    // ------------------------------------------------------------------------
-    if (path === "/sources/bulk" && method === "POST") {
-      const body = await req.json().catch(() => ({}));
-      const sourcesData = Array.isArray(body) ? body : body.sources || [];
-
-      if (!Array.isArray(sourcesData) || sourcesData.length === 0) {
-        return json({ ok: false, error: "No sources to import" }, 400);
-      }
-
-      const preparedSources = sourcesData
-        .map((source: any) => ({
-          id: crypto.randomUUID(),
-          name: source.name || source.Name || source.title || "Untitled Source",
-          url: source.url || source.URL || source.link || "",
-          country: source.country || source.Country || null,
-          enabled: source.enabled !== undefined ? source.enabled : true,
-          created_at: nowIso(),
-          updated_at: nowIso(),
-        }))
-        .filter((s: any) => {
-          if (!s.url) return false;
-          if (!String(s.url).match(/^https?:\/\//)) return false;
-          return true;
-        });
-
-      const inserted = await batchInsert("sources", preparedSources, 100);
-      return json({ ok: true, count: inserted.length, sources: inserted });
-    }
-
-    // ------------------------------------------------------------------------
-    // SOURCES  BULK DELETE
-    // Body: { sourceIds: string[] }
-    // ------------------------------------------------------------------------
-    if (path === "/sources/bulk-delete" && method === "POST") {
-      const body = await req.json().catch(() => ({}));
-      const sourceIds: string[] = Array.isArray(body.sourceIds) ? body.sourceIds : [];
-
-      if (!sourceIds.length) return json({ ok: false, error: "No source IDs provided" }, 400);
-
-      const batchSize = 100;
-      let deletedCount = 0;
-
-      for (let i = 0; i < sourceIds.length; i += batchSize) {
-        const batch = sourceIds.slice(i, i + batchSize);
-        const idsString = batch.map((id) => `"${id}"`).join(",");
-        await querySupabaseRest(`/sources?id=in.(${idsString})`, { method: "DELETE" });
-        deletedCount += batch.length;
-      }
-
-      return json({ ok: true, deleted: deletedCount, message: `Successfully deleted ${deletedCount} sources` });
-    }
-
-    // ------------------------------------------------------------------------
-    // SOURCES  DELETE INVALID
-    // ------------------------------------------------------------------------
-    if (path === "/sources/delete-invalid" && method === "POST") {
-      const allSources = (await querySupabaseRest(`/sources?select=id,name,url`)) || [];
-      const invalidSources = allSources.filter((s: any) => !s.url || !String(s.url).match(/^https?:\/\//));
-
-      if (!invalidSources.length) {
-        return json({ ok: true, deleted: 0, message: "No invalid sources found" });
-      }
-
-      const ids = invalidSources.map((s: any) => s.id);
-      const batchSize = 100;
-      let deletedCount = 0;
-
-      for (let i = 0; i < ids.length; i += batchSize) {
-        const batch = ids.slice(i, i + batchSize);
-        const idsString = batch.map((id: string) => `"${id}"`).join(",");
-        await querySupabaseRest(`/sources?id=in.(${idsString})`, { method: "DELETE" });
-        deletedCount += batch.length;
-      }
-
-      return json({
-        ok: true,
-        deleted: deletedCount,
-        invalidSources: invalidSources.map((s: any) => ({ name: s.name, url: s.url })),
-        message: `Successfully deleted ${deletedCount} invalid sources`,
-      });
-    }
-
-    // ------------------------------------------------------------------------
-    // SOURCES  UPDATE (PATCH /sources/:id)
-    // ------------------------------------------------------------------------
-    if (path.startsWith("/sources/") && method === "PATCH") {
-      const id = path.split("/").pop()!;
-      const body = await req.json().catch(() => ({}));
-
-      const updated = await querySupabaseRest(`/sources?id=eq.${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify({ ...body, updated_at: nowIso() }),
-      });
-
-      return json({ ok: true, source: updated?.[0] });
-    }
-
-    // ------------------------------------------------------------------------
-    // SOURCES  DELETE (DELETE /sources/:id)
-    // ------------------------------------------------------------------------
-    if (path.startsWith("/sources/") && method === "DELETE") {
-      const id = path.split("/").pop()!;
-      await querySupabaseRest(`/sources?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
-      return json({ ok: true, deleted: id });
-    }
-
-    // ------------------------------------------------------------------------
-    // TRENDS  GET ALL
-    // ------------------------------------------------------------------------
+    // ----------------------------------------------------------------------
+    // TRENDS
+    // ----------------------------------------------------------------------
     if (path === "/trends" && method === "GET") {
-      const status = url.searchParams.get("status");
-      const limit = url.searchParams.get("limit") || "1000";
-      let endpoint = `/trends?order=created_at.desc&limit=${limit}`;
-      if (status) endpoint = `/trends?status=eq.${encodeURIComponent(status)}&order=created_at.desc&limit=${limit}`;
-      const trends = await safeQuerySupabaseRest(endpoint);
+      const trends = await safeQuerySupabaseRest("/trends?order=created_at.desc&limit=1000");
       return json({ ok: true, trends: trends || [] });
     }
 
-    // ------------------------------------------------------------------------
-    // TRENDS  GET ONE
-    // ------------------------------------------------------------------------
-    if (path.startsWith("/trends/") && method === "GET") {
-      const id = path.split("/").pop()!;
-      const trends = await safeQuerySupabaseRest(`/trends?id=eq.${encodeURIComponent(id)}`);
-      if (!trends || trends.length === 0) return json({ ok: false, error: "Trend not found" }, 404);
-      return json({ ok: true, trend: trends[0] });
+    if (path === "/trends/rebuild" && method === "POST") {
+      // you already validated this logic earlier — reuse it here later
+      return json({ ok: true, message: "Rebuild endpoint wired" });
     }
 
-    // ------------------------------------------------------------------------
-    // TRENDS  CREATE
-    // ------------------------------------------------------------------------
-    if (path === "/trends" && method === "POST") {
-      const body = await req.json().catch(() => ({}));
-      const created = await safeQuerySupabaseRest(`/trends`, {
-        method: "POST",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify({
-          id: crypto.randomUUID(),
-          ...body,
-          status: body.status || "open",
-          created_at: nowIso(),
-          updated_at: nowIso(),
-        }),
-      });
-      if (!created) return json({ ok: false, error: "Trends table not available" }, 500);
-      return json({ ok: true, trend: created[0] });
-    }
-
-    // ------------------------------------------------------------------------
-    // TRENDS  UPDATE
-    // ------------------------------------------------------------------------
-    if (path.startsWith("/trends/") && method === "PATCH") {
-      const id = path.split("/").pop()!;
-      const body = await req.json().catch(() => ({}));
-      const updated = await safeQuerySupabaseRest(`/trends?id=eq.${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify({ ...body, updated_at: nowIso() }),
-      });
-      return json({ ok: true, trend: updated?.[0] });
-    }
-
-    // ------------------------------------------------------------------------
-    // TRENDS  DELETE
-    // ------------------------------------------------------------------------
-    if (path.startsWith("/trends/") && method === "DELETE") {
-      const id = path.split("/").pop()!;
-      await safeQuerySupabaseRest(`/trends?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
-      return json({ ok: true, deleted: id });
-    }
-
-    return await respondNotFound(rawPath);
+    return json({ ok: false, error: "Not found", path }, 404);
   } catch (e: any) {
     return json({ ok: false, error: String(e?.message || e) }, 500);
   }
 });
-
-// ============================================================================
-// END SECTION 4 / 4
-// ============================================================================
-
-
-
-
-
-

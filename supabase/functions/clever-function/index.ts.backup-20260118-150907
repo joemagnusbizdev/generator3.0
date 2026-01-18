@@ -1,4 +1,4 @@
-﻿/// <reference lib="deno.unstable" />
+/// <reference lib="deno.unstable" />
 
 console.log("=== Function starting ===");
 
@@ -1083,7 +1083,7 @@ Deno.serve(async (req) => {
           errorCount: stats.errors.length,
           errors: stats.errors,
           updated_at: new Date().toISOString(),
-        });
+        };
         await setKV(`scour_job:${jobId}`, finalJob);
         console.log(`Scour ${jobId} done:`, stats);
       }).catch(async (err) => {
@@ -1435,8 +1435,3 @@ Deno.serve(async (req) => {
     );
   }
 });
-
-
-
-
-
