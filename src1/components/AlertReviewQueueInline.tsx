@@ -210,147 +210,138 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
     );
   }
 
-  return (
+  import { useScour } from "./ScourContext";
+
+/* …inside component… */
+const { startScour, isScouring } = useScour();
+
+return (
   <div className="space-y-4">
+    {/* Run Scour (context-driven, single trigger) */}
     {permissions.canScour && (
-      <div className="flex justify-end">
+      <div className="flex justify-end mb-3">
         <button
-          className="px-4 py-2 bg-indigo-600 text-white rounded"
-          onClick={() => fetch(`${API_BASE}/scour-sources`, { method: "POST" })}
+          onClick={() => startScour(accessToken)}
+          disabled={isScouring}
+          className={`px-4 py-2 rounded text-white ${
+            isScouring ? "bg-gray-400 cursor-not-allowed" : "bg-indigo-600"
+          }`}
         >
-          Run Scour
+          {isScouring ? "Scouring…" : "Run Scour"}
         </button>
       </div>
     )}
-      {permissions.canScour && (
-        <div className="flex justify-end mb-3">
-          <button
-            onClick={async () => {
-              await fetch(`${API_BASE}/scour-sources`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({}),
-              });
-              window.alert("Scour started");
-            }}
-            className="px-4 py-2 bg-indigo-600 text-white rounded"
-          >
-            Run Scour
-          </button>
-        </div>
-      )}
 
-      {selected.size > 0 && (
-        <div className="sticky top-0 z-10 p-3 bg-gray-50 border rounded flex gap-3">
-          <strong>{selected.size} selected</strong>
-          <button
-            onClick={batchDismiss}
-            className="bg-yellow-600 text-white px-3 py-1 rounded"
-          >
-            Batch Dismiss
-          </button>
-          <button
-            onClick={batchDelete}
-            className="bg-red-600 text-white px-3 py-1 rounded"
-          >
-            Batch Delete
-          </button>
-        </div>
-      )}
+    {/* Batch actions */}
+    {selected.size > 0 && (
+      <div className="sticky top-0 z-10 p-3 bg-gray-50 border rounded flex gap-3">
+        <strong>{selected.size} selected</strong>
 
-      {alerts.map((a) => {
-        const meta = SEVERITY_META[a.severity];
-        const open = !!expanded[a.id];
-        const edit = !!editing[a.id];
-        const d = (drafts[a.id] || a) as Alert;
+        <button
+          onClick={batchDismiss}
+          className="bg-yellow-600 text-white px-3 py-1 rounded"
+        >
+          Batch Dismiss
+        </button>
 
-        return (
-          <div key={a.id} className="border rounded bg-white shadow-sm">
-            <div className="flex items-center gap-3 p-4">
-              <input
-                type="checkbox"
-                checked={selected.has(a.id)}
-                onChange={() =>
-                  setSelected((s) => {
-                    const n = new Set(s);
-                    n.has(a.id) ? n.delete(a.id) : n.add(a.id);
-                    return n;
-                  })
-                }
-              />
+        <button
+          onClick={batchDelete}
+          className="bg-red-600 text-white px-3 py-1 rounded"
+        >
+          Batch Delete
+        </button>
+      </div>
+    )}
 
-              <button
-                className="text-xs underline"
-                onClick={() =>
-                  setExpanded((e) => ({ ...e, [a.id]: !open }))
-                }
-              >
-                {open ? "Collapse" : "Expand"}
-              </button>
+    {/* Alerts */}
+    {alerts.map((a) => {
+      const meta = SEVERITY_META[a.severity];
+      const open = !!expanded[a.id];
+      const edit = !!editing[a.id];
+      const d = (drafts[a.id] || a) as Alert;
 
-              <div className="flex-1 font-semibold">{a.title}</div>
+      return (
+        <div key={a.id} className="border rounded bg-white shadow-sm">
+          <div className="flex items-center gap-3 p-4">
+            <input
+              type="checkbox"
+              checked={selected.has(a.id)}
+              onChange={() =>
+                setSelected((s) => {
+                  const n = new Set(s);
+                  n.has(a.id) ? n.delete(a.id) : n.add(a.id);
+                  return n;
+                })
+              }
+            />
 
-              <span
-                className={`text-xs text-white px-2 py-1 rounded ${meta.color}`}
-              >
-                {meta.emoji} {meta.label}
-              </span>
-            </div>
+            <button
+              className="text-xs underline"
+              onClick={() =>
+                setExpanded((e) => ({ ...e, [a.id]: !open }))
+              }
+            >
+              {open ? "Collapse" : "Expand"}
+            </button>
 
-            {open && (
-              <div className="px-6 pb-4 space-y-4 text-sm">
-                <div>{a.summary}</div>
+            <div className="flex-1 font-semibold">{a.title}</div>
 
-                {a.geojson && <GeoJsonPreview geojson={a.geojson} />}
-
-                <div className="flex gap-2 flex-wrap">
-                  {permissions.canApproveAndPost && (
-                    <button
-                      onClick={() => approve(a.id)}
-                      className="bg-green-600 text-white px-3 py-1 rounded"
-                    >
-                      Approve & Post
-                    </button>
-                  )}
-
-                  {permissions.canDismiss && (
-                    <button
-                      onClick={() => dismiss(a.id)}
-                      className="bg-yellow-600 text-white px-3 py-1 rounded"
-                    >
-                      Dismiss
-                    </button>
-                  )}
-
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(whatsappTemplate(a));
-                      window.alert("Copied WhatsApp alert");
-                    }}
-                    className="px-3 py-1 border rounded"
-                  >
-                    Copy WhatsApp
-                  </button>
-
-                  {permissions.canDelete && (
-                    <button
-                      onClick={() => del(a.id)}
-                      className="bg-red-600 text-white px-3 py-1 rounded"
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
+            <span
+              className={`text-xs text-white px-2 py-1 rounded ${meta.color}`}
+            >
+              {meta.emoji} {meta.label}
+            </span>
           </div>
-        );
-      })}
-    </div>
-  );
-}
 
+          {open && (
+            <div className="px-6 pb-4 space-y-4 text-sm">
+              <div>{a.summary}</div>
 
+              {a.geojson && <GeoJsonPreview geojson={a.geojson} />}
 
+              <div className="flex gap-2 flex-wrap">
+                {permissions.canApproveAndPost && (
+                  <button
+                    onClick={() => approve(a.id)}
+                    className="bg-green-600 text-white px-3 py-1 rounded"
+                  >
+                    Approve & Post
+                  </button>
+                )}
 
+                {permissions.canDismiss && (
+                  <button
+                    onClick={() => dismiss(a.id)}
+                    className="bg-yellow-600 text-white px-3 py-1 rounded"
+                  >
+                    Dismiss
+                  </button>
+                )}
+
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(whatsappTemplate(a));
+                    window.alert("Copied WhatsApp alert");
+                  }}
+                  className="px-3 py-1 border rounded"
+                >
+                  Copy WhatsApp
+                </button>
+
+                {permissions.canDelete && (
+                  <button
+                    onClick={() => del(a.id)}
+                    className="bg-red-600 text-white px-3 py-1 rounded"
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    })}
+  </div>
+);
 

@@ -1,9 +1,8 @@
-﻿import React, { useState, useEffect } from "react";
-import { apiFetchJson } from "../lib/utils/api";
+﻿import React, { useEffect, useMemo, useState } from "react";
+import { apiFetchJson, apiPatchJson, apiPostJson } from "../lib/utils/api";
 import { useScour } from "./ScourContext";
 import { SourceBulkUpload } from "./SourceBulkUpload";
 import ScourStatusBarInline from "./ScourStatusBarInline";
-import { SourceTable } from "./SourceTable";
 import { AutoScourSettings } from "./AutoScourSettings";
 
 /* =========================
@@ -19,7 +18,7 @@ interface Source {
   created_at: string;
 }
 
-interface SourceManagerInlineProps {
+interface Props {
   accessToken: string;
   permissions?: {
     canManageSources?: boolean;
@@ -31,12 +30,14 @@ interface SourceManagerInlineProps {
    Component
 ========================= */
 
-const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
+const SourceManagerInline: React.FC<Props> = ({
   accessToken,
   permissions,
 }) => {
-  const [query, setQuery] = useState("");
   const [sources, setSources] = useState<Source[]>([]);
+  const [query, setQuery] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Partial<Source>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,32 +45,21 @@ const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
 
   const canManage = permissions?.canManageSources !== false;
   const canScour = permissions?.canScour !== false;
-  const isAdmin = canManage;
 
   /* =========================
-     Data loading
+     Load Sources
   ========================= */
 
   const loadSources = async () => {
     try {
       setLoading(true);
-      setError(null);
-
-      const response = await apiFetchJson<{
-        ok: boolean;
-        sources: Source[];
-      }>("/sources", accessToken);
-
-      if (response.ok && Array.isArray(response.sources)) {
-        setSources(response.sources);
-        console.log(`Loaded ${response.sources.length} sources`);
-      } else {
-        setSources([]);
-      }
-    } catch (err: any) {
-      console.error("Failed to load sources:", err);
-      setError(err?.message || "Failed to load sources");
-      setSources([]);
+      const res = await apiFetchJson<{ ok: boolean; sources: Source[] }>(
+        "/sources",
+        accessToken
+      );
+      setSources(res.ok ? res.sources : []);
+    } catch (e: any) {
+      setError(e.message || "Failed to load sources");
     } finally {
       setLoading(false);
     }
@@ -80,77 +70,55 @@ const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
   }, [accessToken]);
 
   /* =========================
+     Filtering
+  ========================= */
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return sources;
+    const q = query.toLowerCase();
+    return sources.filter((s) =>
+      [s.name, s.country].join(" ").toLowerCase().includes(q)
+    );
+  }, [sources, query]);
+
+  /* =========================
      Scour
   ========================= */
 
-  const handleStartScour = async () => {
-    if (!canScour) {
-      alert("You do not have permission to run scour operations.");
+  const runScour = async () => {
+    const enabled = filtered.filter((s) => s.enabled);
+    if (!enabled.length) {
+      alert("No enabled sources match filter");
       return;
     }
 
-    const enabledSources = sources.filter((s) => s.enabled);
-
-    const filteredSources = enabledSources.filter((s) =>
-      [s.name, s.country]
-        .join(" ")
-        .toLowerCase()
-        .includes(query.toLowerCase())
-    );
-
-    if (filteredSources.length === 0) {
-      alert("No enabled sources match the current filter.");
-      return;
-    }
-
-    try {
-      await startScour(accessToken, {
-        sourceIds: filteredSources.map((s) => s.id),
-        daysBack: 14,
-      });
-    } catch (err: any) {
-      console.error("Start scour error:", err);
-      alert(`Failed to start scour: ${err.message}`);
-    }
+    await startScour(accessToken, {
+      sourceIds: enabled.map((s) => s.id),
+      daysBack: 14,
+    });
   };
 
   /* =========================
-     Styles
+     Edit / Delete
   ========================= */
 
-  const containerStyle: React.CSSProperties = {
-    maxWidth: "1200px",
-    margin: "0 auto",
-    padding: "24px",
+  const startEdit = (s: Source) => {
+    setEditingId(s.id);
+    setDraft(s);
   };
 
-  const headingStyle: React.CSSProperties = {
-    fontSize: "18px",
-    fontWeight: 600,
-    marginBottom: "12px",
-    color: "#111827",
+  const saveEdit = async () => {
+    if (!editingId) return;
+    await apiPatchJson(`/sources/${editingId}`, draft, accessToken);
+    setEditingId(null);
+    setDraft({});
+    loadSources();
   };
 
-  const buttonPrimaryStyle: React.CSSProperties = {
-    padding: "10px 20px",
-    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-    color: "white",
-    border: "none",
-    borderRadius: "8px",
-    fontSize: "14px",
-    fontWeight: 600,
-    cursor: "pointer",
-  };
-
-  const buttonStyle: React.CSSProperties = {
-    padding: "10px 20px",
-    background: "white",
-    color: "#374151",
-    border: "1px solid #D1D5DB",
-    borderRadius: "8px",
-    fontSize: "14px",
-    fontWeight: 500,
-    cursor: "pointer",
+  const deleteSource = async (id: string) => {
+    if (!confirm("Delete this source?")) return;
+    await apiPostJson(`/sources/${id}/delete`, {}, accessToken);
+    loadSources();
   };
 
   /* =========================
@@ -158,90 +126,121 @@ const SourceManagerInline: React.FC<SourceManagerInlineProps> = ({
   ========================= */
 
   return (
-    <div style={containerStyle}>
-      {/* Auto Scour Settings */}
-      {isAdmin && (
-        <AutoScourSettings accessToken={accessToken} isAdmin={isAdmin} />
+    <div className="space-y-4">
+
+      {/* Auto Scour */}
+      {canManage && (
+        <AutoScourSettings accessToken={accessToken} isAdmin />
       )}
 
       {/* Bulk Upload */}
       {canManage && (
-        <>
-          <h2 style={headingStyle}>Bulk Upload Sources</h2>
-          <SourceBulkUpload
-            accessToken={accessToken}
-            onUploadComplete={loadSources}
-          />
-        </>
+        <SourceBulkUpload
+          accessToken={accessToken}
+          onUploadComplete={loadSources}
+        />
       )}
 
-      {/* Scour Status */}
       <ScourStatusBarInline />
 
       {/* Controls */}
-      <div
-        style={{
-          marginBottom: "16px",
-          display: "flex",
-          gap: "12px",
-          alignItems: "center",
-        }}
-      >
+      <div className="flex gap-2 items-center">
         <button
-          onClick={handleStartScour}
+          onClick={runScour}
           disabled={isScouring || !canScour}
-          style={{
-            ...buttonPrimaryStyle,
-            opacity: isScouring || !canScour ? 0.5 : 1,
-          }}
+          className="px-3 py-1 rounded bg-indigo-600 text-white disabled:opacity-50"
         >
-          {isScouring ? "Scouring..." : "Start Scour"}
+          {isScouring ? "Scouring…" : "Run Scour"}
         </button>
 
-        <button
-          onClick={loadSources}
-          disabled={loading}
-          style={{ ...buttonStyle, opacity: loading ? 0.5 : 1 }}
-        >
-          Refresh Sources
-        </button>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search sources…"
+          className="border px-2 py-1 rounded text-sm"
+        />
 
-        {sources.length > 0 && (
-          <span style={{ fontSize: "14px", color: "#6B7280" }}>
-            {sources.filter((s) => s.enabled).length} of {sources.length} enabled
-          </span>
-        )}
+        <span className="text-sm text-gray-600">
+          {filtered.filter(s => s.enabled).length} / {filtered.length} enabled
+        </span>
       </div>
 
-      {error && (
-        <div style={{ color: "#991B1B", marginBottom: "12px" }}>{error}</div>
-      )}
+      {error && <div className="text-red-600">{error}</div>}
 
-      {loading ? (
-        <div style={{ padding: "40px", textAlign: "center" }}>
-          Loading sources...
-        </div>
-      ) : (
-        <>
-          <h2 style={headingStyle}>Sources ({sources.length})</h2>
+      {/* Table */}
+      <div className="border rounded">
+        {filtered.map((s) => (
+          <div
+            key={s.id}
+            className="flex items-center gap-2 border-b p-2 text-sm"
+          >
+            {editingId === s.id ? (
+              <>
+                <input
+                  value={draft.name || ""}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, name: e.target.value }))
+                  }
+                  className="border px-1"
+                />
+                <input
+                  value={draft.url || ""}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, url: e.target.value }))
+                  }
+                  className="border px-1 flex-1"
+                />
+                <input
+                  value={draft.country || ""}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, country: e.target.value }))
+                  }
+                  className="border px-1 w-28"
+                />
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={!!draft.enabled}
+                    onChange={(e) =>
+                      setDraft((d) => ({ ...d, enabled: e.target.checked }))
+                    }
+                  /> enabled
+                </label>
+                <button onClick={saveEdit} className="text-green-600">
+                  Save
+                </button>
+                <button onClick={() => setEditingId(null)}>Cancel</button>
+              </>
+            ) : (
+              <>
+                <strong>{s.name}</strong>
+                <span className="text-gray-500 truncate">{s.url}</span>
+                <span>{s.country}</span>
+                <span>{s.enabled ? "✅" : "❌"}</span>
 
-          {sources.length === 0 ? (
-            <div style={{ padding: "40px", textAlign: "center", color: "#6B7280" }}>
-              No sources configured
-            </div>
-          ) : (
-            <SourceTable
-              sources={sources}
-              onSourceUpdated={loadSources}
-              accessToken={accessToken}
-            />
-          )}
-        </>
-      )}
+                {canManage && (
+                  <>
+                    <button
+                      onClick={() => startEdit(s)}
+                      className="text-blue-600"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => deleteSource(s.id)}
+                      className="text-red-600"
+                    >
+                      Delete
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
 
 export default SourceManagerInline;
-
-

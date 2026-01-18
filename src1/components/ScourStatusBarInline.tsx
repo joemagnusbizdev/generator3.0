@@ -1,29 +1,33 @@
-﻿import React, { useEffect, useState } from "react";
-
-const API_BASE =
-  "https://gnobnyzezkuyptuakztf.supabase.co/functions/v1/clever-function";
+﻿import React from "react";
+import { useScour } from "./ScourContext";
 
 export default function ScourStatusBarInline() {
-  const [status, setStatus] = useState<any>(null);
+  const { isScouring, scourJob, lastResult, lastError } = useScour();
 
-  useEffect(() => {
-    const t = setInterval(async () => {
-      const res = await fetch(`${API_BASE}/scour/status`);
-      if (res.ok) setStatus(await res.json());
-    }, 5000);
-    return () => clearInterval(t);
-  }, []);
-
-  if (!status?.job) return null;
+  if (!isScouring && !scourJob && !lastResult && !lastError) return null;
 
   return (
-    <div className="p-2 bg-gray-100 border rounded text-sm">
-       Scour: {status.job.processed}/{status.job.total} processed
+    <div className="p-3 rounded border bg-gray-50 text-sm">
+      {isScouring && scourJob && (
+        <div>
+          <strong>Scouring:</strong>{" "}
+          {scourJob.processed}/{scourJob.total} processed
+        </div>
+      )}
+
+      {lastResult && (
+        <div>
+          <strong>Scour complete:</strong>{" "}
+          {lastResult.created} created ·{" "}
+          {lastResult.duplicatesSkipped} duplicates
+        </div>
+      )}
+
+      {lastError && (
+        <div className="text-red-600">
+          <strong>Error:</strong> {lastError}
+        </div>
+      )}
     </div>
   );
 }
-
-
-
-
-

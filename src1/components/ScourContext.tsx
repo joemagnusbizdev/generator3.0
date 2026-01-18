@@ -1,5 +1,5 @@
-﻿import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
-import { apiFetchJson, apiPostJson } from '../lib/utils/api';
+﻿import React, { createContext, useContext, useState, useCallback, useRef } from "react";
+import { apiFetchJson, apiPostJson } from "../lib/utils/api";
 
 // ============================================================================
 // TYPES
@@ -7,16 +7,14 @@ import { apiFetchJson, apiPostJson } from '../lib/utils/api';
 
 export interface ScourJob {
   id: string;
-  status: 'running' | 'done' | 'error';
+  status: "running" | "done" | "error";
   total: number;
-  nextIndex?: number;
   processed: number;
   created: number;
   duplicatesSkipped?: number;
   lowConfidenceSkipped?: number;
   errorCount?: number;
-  errors?: Array<{ sourceId: string; reason: string }>;
-  rejections?: Array<{ sourceId: string; reason: string; query?: string }>;
+  errors?: Array<{ sourceId?: string; reason?: string }>;
   updated_at?: string;
   created_at?: string;
   ai_engaged?: boolean;
@@ -59,20 +57,18 @@ export interface ScourContextType extends ScourState {
 const ScourContext = createContext<ScourContextType | undefined>(undefined);
 
 export const useScour = (): ScourContextType => {
-  const context = useContext(ScourContext);
-  if (!context) {
-    throw new Error('useScour must be used within a ScourProvider');
-  }
-  return context;
+  const ctx = useContext(ScourContext);
+  if (!ctx) throw new Error("useScour must be used within a ScourProvider");
+  return ctx;
 };
 
 // ============================================================================
 // PROVIDER
 // ============================================================================
 
-export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: string }> = ({ 
+export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: string }> = ({
   children,
-  accessToken: defaultAccessToken 
+  accessToken: defaultAccessToken,
 }) => {
   const [isScouring, setIsScouring] = useState(false);
   const [scourJob, setScourJob] = useState<ScourJob | null>(null);
@@ -91,106 +87,81 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
     }
   }, []);
 
-  const pollStatus = useCallback(async (currentJobId: string, token?: string) => {
-    try {
-      const response = await apiFetchJson<{ ok: boolean; job?: ScourJob }>(
+  const pollStatus = useCallback(
+    async (currentJobId: string, token?: string) => {
+      const res = await apiFetchJson<{ ok: boolean; job?: ScourJob; error?: string }>(
         `/scour/status?jobId=${encodeURIComponent(currentJobId)}`,
         token
       );
 
-      if (response.ok && response.job) {
-        const job = response.job;
-        setScourJob(job);
+      if (!res?.ok || !res.job) return;
 
-        if (job.status === 'done' || job.status === 'error') {
-          setIsScouring(false);
-          setLastFinishedAt(new Date().toISOString());
-          
-          if (job.status === 'done') {
-            setLastResult({
-              processed: job.processed || 0,
-              created: job.created || 0,
-              duplicatesSkipped: job.duplicatesSkipped || 0,
-              lowConfidenceSkipped: job.lowConfidenceSkipped || 0,
-              errorCount: job.errorCount || 0,
-            });
-            setLastError(null);
-          } else {
-            setLastError(job.errors?.[0]?.reason || 'Scour failed');
-          }
-          
-          stopPolling();
+      const job = res.job;
+      setScourJob(job);
+
+      if (job.status === "done" || job.status === "error") {
+        setIsScouring(false);
+        setLastFinishedAt(new Date().toISOString());
+
+        if (job.status === "done") {
+          setLastResult({
+            processed: job.processed || 0,
+            created: job.created || 0,
+            duplicatesSkipped: job.duplicatesSkipped || 0,
+            lowConfidenceSkipped: job.lowConfidenceSkipped || 0,
+            errorCount: job.errorCount || 0,
+          });
+          setLastError(null);
+        } else {
+          const firstErr = job.errors?.[0]?.reason || "Scour failed";
+          setLastError(firstErr);
         }
+
+        stopPolling();
       }
-    } catch (error: any) {
-      console.error('Poll error:', error);
-      setLastError(error.message || 'Polling failed');
-      setIsScouring(false);
-      stopPolling();
-    }
-  }, [stopPolling]);
+    },
+    [stopPolling]
+  );
 
-  const startScour = useCallback(async (accessToken?: string, opts?: ScourStartOpts) => {
-    const token = accessToken || defaultAccessToken;
-    
-    try {
-      setIsScouring(true);
-      setLastError(null);
-      setLastStartedAt(new Date().toISOString());
+  const startScour = useCallback(
+    async (accessToken?: string, opts?: ScourStartOpts) => {
+      const token = accessToken || defaultAccessToken;
 
-      let sourceIds = opts?.sourceIds || [];
+      try {
+        setIsScouring(true);
+        setLastError(null);
+        setLastStartedAt(new Date().toISOString());
 
-      // If no sourceIds provided, fetch all enabled sources
-      if (sourceIds.length === 0) {
-        console.log('  No sourceIds provided - fetching enabled sources...');
-        try {
-          const sourcesResponse = await apiFetchJson<{ ok: boolean; sources: Array<{ id: string; enabled: boolean }> }>(
-            '/sources',
+        let sourceIds = Array.isArray(opts?.sourceIds) ? opts!.sourceIds! : [];
+
+        // If none provided, fetch enabled sources
+        if (sourceIds.length === 0) {
+          const sourcesRes = await apiFetchJson<{ ok: boolean; sources?: Array<{ id: string; enabled: boolean }> }>(
+            "/sources",
             token
           );
 
-          if (sourcesResponse.ok && Array.isArray(sourcesResponse.sources)) {
-            sourceIds = sourcesResponse.sources
-              .filter(s => s.enabled)
-              .map(s => s.id);
-            
-            console.log(` Fetched ${sourceIds.length} enabled sources`);
-          } else {
-            throw new Error('Failed to fetch sources');
-          }
-        } catch (fetchErr: any) {
-          console.error('Failed to fetch sources:', fetchErr);
-          throw new Error(`Cannot start scour: ${fetchErr.message}`);
+          const enabled = (sourcesRes.sources || []).filter((s) => s.enabled).map((s) => s.id);
+          sourceIds = enabled;
         }
-      }
 
-      if (sourceIds.length === 0) {
-        throw new Error('No enabled sources available to scour');
-      }
+        if (sourceIds.length === 0) throw new Error("No enabled sources available to scour");
 
-      console.log(` Starting scour with ${sourceIds.length} sources`);
+        const startRes = await apiPostJson<{ ok: boolean; jobId?: string; total?: number; error?: string }>(
+          "/scour-sources",
+          { sourceIds, daysBack: opts?.daysBack || 14 },
+          token
+        );
 
-      // Start the scour job
-      const response = await apiPostJson<{
-        ok: boolean;
-        jobId: string;
-        status: string;
-        total: number;
-        message?: string;
-      }>('/scour-sources', {
-        sourceIds,
-        daysBack: opts?.daysBack || 14,
-      }, token);
+        if (!startRes.ok || !startRes.jobId) throw new Error(startRes.error || "Failed to start scour job");
 
-      if (response.ok && response.jobId) {
-        const newJobId = response.jobId;
+        const newJobId = startRes.jobId;
         setJobId(newJobId);
-        
-        // Initialize job state
+
         setScourJob({
           id: newJobId,
-          status: 'running',
-          total: response.total || sourceIds.length,
+          status: "running",
+          total: startRes.total || sourceIds.length,
           processed: 0,
           created: 0,
           duplicatesSkipped: 0,
@@ -198,24 +169,20 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
           errorCount: 0,
         });
 
-        // Start polling
         stopPolling();
         pollIntervalRef.current = setInterval(() => {
           pollStatus(newJobId, token);
-        }, 3000);
+        }, 2500);
 
-        // Do immediate first poll
-        setTimeout(() => pollStatus(newJobId, token), 1000);
-      } else {
-        throw new Error('Failed to start scour job');
+        setTimeout(() => pollStatus(newJobId, token), 600);
+      } catch (e: any) {
+        setLastError(e?.message || "Failed to start scour");
+        setIsScouring(false);
+        stopPolling();
       }
-    } catch (error: any) {
-      console.error('Start scour error:', error);
-      setLastError(error.message || 'Failed to start scour');
-      setIsScouring(false);
-      stopPolling();
-    }
-  }, [defaultAccessToken, stopPolling, pollStatus]);
+    },
+    [defaultAccessToken, pollStatus, stopPolling]
+  );
 
   const stopScour = useCallback(() => {
     setIsScouring(false);
@@ -236,15 +203,7 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
     scourJobId: jobId,
   };
 
-  return (
-    <ScourContext.Provider value={value}>
-      {children}
-    </ScourContext.Provider>
-  );
+  return <ScourContext.Provider value={value}>{children}</ScourContext.Provider>;
 };
 
 export default ScourContext;
-
-
-
-
