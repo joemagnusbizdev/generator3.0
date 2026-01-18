@@ -1,4 +1,4 @@
-﻿// ============================================================================
+// ============================================================================
 // SECTION 1 / 4  FOUNDATION (ENV  CORS  TYPES  HELPERS)
 // DROP-IN: paste this at the TOP of your edge function file
 // ============================================================================
@@ -951,8 +951,7 @@ Deno.serve(async (req) => {
       await setKV("last_scoured_timestamp", nowIso());
 
       // fire-and-forget; status polled via /scour/status
-      runScourWorker(jobId, sourceIds, daysBack)
-        .catch(async (e) => {
+      EdgeRuntime.waitUntil(runScourWorker(jobId, sourceIds, daysBack).catch(async (e) => {
           const err = String(e?.message || e);
           const fail = {
             ...job,
@@ -1288,6 +1287,7 @@ Deno.serve(async (req) => {
 // ============================================================================
 // END SECTION 4 / 4
 // ============================================================================
+
 
 
 

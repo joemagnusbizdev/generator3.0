@@ -35,7 +35,7 @@ const SourceManagerInline: React.FC<Props> = ({
   permissions,
 }) => {
   const [sources, setSources] = useState<Source[]>([]);
-  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<Source>>({});
   const [loading, setLoading] = useState(true);
@@ -50,7 +50,7 @@ const SourceManagerInline: React.FC<Props> = ({
      Load Sources
   ========================= */
 
-  const loadSources = async () => {
+  async function loadSources() {
     try {
       setLoading(true);
       const res = await apiFetchJson<{ ok: boolean; sources: Source[] }>(
@@ -63,32 +63,36 @@ const SourceManagerInline: React.FC<Props> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   useEffect(() => {
     loadSources();
   }, [accessToken]);
 
   /* =========================
-     Filtering
+     Search / Filter
   ========================= */
 
-  const filtered = useMemo(() => {
-    if (!query.trim()) return sources;
-    const q = query.toLowerCase();
+  const filteredSources = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return sources;
+
     return sources.filter((s) =>
-      [s.name, s.country].join(" ").toLowerCase().includes(q)
+      [s.name, s.url, s.country]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q))
     );
-  }, [sources, query]);
+  }, [sources, search]);
 
   /* =========================
      Scour
   ========================= */
 
-  const runScour = async () => {
-    const enabled = filtered.filter((s) => s.enabled);
+  async function runScour() {
+    const enabled = filteredSources.filter((s) => s.enabled);
+
     if (!enabled.length) {
-      alert("No enabled sources match filter");
+      alert("No enabled sources match the current filter");
       return;
     }
 
@@ -96,30 +100,41 @@ const SourceManagerInline: React.FC<Props> = ({
       sourceIds: enabled.map((s) => s.id),
       daysBack: 14,
     });
-  };
+  }
 
   /* =========================
      Edit / Delete
   ========================= */
 
-  const startEdit = (s: Source) => {
-    setEditingId(s.id);
-    setDraft(s);
-  };
+  function startEdit(source: Source) {
+    setEditingId(source.id);
+    setDraft({
+      name: source.name,
+      url: source.url,
+      country: source.country,
+      enabled: source.enabled,
+    });
+  }
 
-  const saveEdit = async () => {
+  async function saveEdit() {
     if (!editingId) return;
+
     await apiPatchJson(`/sources/${editingId}`, draft, accessToken);
+
     setEditingId(null);
     setDraft({});
     loadSources();
-  };
+  }
 
-  const deleteSource = async (id: string) => {
+  async function deleteSource(id: string) {
     if (!confirm("Delete this source?")) return;
-    await apiPostJson(`/sources/${id}/delete`, {}, accessToken);
+
+    await apiFetchJson(`/sources/${id}`, accessToken, {
+      method: "DELETE",
+    });
+
     loadSources();
-  };
+  }
 
   /* =========================
      Render
@@ -127,8 +142,7 @@ const SourceManagerInline: React.FC<Props> = ({
 
   return (
     <div className="space-y-4">
-
-      {/* Auto Scour */}
+      {/* Auto-Scour */}
       {canManage && (
         <AutoScourSettings accessToken={accessToken} isAdmin />
       )}
@@ -141,10 +155,11 @@ const SourceManagerInline: React.FC<Props> = ({
         />
       )}
 
+      {/* Scour Status */}
       <ScourStatusBarInline />
 
       {/* Controls */}
-      <div className="flex gap-2 items-center">
+      <div className="flex flex-wrap gap-3 items-center">
         <button
           onClick={runScour}
           disabled={isScouring || !canScour}
@@ -154,25 +169,29 @@ const SourceManagerInline: React.FC<Props> = ({
         </button>
 
         <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
           placeholder="Search sources…"
           className="border px-2 py-1 rounded text-sm"
         />
 
         <span className="text-sm text-gray-600">
-          {filtered.filter(s => s.enabled).length} / {filtered.length} enabled
+          {
+            filteredSources.filter((s) => s.enabled).length
+          }{" "}
+          / {filteredSources.length} enabled
         </span>
       </div>
 
       {error && <div className="text-red-600">{error}</div>}
+      {loading && <div className="text-sm text-gray-500">Loading…</div>}
 
-      {/* Table */}
-      <div className="border rounded">
-        {filtered.map((s) => (
+      {/* Sources List */}
+      <div className="border rounded divide-y">
+        {filteredSources.map((s) => (
           <div
             key={s.id}
-            className="flex items-center gap-2 border-b p-2 text-sm"
+            className="flex items-center gap-2 p-2 text-sm"
           >
             {editingId === s.id ? (
               <>
@@ -181,8 +200,9 @@ const SourceManagerInline: React.FC<Props> = ({
                   onChange={(e) =>
                     setDraft((d) => ({ ...d, name: e.target.value }))
                   }
-                  className="border px-1"
+                  className="border px-1 w-40"
                 />
+
                 <input
                   value={draft.url || ""}
                   onChange={(e) =>
@@ -190,6 +210,7 @@ const SourceManagerInline: React.FC<Props> = ({
                   }
                   className="border px-1 flex-1"
                 />
+
                 <input
                   value={draft.country || ""}
                   onChange={(e) =>
@@ -197,25 +218,42 @@ const SourceManagerInline: React.FC<Props> = ({
                   }
                   className="border px-1 w-28"
                 />
-                <label>
+
+                <label className="flex items-center gap-1">
                   <input
                     type="checkbox"
                     checked={!!draft.enabled}
                     onChange={(e) =>
-                      setDraft((d) => ({ ...d, enabled: e.target.checked }))
+                      setDraft((d) => ({
+                        ...d,
+                        enabled: e.target.checked,
+                      }))
                     }
-                  /> enabled
+                  />
+                  enabled
                 </label>
-                <button onClick={saveEdit} className="text-green-600">
+
+                <button
+                  onClick={saveEdit}
+                  className="text-green-600"
+                >
                   Save
                 </button>
-                <button onClick={() => setEditingId(null)}>Cancel</button>
+                <button onClick={() => setEditingId(null)}>
+                  Cancel
+                </button>
               </>
             ) : (
               <>
-                <strong>{s.name}</strong>
-                <span className="text-gray-500 truncate">{s.url}</span>
-                <span>{s.country}</span>
+                <strong className="w-40 truncate">
+                  {s.name}
+                </strong>
+                <span className="flex-1 truncate text-gray-500">
+                  {s.url}
+                </span>
+                <span className="w-28">
+                  {s.country || "—"}
+                </span>
                 <span>{s.enabled ? "✅" : "❌"}</span>
 
                 {canManage && (
