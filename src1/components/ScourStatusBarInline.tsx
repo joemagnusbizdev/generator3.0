@@ -30,11 +30,19 @@ export default function ScourStatusBarInline() {
 
       {isScouring && scourJob && (
         <div style={{ color: MAGNUS_COLORS.deepGreen }}>
-          🔄 Scouring in progress: {scourJob.processed}/{scourJob.total} sources
-          {scourJob.total > 0 && (
-            <span style={{ marginLeft: '8px', fontWeight: '600' }}>
-              ({Math.round((scourJob.processed / scourJob.total) * 100)}%)
+          {scourJob.total === 0 ? (
+            <span style={{ color: MAGNUS_COLORS.critical }}>
+              ⚠️  No sources to scour - create and enable sources first
             </span>
+          ) : (
+            <>
+              🔄 Scouring in progress: {scourJob.processed}/{scourJob.total} sources
+              {scourJob.total > 0 && (
+                <span style={{ marginLeft: '8px', fontWeight: '600' }}>
+                  ({Math.round((scourJob.processed / scourJob.total) * 100)}%)
+                </span>
+              )}
+            </>
           )}
         </div>
       )}
