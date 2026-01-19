@@ -467,6 +467,13 @@ async function querySupabaseForWorker(url: string, serviceKey: string, options: 
 
 async function fetchWithBraveSearch(query: string, braveApiKey: string): Promise<{ content: string; primaryUrl: string | null }> {
   try {
+    console.log(`🔍 Brave Search: "${query}" (API key: ${braveApiKey ? braveApiKey.slice(0, 8) + '...' : 'MISSING'})`);
+    
+    if (!braveApiKey) {
+      console.warn('⚠️ Brave API key not provided - skipping Brave Search');
+      return { content: '', primaryUrl: null };
+    }
+    
     const response = await fetch(
       `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10&freshness=pd`,
       {
@@ -479,16 +486,20 @@ async function fetchWithBraveSearch(query: string, braveApiKey: string): Promise
     );
 
     if (!response.ok) {
+      const errorText = await response.text().catch(() => 'unknown error');
+      console.error(`❌ Brave Search failed: ${response.status} - ${errorText}`);
       throw new Error(`Brave Search failed: ${response.status}`);
     }
 
     const data = await response.json();
     const results = data.web?.results || [];
+    console.log(`✅ Brave Search returned ${results.length} results for "${query}"`);
+    
     const primaryUrl = results[0]?.url || null;
     const content = results.map((r: any) => `Title: ${r.title}\nDescription: ${r.description}\nURL: ${r.url}\n\n`).join('');
     return { content, primaryUrl };
   } catch (err) {
-    console.error('Brave Search error:', err);
+    console.error('❌ Brave Search error:', err);
     return { content: '', primaryUrl: null };
   }
 }
@@ -649,6 +660,8 @@ Return ONLY JSON array, no markdown.`;
       
       // Generate default recommendations if missing
       const recommendations = alert.recommendations?.trim() || generateDefaultRecommendations(severity, alert.eventType, alert.location);
+      
+      console.log(`📋 Alert "${alert.title}" - Recommendations: ${recommendations ? 'YES (' + recommendations.slice(0, 50) + '...)' : 'NO - using fallback'}`);
 
       return {
         id: crypto.randomUUID(),
@@ -780,10 +793,18 @@ async function runScourWorker(config: ScourConfig): Promise<{
 
         let content = '';
         let articleUrl: string | null = null;
+        
+        console.log(`🔎 Source config - query: "${source.query || 'NONE'}", url: "${source.url}", braveApiKey: ${config.braveApiKey ? 'YES' : 'NO'}`);
+        
         if (config.braveApiKey && source.query) {
+          console.log(`📡 Attempting Brave Search for: ${source.query}`);
           const br = await fetchWithBraveSearch(source.query, config.braveApiKey);
           content = br.content;
           articleUrl = br.primaryUrl;
+          console.log(`📊 Brave Search result: ${content.length} chars, primaryUrl: ${articleUrl || 'none'}`);
+        } else {
+          if (!config.braveApiKey) console.warn('⚠️ No Brave API key - skipping search');
+          if (!source.query) console.warn(`⚠️ No query for ${source.name} - skipping Brave search`);
         }
         
         if (!content || content.length < 100) {
