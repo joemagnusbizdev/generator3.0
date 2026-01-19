@@ -922,7 +922,22 @@ async function querySupabaseRest(endpoint: string, options: RequestInit = {}) {
     throw new Error(`Supabase error ${response.status}: ${text}`);
   }
 
-  return response.json();
+  const contentType = response.headers.get('content-type');
+  const text = await response.text();
+  
+  // Handle empty responses
+  if (!text || text.trim() === '') {
+    console.warn(`Empty response from ${endpoint}`);
+    return null;
+  }
+  
+  // Parse JSON with better error handling
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    console.error(`Failed to parse response from ${endpoint}: ${text.slice(0, 200)}`);
+    throw new Error(`Failed to parse JSON from ${endpoint}: ${e}`);
+  }
 }
 
 async function safeQuerySupabaseRest(endpoint: string, options: RequestInit = {}) {
@@ -2116,19 +2131,33 @@ Return recommendations in plain text format, organized by category if helpful.`;
 
     // TRENDS — GET ALL
     if (path === "/trends" && method === "GET") {
-      const status = url.searchParams.get("status");
-      const limit = url.searchParams.get("limit") || "1000";
-      let endpoint = `/trends?order=created_at.desc&limit=${limit}`;
-      if (status) endpoint = `/trends?status=eq.${encodeURIComponent(status)}&order=created_at.desc&limit=${limit}`;
-      const trends = await safeQuerySupabaseRest(endpoint);
-      const normalized = (trends || []).map((t: any) => ({
-        ...t,
-        category: t.event_type || t.category || "General",
-        count: typeof t.incident_count === "number" ? t.incident_count : (t.count ?? 0),
-        highest_severity: t.severity || t.highest_severity || "informative",
-        last_seen_at: t.last_seen || t.last_seen_at || t.updated_at || t.created_at,
-      }));
-      return json({ ok: true, trends: normalized });
+      try {
+        const status = url.searchParams.get("status");
+        const limit = url.searchParams.get("limit") || "1000";
+        let endpoint = `/trends?order=created_at.desc&limit=${limit}`;
+        if (status) endpoint = `/trends?status=eq.${encodeURIComponent(status)}&order=created_at.desc&limit=${limit}`;
+        
+        console.log(`📊 Fetching trends from: ${endpoint}`);
+        const trends = await safeQuerySupabaseRest(endpoint);
+        
+        if (!trends) {
+          console.log(`📊 No trends found or empty response`);
+          return json({ ok: true, trends: [] });
+        }
+        
+        const normalized = trends.map((t: any) => ({
+          ...t,
+          category: t.event_type || t.category || "General",
+          count: typeof t.incident_count === "number" ? t.incident_count : (t.count ?? 0),
+          highest_severity: t.severity || t.highest_severity || "informative",
+          last_seen_at: t.last_seen || t.last_seen_at || t.updated_at || t.created_at,
+        }));
+        
+        return json({ ok: true, trends: normalized });
+      } catch (err: any) {
+        console.error(`❌ Error fetching trends:`, err);
+        return json({ ok: false, error: err.message }, 500);
+      }
     }
 
     // TRENDS — GET ONE
