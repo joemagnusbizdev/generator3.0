@@ -11,6 +11,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetchJson, apiPostJson, apiPatchJson } from '../lib/utils/api';
 import { colors } from '../styles/inline';
+import MAGNUS_COLORS from '../styles/magnus-colors';
 
 // ============================================================================
 // Types
@@ -45,20 +46,20 @@ const ROLE_INFO: Record<Role, { label: string; description: string; color: strin
   operator: {
     label: 'Operator',
     description: 'Create, review, approve, post, delete, dismiss alerts. Full trend access.',
-    color: colors.gray700,
-    bgColor: colors.gray200,
+    color: MAGNUS_COLORS.deepGreen,
+    bgColor: MAGNUS_COLORS.offWhite,
   },
   analyst: {
     label: 'Analyst',
     description: 'All operator permissions plus source management.',
-    color: colors.blue700,
-    bgColor: colors.blue100,
+    color: MAGNUS_COLORS.darkGreen,
+    bgColor: MAGNUS_COLORS.offWhite,
   },
   admin: {
     label: 'Administrator',
     description: 'Full access including analytics and user management.',
-    color: colors.purple700,
-    bgColor: colors.purple100,
+    color: MAGNUS_COLORS.orange,
+    bgColor: MAGNUS_COLORS.offWhite,
   },
 };
 
@@ -257,7 +258,7 @@ export function UserManagementInline({
 
   const containerStyle: React.CSSProperties = {
     padding: '1.5rem',
-    backgroundColor: colors.magnusLightBg,
+    backgroundColor: MAGNUS_COLORS.offWhite,
     minHeight: '100%',
   };
 
@@ -273,7 +274,7 @@ export function UserManagementInline({
   const titleStyle: React.CSSProperties = {
     fontSize: '1.5rem',
     fontWeight: '700',
-    color: colors.magnusDarkGreen,
+    color: MAGNUS_COLORS.darkGreen,
     margin: 0,
   };
 
@@ -289,27 +290,27 @@ export function UserManagementInline({
 
   const primaryButtonStyle: React.CSSProperties = {
     ...buttonStyle,
-    backgroundColor: colors.magnusAccentGreen,
-    color: colors.white,
+    backgroundColor: MAGNUS_COLORS.deepGreen,
+    color: '#fff',
   };
 
   const secondaryButtonStyle: React.CSSProperties = {
     ...buttonStyle,
-    backgroundColor: colors.gray100,
-    color: colors.gray700,
-    border: `1px solid ${colors.gray300}`,
+    backgroundColor: MAGNUS_COLORS.offWhite,
+    color: MAGNUS_COLORS.darkGreen,
+    border: `1px solid ${MAGNUS_COLORS.deepGreen}`,
   };
 
   const dangerButtonStyle: React.CSSProperties = {
     ...buttonStyle,
-    backgroundColor: colors.red600,
-    color: colors.white,
+    backgroundColor: MAGNUS_COLORS.critical,
+    color: '#fff',
   };
 
   const cardStyle: React.CSSProperties = {
-    backgroundColor: colors.white,
+    backgroundColor: '#fff',
     borderRadius: '0.75rem',
-    border: `1px solid ${colors.gray200}`,
+    border: `1px solid ${MAGNUS_COLORS.border}`,
     marginBottom: '1.5rem',
     overflow: 'hidden',
   };
@@ -318,7 +319,7 @@ export function UserManagementInline({
     width: '100%',
     padding: '0.625rem 0.875rem',
     borderRadius: '0.5rem',
-    border: `1px solid ${colors.gray300}`,
+    border: `1px solid ${MAGNUS_COLORS.border}`,
     fontSize: '0.875rem',
     outline: 'none',
   };
@@ -327,7 +328,7 @@ export function UserManagementInline({
     display: 'block',
     fontSize: '0.8125rem',
     fontWeight: '600',
-    color: colors.gray700,
+    color: MAGNUS_COLORS.darkGreen,
     marginBottom: '0.375rem',
   };
 
@@ -339,20 +340,20 @@ export function UserManagementInline({
   const thStyle: React.CSSProperties = {
     textAlign: 'left',
     padding: '0.75rem 1rem',
-    backgroundColor: colors.gray50,
+    backgroundColor: MAGNUS_COLORS.offWhite,
     fontSize: '0.75rem',
     fontWeight: '700',
-    color: colors.gray600,
+    color: MAGNUS_COLORS.darkGreen,
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
-    borderBottom: `1px solid ${colors.gray200}`,
+    borderBottom: `1px solid ${MAGNUS_COLORS.border}`,
   };
 
   const tdStyle: React.CSSProperties = {
     padding: '0.75rem 1rem',
-    borderBottom: `1px solid ${colors.gray100}`,
+    borderBottom: `1px solid ${MAGNUS_COLORS.divider}`,
     fontSize: '0.875rem',
-    color: colors.gray700,
+    color: MAGNUS_COLORS.secondaryText,
   };
 
   // ============================================================================
@@ -386,10 +387,10 @@ export function UserManagementInline({
         <div
           style={{
             padding: '1rem',
-            backgroundColor: colors.red50,
-            border: `1px solid ${colors.red200}`,
+            backgroundColor: MAGNUS_COLORS.offWhite,
+            border: `1px solid ${MAGNUS_COLORS.critical}`,
             borderRadius: '0.5rem',
-            color: colors.red700,
+            color: MAGNUS_COLORS.critical,
             marginBottom: '1rem',
           }}
         >
@@ -400,8 +401,8 @@ export function UserManagementInline({
       {/* Add User Form */}
       {showAddForm && (
         <div style={cardStyle}>
-          <div style={{ padding: '1rem', borderBottom: `1px solid ${colors.gray200}`, backgroundColor: colors.gray50 }}>
-            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '600', color: colors.gray800 }}>
+          <div style={{ padding: '1rem', borderBottom: `1px solid ${MAGNUS_COLORS.border}`, backgroundColor: MAGNUS_COLORS.offWhite }}>
+            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '600', color: MAGNUS_COLORS.darkGreen }}>
               Add New User
             </h3>
           </div>
