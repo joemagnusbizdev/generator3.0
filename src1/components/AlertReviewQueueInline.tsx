@@ -65,6 +65,22 @@ const SEVERITY_META: Record<
   informative: { emoji: "", label: "INFO", color: "text-white px-3 py-1 rounded-full font-semibold", bgColor: MAGNUS_COLORS.informative },
 };
 
+function formatEventTime(a: Alert) {
+  if (!a.event_start_date) return "Date not specified";
+  
+  const start = new Date(a.event_start_date);
+  const formatted = start.toLocaleString('en-US', { 
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+  
+  return formatted;
+}
+
 function formatDateRange(a: Alert) {
   const start = a.event_start_date || "";
   const end = a.event_end_date || "";
@@ -422,8 +438,21 @@ return (
                 </div>
               )}
 
+              {/* Internal Metadata - Not exported to WhatsApp/WordPress */}
+              <div className="p-3 rounded border-l-4" style={{ backgroundColor: MAGNUS_COLORS.offWhite, borderLeftColor: MAGNUS_COLORS.secondaryText }}>
+                <p className="text-xs font-semibold mb-2" style={{ color: MAGNUS_COLORS.secondaryText }}>⚙ Internal - Not Shared</p>
+                <div className="space-y-1 text-sm">
+                  <div style={{ color: MAGNUS_COLORS.secondaryText }}>
+                    <span className="font-medium">Event Time:</span> {formatEventTime(a)}
+                  </div>
+                  <div style={{ color: MAGNUS_COLORS.secondaryText }}>
+                    <span className="font-medium">Alert Created:</span> {new Date(a.created_at).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+
               <div className="pt-4 border-t" style={{ color: MAGNUS_COLORS.tertiaryText, fontSize: "0.75rem" }}>
-                Created: {new Date(a.created_at).toLocaleString()}
+                ID: {a.id}
               </div>
             </div>
           )}
