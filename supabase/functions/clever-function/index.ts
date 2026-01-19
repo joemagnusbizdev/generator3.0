@@ -1849,7 +1849,7 @@ Return recommendations in plain text format, organized by category if helpful.`;
       }
 
       // clear existing trends
-      await safeQuerySupabaseRest(`/trends`, { method: "DELETE" });
+      await safeQuerySupabaseRest(`/trends?select=id`, { method: "DELETE" });
 
       const severityRank: Record<string, number> = {
         critical: 4,
