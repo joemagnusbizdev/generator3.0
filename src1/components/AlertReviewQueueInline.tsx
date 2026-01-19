@@ -1,6 +1,7 @@
 ﻿import { useScour } from "./ScourContext";
 import React, { useEffect, useState } from "react";
 import GeoJsonPreview from "./GeoJsonPreview";
+import MAGNUS_COLORS from "../styles/magnus-colors";
 
 /* =========================
    Types
@@ -56,12 +57,12 @@ const API_BASE = getApiUrl("");
 
 const SEVERITY_META: Record<
   Alert["severity"],
-  { emoji: string; label: string; color: string }
+  { emoji: string; label: string; color: string; bgColor?: string }
 > = {
-  critical: { emoji: "", label: "CRITICAL", color: "bg-red-600" },
-  warning: { emoji: "", label: "WARNING", color: "bg-orange-500" },
-  caution: { emoji: "", label: "CAUTION", color: "bg-yellow-500" },
-  informative: { emoji: "", label: "INFO", color: "bg-blue-500" },
+  critical: { emoji: "", label: "CRITICAL", color: "text-white px-3 py-1 rounded-full font-semibold", bgColor: MAGNUS_COLORS.critical },
+  warning: { emoji: "", label: "WARNING", color: "text-white px-3 py-1 rounded-full font-semibold", bgColor: MAGNUS_COLORS.warning },
+  caution: { emoji: "", label: "CAUTION", color: "text-white px-3 py-1 rounded-full font-semibold", bgColor: MAGNUS_COLORS.caution },
+  informative: { emoji: "", label: "INFO", color: "text-white px-3 py-1 rounded-full font-semibold", bgColor: MAGNUS_COLORS.informative },
 };
 
 function formatDateRange(a: Alert) {
@@ -227,9 +228,8 @@ return (
         <button
           onClick={() => startScour(accessToken)}
           disabled={isScouring}
-          className={`px-4 py-2 rounded text-white ${
-            isScouring ? "bg-gray-400 cursor-not-allowed" : "bg-indigo-600"
-          }`}
+          className="px-4 py-2 rounded text-white font-semibold transition disabled:opacity-60"
+          style={{ backgroundColor: isScouring ? MAGNUS_COLORS.border : MAGNUS_COLORS.darkGreen }}
         >
           {isScouring ? "Scouring…" : "Run Scour"}
         </button>
@@ -238,19 +238,21 @@ return (
 
     {/* Batch actions */}
     {selected.size > 0 && (
-      <div className="sticky top-0 z-10 p-3 bg-gray-50 border rounded flex gap-3">
-        <strong>{selected.size} selected</strong>
+      <div className="sticky top-0 z-10 p-3 border rounded flex gap-3" style={{ backgroundColor: MAGNUS_COLORS.offWhite }}>
+        <strong style={{ color: MAGNUS_COLORS.darkGreen }}>{selected.size} selected</strong>
 
         <button
           onClick={batchDismiss}
-          className="bg-yellow-600 text-white px-3 py-1 rounded"
+          className="text-white px-3 py-1 rounded font-semibold transition hover:opacity-90"
+          style={{ backgroundColor: MAGNUS_COLORS.orange }}
         >
           Batch Dismiss
         </button>
 
         <button
           onClick={batchDelete}
-          className="bg-red-600 text-white px-3 py-1 rounded"
+          className="text-white px-3 py-1 rounded font-semibold transition hover:opacity-90"
+          style={{ backgroundColor: MAGNUS_COLORS.critical }}
         >
           Batch Delete
         </button>
@@ -265,9 +267,9 @@ return (
       const d = (drafts[a.id] || a) as Alert;
 
       return (
-        <div key={a.id} className="border-2 rounded-lg bg-white shadow-md overflow-hidden">
+        <div key={a.id} className="border-2 rounded-lg bg-white shadow-md overflow-hidden" style={{ borderColor: MAGNUS_COLORS.border }}>
           {/* Header - Always Visible */}
-          <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-4 border-b-2">
+          <div className="p-4 border-b-2" style={{ backgroundColor: MAGNUS_COLORS.offWhite, borderBottomColor: MAGNUS_COLORS.deepGreen }}>
             <div className="flex items-start justify-between gap-4 mb-3">
               <div className="flex items-start gap-3 flex-1">
                 <input
@@ -285,11 +287,14 @@ return (
                 <div className="flex-1">
                   <h3 className="text-lg font-bold text-gray-900 mb-2">{a.title}</h3>
                   <div className="flex gap-2 items-center flex-wrap">
-                    <span className={`text-sm text-white font-semibold px-3 py-1 rounded-full ${meta.color}`}>
-                      {meta.emoji} {meta.label}
-                    </span>
-                    <span className="text-sm font-medium text-gray-700">📍 {a.location}, {a.country}</span>
-                    <span className="text-sm text-gray-600">🕐 {formatDateRange(a)}</span>
+                  <span
+                    className={`text-sm font-semibold px-3 py-1 rounded-full ${meta.color}`}
+                    style={{ backgroundColor: meta.bgColor }}
+                  >
+                    {meta.emoji} {meta.label}
+                  </span>
+                  <span className="text-sm font-medium" style={{ color: MAGNUS_COLORS.secondaryText }}>📍 {a.location}, {a.country}</span>
+                  <span className="text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>🕐 {formatDateRange(a)}</span>
                   </div>
                 </div>
               </div>
@@ -304,7 +309,7 @@ return (
             </div>
 
             {/* Summary - Always Visible */}
-            <div className="text-gray-700 text-sm leading-relaxed mb-4">
+            <div className="text-sm leading-relaxed mb-4" style={{ color: MAGNUS_COLORS.secondaryText }}>
               {a.summary}
             </div>
 
@@ -313,7 +318,8 @@ return (
               {permissions.canApproveAndPost && (
                 <button
                   onClick={() => approve(a.id)}
-                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold text-sm transition"
+                  className="text-white px-4 py-2 rounded font-semibold text-sm transition hover:opacity-90"
+                  style={{ backgroundColor: MAGNUS_COLORS.deepGreen }}
                 >
                   ✓ Approve & Post
                 </button>
@@ -322,7 +328,8 @@ return (
               {permissions.canDismiss && (
                 <button
                   onClick={() => dismiss(a.id)}
-                  className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded font-semibold text-sm transition"
+                  className="text-white px-4 py-2 rounded font-semibold text-sm transition hover:opacity-90"
+                  style={{ backgroundColor: MAGNUS_COLORS.orange }}
                 >
                   ⊘ Dismiss
                 </button>
@@ -333,7 +340,8 @@ return (
                   navigator.clipboard.writeText(whatsappTemplate(a));
                   window.alert("✓ Copied WhatsApp alert");
                 }}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold text-sm transition"
+                className="text-white px-4 py-2 rounded font-semibold text-sm transition hover:opacity-90"
+                style={{ backgroundColor: MAGNUS_COLORS.deepGreen }}
               >
                 💬 Copy WhatsApp
               </button>
@@ -341,7 +349,8 @@ return (
               {permissions.canDelete && (
                 <button
                   onClick={() => del(a.id)}
-                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-semibold text-sm transition"
+                  className="text-white px-4 py-2 rounded font-semibold text-sm transition hover:opacity-90"
+                  style={{ backgroundColor: MAGNUS_COLORS.critical }}
                 >
                   🗑 Delete
                 </button>
@@ -354,36 +363,37 @@ return (
             <div className="p-6 space-y-4 bg-white">
               {a.region && (
                 <div>
-                  <h4 className="font-semibold text-gray-900 mb-2">Region</h4>
-                  <p className="text-gray-700">{a.region}</p>
+                  <h4 className="font-semibold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>Region</h4>
+                  <p style={{ color: MAGNUS_COLORS.secondaryText }}>{a.region}</p>
                 </div>
               )}
 
               {a.event_type && (
                 <div>
-                  <h4 className="font-semibold text-gray-900 mb-2">Event Type</h4>
-                  <p className="text-gray-700">{a.event_type}</p>
+                  <h4 className="font-semibold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>Event Type</h4>
+                  <p style={{ color: MAGNUS_COLORS.secondaryText }}>{a.event_type}</p>
                 </div>
               )}
 
               {a.recommendations && (
-                <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
-                  <h4 className="font-semibold text-gray-900 mb-2">🎯 Traveler Recommendations</h4>
-                  <p className="text-gray-700 whitespace-pre-wrap">{a.recommendations}</p>
+                <div className="p-4 rounded" style={{ backgroundColor: MAGNUS_COLORS.offWhite, borderLeft: `4px solid ${MAGNUS_COLORS.deepGreen}` }}>
+                  <h4 className="font-semibold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>🎯 Traveler Recommendations</h4>
+                  <p className="whitespace-pre-wrap" style={{ color: MAGNUS_COLORS.secondaryText }}>{a.recommendations}</p>
                 </div>
               )}
 
               {(a.source_url || a.article_url) && (
                 <div>
-                  <h4 className="font-semibold text-gray-900 mb-2">Sources</h4>
+                  <h4 className="font-semibold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>Sources</h4>
                   <div className="space-y-1">
-                    {a.sources && <p className="text-gray-700">Source: {a.sources}</p>}
+                    {a.sources && <p style={{ color: MAGNUS_COLORS.secondaryText }}>Source: {a.sources}</p>}
                     {a.article_url && (
                       <a
                         href={a.article_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline block"
+                        className="hover:underline block"
+                        style={{ color: MAGNUS_COLORS.deepGreen }}
                       >
                         📄 Article Link
                       </a>
@@ -393,7 +403,8 @@ return (
                         href={a.source_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline block"
+                        className="hover:underline block"
+                        style={{ color: MAGNUS_COLORS.deepGreen }}
                       >
                         🔗 Source Link
                       </a>
@@ -404,12 +415,12 @@ return (
 
               {a.geojson && (
                 <div>
-                  <h4 className="font-semibold text-gray-900 mb-2">Map</h4>
+                  <h4 className="font-semibold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>Map</h4>
                   <GeoJsonPreview geojson={a.geojson} />
                 </div>
               )}
 
-              <div className="text-xs text-gray-500 pt-4 border-t">
+              <div className="pt-4 border-t" style={{ color: MAGNUS_COLORS.tertiaryText, fontSize: "0.75rem" }}>
                 Created: {new Date(a.created_at).toLocaleString()}
               </div>
             </div>
