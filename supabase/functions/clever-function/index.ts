@@ -1202,7 +1202,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") || Deno.env.get("OPENAI_KEY");
-const BRAVE_API_KEY = Deno.env.get("BRAVRE_SEARCH_API_KEY");
+// Try multiple possible names for the Brave API key (handle typos and variants)
+const BRAVE_API_KEY = Deno.env.get("BRAVRE_SEARCH_API_KEY") || Deno.env.get("BRAVE_API_KEY") || Deno.env.get("BRAVE_SEARCH_API_KEY");
 const WP_URL = Deno.env.get("WP_URL");
 const WP_USER = Deno.env.get("WP_USER");
 const WP_APP_PASSWORD = Deno.env.get("WP_APP_PASSWORD");
@@ -1643,6 +1644,7 @@ Deno.serve(async (req) => {
           SCOUR_ENABLED: true,
           AUTO_SCOUR_ENABLED: true,
           WP_CONFIGURED: !!(WP_URL && WP_USER && WP_APP_PASSWORD),
+          BRAVE_CONFIGURED: !!BRAVE_API_KEY,
         },
       });
     }
