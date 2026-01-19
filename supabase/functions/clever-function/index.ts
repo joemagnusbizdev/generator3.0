@@ -855,6 +855,7 @@ const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") || Deno.env.get("OPENAI_KE
 const WP_URL = Deno.env.get("WP_URL");
 const WP_USER = Deno.env.get("WP_USER");
 const WP_APP_PASSWORD = Deno.env.get("WP_APP_PASSWORD");
+const WP_POST_TYPE = Deno.env.get("WP_POST_TYPE") || "intelligence-alert"; // ACF post location: Intelligence Alert
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1105,7 +1106,7 @@ async function approveAndPublishToWP(id: string) {
     };
 
     const wpAuth = btoa(`${WP_USER}:${WP_APP_PASSWORD}`);
-    const wpResponse = await fetch(`${WP_URL}/wp-json/wp/v2/rss-feed`, {
+    const wpResponse = await fetch(`${WP_URL}/wp-json/wp/v2/${WP_POST_TYPE}`, {
       method: "POST",
       headers: {
         "Authorization": `Basic ${wpAuth}`,
@@ -1915,17 +1916,19 @@ Return recommendations in plain text format, organized by category if helpful.`;
           severityRank[a.severity] > severityRank[max.severity] ? a : max
         , items[0]);
 
+        const title = `${event_type} incidents in ${country}`;
         trends.push({
           id: crypto.randomUUID(),
+          title,
           country,
-          category: event_type,
-          count: items.length,
-          highest_severity: highest.severity,
+          event_type,
+          incident_count: items.length,
+          severity: highest.severity,
           alert_ids: items.map((i) => i.id),
-          last_seen_at: items[items.length - 1].created_at,
+          first_seen: items[0]?.created_at || nowIso(),
+          last_seen: items[items.length - 1]?.created_at || nowIso(),
           status: "open",
-          created_at: nowIso(),
-          updated_at: nowIso(),
+          auto_generated: true,
         });
       }
 
@@ -1942,7 +1945,14 @@ Return recommendations in plain text format, organized by category if helpful.`;
       let endpoint = `/trends?order=created_at.desc&limit=${limit}`;
       if (status) endpoint = `/trends?status=eq.${encodeURIComponent(status)}&order=created_at.desc&limit=${limit}`;
       const trends = await safeQuerySupabaseRest(endpoint);
-      return json({ ok: true, trends: trends || [] });
+      const normalized = (trends || []).map((t: any) => ({
+        ...t,
+        category: t.event_type || t.category || "General",
+        count: typeof t.incident_count === "number" ? t.incident_count : (t.count ?? 0),
+        highest_severity: t.severity || t.highest_severity || "informative",
+        last_seen_at: t.last_seen || t.last_seen_at || t.updated_at || t.created_at,
+      }));
+      return json({ ok: true, trends: normalized });
     }
 
     // TRENDS — GET ONE
@@ -2010,13 +2020,16 @@ Return recommendations in plain text format, organized by category if helpful.`;
           .map((a: any) => `- ${a.title}: ${a.summary} (${a.severity.toUpperCase()}, ${a.location})`)
           .join("\n");
 
+        const highestSeverity = trend.severity || trend.highest_severity || "warning";
+        const lastSeen = trend.last_seen || trend.last_seen_at || trend.updated_at || trend.created_at;
+        const incidentCount = (typeof trend.incident_count === "number" ? trend.incident_count : trend.count) || alerts.length;
         const prompt = `You are a MAGNUS Travel Safety Intelligence analyst creating a professional situational report on a developing travel safety trend.
 
 TREND: ${trend.title}
 COUNTRY: ${trend.country}
-SEVERITY: ${trend.highest_severity?.toUpperCase() || "WARNING"}
-LAST UPDATED: ${new Date(trend.last_seen_at || trend.created_at).toLocaleDateString()}
-RELATED INCIDENTS: ${trend.count || alerts.length}
+SEVERITY: ${String(highestSeverity).toUpperCase()}
+LAST UPDATED: ${new Date(lastSeen).toLocaleDateString()}
+RELATED INCIDENTS: ${incidentCount}
 
 RECENT EVENTS:
 ${alertSummaries || "No specific incidents available"}
@@ -2097,11 +2110,11 @@ Format the response as plain text with clear section headers. Include specific, 
           title: `${trend.title} - Situational Report`,
           generatedAt: nowIso(),
           country: trend.country,
-          severity: trend.highest_severity,
+          severity: highestSeverity,
           content: reportContent,
           metadata: {
             trendTitle: trend.title,
-            incidents: trend.count || alerts.length,
+            incidents: incidentCount,
             alertIds: alertIds,
             generatedBy: "MAGNUS Intelligence System",
             model: "gpt-4o-mini",
