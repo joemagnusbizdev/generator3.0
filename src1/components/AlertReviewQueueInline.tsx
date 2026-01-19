@@ -82,12 +82,18 @@ function formatEventTime(a: Alert) {
 }
 
 function formatDateRange(a: Alert) {
+  // Format event dates
   const start = a.event_start_date || "";
   const end = a.event_end_date || "";
-  if (start && end) return `${start}  ${end}`;
-  if (start && !end) return `${start} (ongoing)`;
-  if (!start && end) return `until ${end}`;
-  return "Ongoing";
+  let eventDates = "Ongoing";
+  if (start && end) eventDates = `${new Date(start).toLocaleString()} to ${new Date(end).toLocaleString()}`;
+  else if (start && !end) eventDates = `${new Date(start).toLocaleString()} (ongoing)`;
+  else if (!start && end) eventDates = `until ${new Date(end).toLocaleString()}`;
+  
+  // Format alert creation date
+  const createdAt = a.created_at ? new Date(a.created_at).toLocaleString() : "Unknown";
+  
+  return `Event: ${eventDates} | Alert Created: ${createdAt}`;
 }
 
 function whatsappTemplate(a: Alert) {
@@ -127,12 +133,22 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (permissions.canReview) void loadAlerts();
+    if (!permissions.canReview) return;
+    
+    // Load immediately
+    void loadAlerts();
+    
+    // Then poll every 3 seconds for new alerts during active session
+    const interval = setInterval(() => {
+      loadAlerts().catch(e => console.warn('Alert poll failed:', e));
+    }, 3000);
+    
+    return () => clearInterval(interval);
   }, [permissions.canReview]);
 
   async function loadAlerts() {
     try {
-      setLoading(true);
+      setLoading(false); // Don't show loading spinner on refresh, only on initial load
       setError(null);
       const res = await fetch(`${API_BASE}/alerts/review`);
       if (!res.ok) throw new Error(`Failed to load alerts (${res.status})`);
@@ -140,8 +156,6 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
       setAlerts(Array.isArray(data.alerts) ? data.alerts : []);
     } catch (e: any) {
       setError(e?.message || "Failed to load alerts");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -383,6 +397,13 @@ return (
                 <div>
                   <h4 className="font-semibold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>Region</h4>
                   <p style={{ color: MAGNUS_COLORS.secondaryText }}>{a.region}</p>
+                </div>
+              )}
+
+              {a.geojson && (
+                <div>
+                  <h4 className="font-semibold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>📍 Map</h4>
+                  <GeoJsonPreview geojson={a.geojson} />
                 </div>
               )}
 
