@@ -60,15 +60,30 @@ export async function deleteAlert(id: string, token?: string): Promise<void> {
 
 /**
  * POST JSON to API
+ * Supports both (endpoint, body, token) and (endpoint, token, body?) signatures
  */
 export async function apiPostJson<T>(
   endpoint: string,
-  body: any,
-  token?: string
+  bodyOrToken: any,
+  tokenOrBody?: any
 ): Promise<T> {
+  let token: string;
+  let body: any;
+
+  // Determine which signature is being used
+  if (typeof bodyOrToken === 'string') {
+    // (endpoint, token, body?) signature
+    token = bodyOrToken;
+    body = tokenOrBody;
+  } else {
+    // (endpoint, body, token) signature
+    body = bodyOrToken;
+    token = tokenOrBody;
+  }
+
   return apiFetchJson<T>(endpoint, token, {
     method: 'POST',
-    body: JSON.stringify(body),
+    ...(body ? { body: JSON.stringify(body) } : {}),
   });
 }
 
