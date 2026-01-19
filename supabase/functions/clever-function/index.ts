@@ -2418,16 +2418,48 @@ Return recommendations in plain text format, organized by category if helpful.`;
 
       const job = await getKV(`scour_job:${jobId}`);
       
-      if (!job) {
-        console.warn(`⚠️ JOB NOT FOUND in KV store: ${jobId}`);
-        console.warn(`   Attempted to fetch: scour_job:${jobId}`);
-      } else {
+      if (job) {
         console.log(`✓ Job found: ${jobId}, total=${job.total}, processed=${job.processed}, status=${job.status}`);
+        return json({ ok: true, job });
       }
       
+      // Job not in KV - try to infer status from alerts table (scour may be in progress)
+      console.log(`⚠️ Job ${jobId} not in KV store, checking if scour is active...`);
+      try {
+        const timeWindow = new Date(Date.now() - 5 * 60000).toISOString();
+        console.log(`  Checking for alerts created after: ${timeWindow}`);
+        const recentAlerts = await querySupabaseRest(`/alerts?created_at=gte.${encodeURIComponent(timeWindow)}&select=id`);
+        console.log(`  Query result type: ${typeof recentAlerts}, isArray: ${Array.isArray(recentAlerts)}, length: ${recentAlerts?.length}`);
+        const isActive = Array.isArray(recentAlerts) && recentAlerts.length > 0;
+        if (isActive) {
+          console.log(`✓ Scour appears active - ${recentAlerts.length} alerts created in last 5 min`);
+          // Return placeholder job with status "running" - use 1 as total so frontend shows progress bar
+          return json({
+            ok: true,
+            job: {
+              id: jobId,
+              status: "running",
+              total: 1, // Minimum 1 so frontend doesn't show "No sources" message
+              processed: 0,
+              created: recentAlerts.length,
+              duplicatesSkipped: 0,
+              errorCount: 0,
+              errors: [],
+              currentActivity: "🔎 Scour in progress (polling job status)",
+              _note: "Job status not in KV, but alerts are being created"
+            }
+          });
+        } else {
+          console.log(`❌ No recent alerts found - scour may have finished or not started`);
+        }
+      } catch (e: any) {
+        console.error(`❌ Could not check alerts table:`, e?.message, e);
+      }
+      
+      // Default: job not found and no recent activity
       return json({
         ok: true,
-        job: job || { id: jobId, status: "running", total: 0, processed: 0, created: 0, duplicatesSkipped: 0, errorCount: 0, errors: [] },
+        job: { id: jobId, status: "running", total: 0, processed: 0, created: 0, duplicatesSkipped: 0, errorCount: 0, errors: [] },
       });
     }
 
