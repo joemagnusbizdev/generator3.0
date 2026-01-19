@@ -504,6 +504,7 @@ async function fetchWithBraveSearch(query: string, braveApiKey: string): Promise
 
 async function scrapeUrl(url: string): Promise<string> {
   try {
+    console.log(`   📄 Scraping: ${url}`);
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -512,13 +513,17 @@ async function scrapeUrl(url: string): Promise<string> {
     });
 
     if (!response.ok) {
+      console.error(`   ❌ HTTP ${response.status} - ${url}`);
       throw new Error(`Scrape failed: ${response.status}`);
     }
 
     const html = await response.text();
-    return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 15000);
+    const cleaned = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 15000);
+    console.log(`   ✅ Scraped ${cleaned.length} chars from ${url}`);
+    return cleaned;
   } catch (err) {
-    console.error(`Scrape error for ${url}:`, err);
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error(`   ❌ Scrape error for ${url}: ${errMsg}`);
     return '';
   }
 }
@@ -1427,6 +1432,97 @@ Deno.serve(async (req) => {
       }
     }
 
+    // SCOUR — DIAGNOSTICS (GET /scour/status/diagnostics)
+    if (path === "/scour/status/diagnostics" && method === "GET") {
+      const diagnostics: any = {
+        ok: true,
+        apis: {
+          openai: {
+            configured: !!OPENAI_API_KEY,
+            keyPrefix: OPENAI_API_KEY ? OPENAI_API_KEY.slice(0, 8) + '...' : 'NOT SET',
+          },
+          brave: {
+            configured: !!Deno.env.get("BRAVE_SEARCH_API_KEY"),
+            keyPrefix: Deno.env.get("BRAVE_SEARCH_API_KEY") ? Deno.env.get("BRAVE_SEARCH_API_KEY")!.slice(0, 8) + '...' : 'NOT SET',
+          },
+        },
+        database: {
+          supabaseUrl: supabaseUrl ? '✓' : '✗',
+          serviceKey: serviceKey ? '✓' : '✗',
+        },
+        sources: null as any,
+      };
+
+      try {
+        // Count enabled sources
+        const sources = (await querySupabaseRest("/sources?select=id,name,url,enabled&limit=1000")) || [];
+        const enabledSources = sources.filter((s: any) => s.enabled);
+        diagnostics.sources = {
+          total: sources.length,
+          enabled: enabledSources.length,
+          disabled: sources.length - enabledSources.length,
+        };
+
+        // Test OpenAI if configured
+        if (OPENAI_API_KEY) {
+          try {
+            const testRes = await fetch('https://api.openai.com/v1/models', {
+              headers: {
+                'Authorization': `Bearer ${OPENAI_API_KEY}`,
+              },
+              signal: AbortSignal.timeout(5000),
+            });
+            diagnostics.apis.openai.testResult = {
+              reachable: testRes.ok,
+              status: testRes.status,
+              timestamp: new Date().toISOString(),
+            };
+          } catch (e) {
+            diagnostics.apis.openai.testResult = {
+              reachable: false,
+              error: String(e),
+              timestamp: new Date().toISOString(),
+            };
+          }
+        }
+
+        // Test Brave if configured
+        const braveKey = Deno.env.get("BRAVE_SEARCH_API_KEY");
+        if (braveKey) {
+          try {
+            const testRes = await fetch(`https://api.search.brave.com/res/v1/web/search?q=test&count=1`, {
+              headers: {
+                'X-Subscription-Token': braveKey,
+              },
+              signal: AbortSignal.timeout(5000),
+            });
+            diagnostics.apis.brave.testResult = {
+              reachable: testRes.ok,
+              status: testRes.status,
+              timestamp: new Date().toISOString(),
+            };
+          } catch (e) {
+            diagnostics.apis.brave.testResult = {
+              reachable: false,
+              error: String(e),
+              timestamp: new Date().toISOString(),
+            };
+          }
+        }
+
+        // Get last scour job status
+        const lastJobId = await getKV("last_scour_job_id");
+        if (lastJobId) {
+          const lastJob = await getKV(`scour_job:${lastJobId}`);
+          diagnostics.lastScourJob = lastJob;
+        }
+
+        return json(diagnostics);
+      } catch (err: any) {
+        return json({ ok: false, error: `Scour diagnostics failed: ${err.message}` }, 500);
+      }
+    }
+
     // USERS — GET ALL (via /admin/users)
     if ((path === "/users" || path === "/admin/users") && method === "GET") {
       try {
@@ -1918,6 +2014,17 @@ Return recommendations in plain text format, organized by category if helpful.`;
       const sourceIds: string[] = Array.isArray(body.sourceIds) ? body.sourceIds : [];
       const daysBack = typeof body.daysBack === "number" ? body.daysBack : 14;
 
+      console.log(`\n🚀 SCOUR START REQUEST: jobId=${jobId}, sourceIds=${sourceIds.length}, daysBack=${daysBack}`);
+      
+      if (sourceIds.length === 0) {
+        console.warn(`⚠️  No source IDs provided to scour! Request body:`, body);
+        return json({ 
+          ok: false, 
+          error: "No source IDs provided. Cannot start scour with 0 sources.",
+          debugInfo: { sourceIds, bodyKeys: Object.keys(body) }
+        }, 400);
+      }
+
       const job = {
         id: jobId,
         status: "running",
@@ -1939,7 +2046,7 @@ Return recommendations in plain text format, organized by category if helpful.`;
 
       // Run scour asynchronously on server - continues even if browser closes or navigates
       // waitUntil() ensures the background task completes before edge function is terminated
-      console.log(`🚀 SCOUR STARTED (Server-side - runs independent of browser): ${jobId}`);
+      console.log(`📋 SCOUR JOB CREATED: ${job.total} sources to process`);
       waitUntil(
         runScourWorker({
           jobId,
@@ -1961,7 +2068,7 @@ Return recommendations in plain text format, organized by category if helpful.`;
         })
       );
 
-      return json({ ok: true, jobId, status: "running", total: job.total });
+      return json({ ok: true, jobId, total: sourceIds.length, message: `Scour job started with ${sourceIds.length} sources` });
     }
 
     // SCOUR — STATUS (GET /scour/status?jobId=... OR GET /scour-status?jobId=...)

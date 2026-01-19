@@ -141,19 +141,29 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
             token
           );
 
-          const enabled = (sourcesRes.sources || []).filter((s) => s.enabled).map((s) => s.id);
+          const allSources = sourcesRes.sources || [];
+          const enabled = allSources.filter((s) => s.enabled).map((s) => s.id);
           sourceIds = enabled;
+          
+          console.log(`[Scour] Fetched sources: total=${allSources.length}, enabled=${enabled.length}`);
         }
 
-        if (sourceIds.length === 0) throw new Error("No enabled sources available to scour");
+        if (sourceIds.length === 0) {
+          throw new Error(`No enabled sources available to scour (checked sources endpoint)`);
+        }
 
-        const startRes = await apiPostJson<{ ok: boolean; jobId?: string; total?: number; error?: string }>(
+        console.log(`[Scour] Starting with ${sourceIds.length} sources:`, sourceIds);
+
+        const startRes = await apiPostJson<{ ok: boolean; jobId?: string; total?: number; error?: string; debugInfo?: any }>(
           "/scour-sources",
           { sourceIds, daysBack: opts?.daysBack || 14 },
           token
         );
 
-        if (!startRes.ok || !startRes.jobId) throw new Error(startRes.error || "Failed to start scour job");
+        if (!startRes.ok || !startRes.jobId) {
+          console.error(`[Scour] Start failed:`, startRes);
+          throw new Error(startRes.error || "Failed to start scour job");
+        }
 
         const newJobId = startRes.jobId;
         setJobId(newJobId);
@@ -176,7 +186,9 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
 
         setTimeout(() => pollStatus(newJobId, token), 600);
       } catch (e: any) {
-        setLastError(e?.message || "Failed to start scour");
+        const errorMsg = e?.message || "Failed to start scour";
+        console.error(`[Scour Error]`, errorMsg);
+        setLastError(errorMsg);
         setIsScouring(false);
         stopPolling();
       }
