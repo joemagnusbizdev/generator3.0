@@ -12,6 +12,7 @@ export async function apiFetchJson<T>(
   options: RequestInit = {}
 ): Promise<T> {
   if (!token) {
+    console.error('[apiFetchJson] No token provided', { endpoint, token, options });
     throw new Error('API token required for apiFetchJson');
   }
 
@@ -22,10 +23,12 @@ export async function apiFetchJson<T>(
     ...(options.headers as Record<string, string> || {}),
   };
 
+  console.log('[apiFetchJson] Request:', { endpoint, url, method: options.method || 'GET', hasToken: !!token });
   const response = await fetch(url, { ...options, headers });
 
   if (!response.ok) {
     const errorText = await response.text();
+    console.error('[apiFetchJson] Error response:', { status: response.status, errorText });
     throw new Error(`API error ${response.status}: ${errorText}`);
   }
 
@@ -81,6 +84,7 @@ export async function apiPostJson<T>(
     token = tokenOrBody;
   }
 
+  console.log('[apiPostJson] Calling with:', { endpoint, hasToken: !!token, hasBody: !!body, bodyType: typeof bodyOrToken });
   return apiFetchJson<T>(endpoint, token, {
     method: 'POST',
     ...(body ? { body: JSON.stringify(body) } : {}),
@@ -110,6 +114,7 @@ export async function apiPatchJson<T>(
     token = tokenOrBody;
   }
 
+  console.log('[apiPatchJson] Calling with:', { endpoint, hasToken: !!token, hasBody: !!body, bodyType: typeof bodyOrToken });
   return apiFetchJson<T>(endpoint, token, {
     method: 'PATCH',
     body: JSON.stringify(body),
