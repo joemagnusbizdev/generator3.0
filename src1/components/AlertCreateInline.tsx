@@ -316,7 +316,10 @@ export default function AlertCreateInline({
         region: formData.region.trim() || null,
         location: formData.location.trim(),
         summary: formData.summary.trim(),
-        recommendations: formData.recommendations.filter(a => a.trim()).map(a => a.trim()),
+        recommendations: formData.recommendations
+          .filter(a => a.trim())
+          .map(a => a.trim())
+          .join('\n'),
         sources: formData.sources
           .filter(s => s.url.trim())
           .map(s => ({
