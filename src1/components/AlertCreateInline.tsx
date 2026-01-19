@@ -291,11 +291,10 @@ export default function AlertCreateInline({
   }, []);
 
   // ============================================================================
-  // Submit
+  // Action Handlers
   // ============================================================================
 
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveDraft = useCallback(async () => {
     
     if (!validation.isValid) {
       setError(validation.errors.join('. '));
@@ -328,7 +327,7 @@ export default function AlertCreateInline({
         severity: formData.severity,
         event_type: formData.event_type || null,
         geo_scope: formData.geo_scope || null,
-        geoJSON: JSON.parse(formData.geoJSON),
+        polygon: JSON.parse(formData.geoJSON),
       };
 
       // Add geo fields if provided
@@ -337,8 +336,8 @@ export default function AlertCreateInline({
         payload.longitude = parseFloat(formData.longitude);
         payload.radius_km = parseFloat(formData.radius_km) || 25;
 
-        // Generate GeoJSON circle
-        payload.geojson = generateCircleGeoJSON(
+        // Generate polygon (GeoJSON circle) for WordPress field group
+        payload.polygon = generateCircleGeoJSON(
           payload.latitude,
           payload.longitude,
           payload.radius_km
@@ -360,7 +359,7 @@ export default function AlertCreateInline({
       );
 
       if (result.ok && result.alert) {
-        setSuccess(`Alert created successfully! ID: ${result.alert.id}`);
+        setSuccess(`Draft saved successfully! ID: ${result.alert.id}`);
         onAlertCreated?.(result.alert);
         resetForm();
       } else {
@@ -373,6 +372,141 @@ export default function AlertCreateInline({
       setSubmitting(false);
     }
   }, [formData, validation, accessToken, onAlertCreated, resetForm]);
+
+  const handlePost = useCallback(async () => {
+    if (!validation.isValid) {
+      setError(validation.errors.join('. '));
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      // First create as draft
+      const payload: Record<string, any> = {
+        status: 'draft',
+        title: formData.title.trim(),
+        country: formData.country,
+        region: formData.region.trim() || null,
+        location: formData.location.trim(),
+        summary: formData.summary.trim(),
+        recommendations: formData.recommendations
+          .filter(a => a.trim())
+          .map(a => a.trim())
+          .join('\n'),
+        sources: formData.sources
+          .filter(s => s.url.trim())
+          .map(s => ({
+            url: s.url.trim(),
+            title: s.title?.trim() || undefined,
+          })),
+        severity: formData.severity,
+        event_type: formData.event_type || null,
+        geo_scope: formData.geo_scope || null,
+        polygon: JSON.parse(formData.geoJSON),
+      };
+
+      if (formData.latitude && formData.longitude) {
+        payload.latitude = parseFloat(formData.latitude);
+        payload.longitude = parseFloat(formData.longitude);
+        payload.radius_km = parseFloat(formData.radius_km) || 25;
+
+        // Generate polygon (GeoJSON circle) for WordPress field group
+        payload.polygon = generateCircleGeoJSON(
+          payload.latitude,
+          payload.longitude,
+          payload.radius_km
+        );
+      }
+
+      if (formData.event_start_date) {
+        payload.event_start_date = new Date(formData.event_start_date).toISOString().split('T')[0];
+      }
+      if (formData.event_end_date) {
+        payload.event_end_date = new Date(formData.event_end_date).toISOString().split('T')[0];
+      }
+
+      const createResult = await apiPostJson<{ ok: boolean; alert?: any; error?: string }>(
+        '/alerts',
+        payload,
+        accessToken
+      );
+
+      if (!createResult.ok || !createResult.alert) {
+        throw new Error(createResult.error || 'Failed to create alert');
+      }
+
+      // Then publish to WordPress
+      const publishResult = await apiPostJson<{ ok: boolean; error?: string }>(
+        `/alerts/${createResult.alert.id}/publish`,
+        {},
+        accessToken
+      );
+
+      if (publishResult.ok) {
+        setSuccess(`Alert posted to WordPress successfully!`);
+        onAlertCreated?.(createResult.alert);
+        resetForm();
+      } else {
+        throw new Error(publishResult.error || 'Failed to publish to WordPress');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to post alert';
+      setError(message);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [formData, validation, accessToken, onAlertCreated, resetForm]);
+
+  const handleCopyWhatsApp = useCallback(async () => {
+    if (!validation.isValid) {
+      setError(validation.errors.join('. '));
+      return;
+    }
+
+    try {
+      // Format for WhatsApp
+      const formatDateRange = (start?: string, end?: string): string => {
+        if (!start) return '';
+        const startDate = new Date(start);
+        const startStr = startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+        
+        if (!end) return startStr;
+        const endDate = new Date(end);
+        const endStr = endDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+        
+        if (start === end) return startStr;
+        return `${startStr} - ${endStr}`;
+      };
+
+      const dateRange = formatDateRange(formData.event_start_date, formData.event_end_date);
+      const recText = formData.recommendations
+        .filter(r => r.trim())
+        .map((r, i) => `${i + 1}. ${r.trim()}`)
+        .join('\n');
+
+      const whatsappText = `*${formData.title.trim()}*\n\n` +
+        `📍 *Location:* ${formData.location.trim()}${dateRange ? `\n📅 *Date:* ${dateRange}` : ''}\n\n` +
+        `${formData.summary.trim()}\n\n` +
+        (recText ? `*Traveler Recommendations:*\n${recText}\n\n` : '') +
+        `_${formData.country}_`;
+
+      await navigator.clipboard.writeText(whatsappText);
+      setSuccess('Copied to clipboard in WhatsApp format!');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to copy to clipboard';
+      setError(message);
+    }
+  }, [formData, validation]);
+
+  const handleDiscard = useCallback(() => {
+    if (confirm('Are you sure you want to discard this alert? This cannot be undone.')) {
+      resetForm();
+      setSuccess('Alert discarded');
+    }
+  }, [resetForm]);
 
   // ============================================================================
   // GeoJSON Helper
@@ -616,7 +750,7 @@ export default function AlertCreateInline({
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={(e) => e.preventDefault()}>
         {/* Basic Info Section */}
         <div style={sectionStyle}>
           <h3 style={sectionTitleStyle}> Basic Information</h3>
@@ -975,26 +1109,78 @@ export default function AlertCreateInline({
           >
             {showPreview ? 'Hide Preview' : 'Show WP Preview'}
           </button>
-          
-          <button
-            type="button"
-            onClick={resetForm}
-            style={buttons.secondary}
-          >
-            Reset Form
-          </button>
-          
-          <button
-            type="submit"
-            disabled={submitting || !validation.isValid}
-            style={{
-              ...buttons.primary,
-              opacity: (submitting || !validation.isValid) ? 0.6 : 1,
-              cursor: (submitting || !validation.isValid) ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {submitting ? 'Creating...' : 'Create Alert (Draft)'}
-          </button>
+        </div>
+
+        {/* Action Buttons */}
+        <div style={{ 
+          display: 'flex', 
+          gap: '0.75rem', 
+          justifyContent: 'space-between',
+          marginTop: '1.5rem',
+          paddingTop: '1.5rem',
+          borderTop: `2px solid ${colors.gray200}`
+        }}>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button
+              type="button"
+              onClick={handleDiscard}
+              disabled={submitting}
+              style={{
+                ...buttons.secondary,
+                backgroundColor: colors.red50,
+                color: colors.red700,
+                border: `1px solid ${colors.red200}`,
+                opacity: submitting ? 0.6 : 1,
+                cursor: submitting ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Discard
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button
+              type="button"
+              onClick={handleSaveDraft}
+              disabled={submitting || !validation.isValid}
+              style={{
+                ...buttons.secondary,
+                opacity: (submitting || !validation.isValid) ? 0.6 : 1,
+                cursor: (submitting || !validation.isValid) ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {submitting ? 'Saving...' : 'Save Draft'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCopyWhatsApp}
+              disabled={submitting || !validation.isValid}
+              style={{
+                ...buttons.secondary,
+                backgroundColor: colors.green50,
+                color: '#25D366',
+                border: '1px solid #25D366',
+                opacity: (submitting || !validation.isValid) ? 0.6 : 1,
+                cursor: (submitting || !validation.isValid) ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Copy to WhatsApp
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePost}
+              disabled={submitting || !validation.isValid}
+              style={{
+                ...buttons.primary,
+                opacity: (submitting || !validation.isValid) ? 0.6 : 1,
+                cursor: (submitting || !validation.isValid) ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {submitting ? 'Posting...' : 'Post to WordPress'}
+            </button>
+          </div>
         </div>
 
         {/* Validation Summary */}
