@@ -3,6 +3,367 @@
 console.log("=== Clever Function starting ===");
 
 // ============================================================================
+// GEOJSON & COORDINATE HELPERS
+// ============================================================================
+
+interface GeometryPoint {
+  type: 'Point';
+  coordinates: [number, number]; // [longitude, latitude]
+}
+
+interface GeometryPolygon {
+  type: 'Polygon';
+  coordinates: number[][][];
+}
+
+type Geometry = GeometryPoint | GeometryPolygon;
+
+interface GeoJSONFeature {
+  type: 'Feature';
+  geometry: Geometry;
+  properties: Record<string, any>;
+}
+
+// Approximate country coordinates for fallback
+const COUNTRY_COORDS: Record<string, [number, number]> = {
+  'United States': [-95.7129, 37.0902],
+  'Canada': [-95.7129, 56.1304],
+  'Mexico': [-102.5528, 23.6345],
+  'United Kingdom': [-3.4360, 55.3781],
+  'France': [2.2137, 46.2276],
+  'Germany': [10.4515, 51.1657],
+  'Spain': [-3.7492, 40.4637],
+  'Italy': [12.5674, 41.8719],
+  'Japan': [138.2529, 36.2048],
+  'China': [104.1954, 35.8617],
+  'India': [78.9629, 20.5937],
+  'Australia': [133.7751, -25.2744],
+  'Brazil': [-51.9253, -14.2350],
+  'Thailand': [100.9925, 15.8700],
+  'Philippines': [121.7740, 12.8797],
+  'South Korea': [127.0780, 37.5665],
+  'France': [2.3522, 48.8566],
+  'Germany': [13.4050, 52.5200],
+  'Netherlands': [5.2913, 52.1326],
+};
+
+// Generate point-based GeoJSON
+function generatePointGeoJSON(latitude: number, longitude: number): GeoJSONFeature {
+  return {
+    type: 'Feature',
+    geometry: {
+      type: 'Point',
+      coordinates: [longitude, latitude],
+    },
+    properties: {
+      type: 'alert_location',
+      zoomLevel: 'exact',
+    },
+  };
+}
+
+// Generate circle polygon as GeoJSON from center point and radius
+function generateCircleGeoJSON(
+  latitude: number,
+  longitude: number,
+  radiusKm: number
+): GeoJSONFeature {
+  const earthRadiusKm = 6371;
+  const latChange = (radiusKm / earthRadiusKm) * (180 / Math.PI);
+  const lonChange = (radiusKm / (earthRadiusKm * Math.cos((latitude * Math.PI) / 180))) * (180 / Math.PI);
+
+  const points: number[][] = [];
+  for (let i = 0; i < 32; i++) {
+    const angle = (i / 32) * 2 * Math.PI;
+    const lat = latitude + latChange * Math.sin(angle);
+    const lon = longitude + lonChange * Math.cos(angle);
+    points.push([lon, lat]);
+  }
+  points.push(points[0]); // Close the polygon
+
+  return {
+    type: 'Feature',
+    geometry: {
+      type: 'Polygon',
+      coordinates: [points],
+    },
+    properties: {
+      type: 'alert_radius',
+      radiusKm,
+      zoomLevel: 'approximate',
+    },
+  };
+}
+
+// Get approximate country coordinates as fallback
+function getCountryCoordinates(country: string): [number, number] {
+  return COUNTRY_COORDS[country] || [0, 0];
+}
+
+// Determine geo scope based on severity and description
+function determineGeoScope(
+  severity: string,
+  country: string,
+  region?: string
+): 'local' | 'city' | 'regional' | 'national' | 'multinational' {
+  if (!region) return 'national';
+  const isLocal = region.length < 50 && !region.includes(',');
+  if (severity === 'critical') return 'regional';
+  if (severity === 'warning') return isLocal ? 'city' : 'regional';
+  return 'local';
+}
+
+// Determine radius in km based on severity and scope
+function getRadiusFromSeverity(severity: string, scope: string): number {
+  const severityRadius: Record<string, number> = {
+    critical: 150,
+    warning: 75,
+    caution: 25,
+    informative: 10,
+  };
+  return severityRadius[severity] || 10;
+}
+
+// Country to continent mapping
+const COUNTRY_TO_CONTINENT: Record<string, string> = {
+  'United States': 'North America',
+  'Canada': 'North America',
+  'Mexico': 'North America',
+  'UK': 'Europe',
+  'United Kingdom': 'Europe',
+  'France': 'Europe',
+  'Germany': 'Europe',
+  'Spain': 'Europe',
+  'Italy': 'Europe',
+  'Netherlands': 'Europe',
+  'Belgium': 'Europe',
+  'Switzerland': 'Europe',
+  'Poland': 'Europe',
+  'Japan': 'Asia',
+  'China': 'Asia',
+  'India': 'Asia',
+  'Thailand': 'Asia',
+  'Philippines': 'Asia',
+  'South Korea': 'Asia',
+  'Vietnam': 'Asia',
+  'Australia': 'Oceania',
+  'Brazil': 'South America',
+  'Argentina': 'South America',
+  'Chile': 'South America',
+  'Colombia': 'South America',
+  'Peru': 'South America',
+};
+
+function getContinent(country: string): string {
+  return COUNTRY_TO_CONTINENT[country] || 'Unknown';
+}
+
+// ============================================================================
+// TREND MATCHING & AGGREGATION
+// ============================================================================
+
+async function matchAlertToTrend(
+  alert: Alert,
+  existingTrend: Trend,
+  openaiKey: string
+): Promise<boolean> {
+  // Geographic validation is MANDATORY
+  if (existingTrend.country !== alert.country) {
+    console.log(`Geographic mismatch: ${alert.country} vs trend country ${existingTrend.country}`);
+    return false;
+  }
+
+  // Event type should be similar
+  const alertType = (alert.eventType || alert.event_type || '').toLowerCase();
+  const trendType = (existingTrend.eventType || '').toLowerCase();
+  
+  if (!alertType.includes(trendType.split(' ')[0]) && !trendType.includes(alertType.split(' ')[0])) {
+    return false;
+  }
+
+  // Use AI to confirm semantic match
+  const prompt = `Analyze if this new alert belongs to an EXISTING TREND (same situation, same country).
+
+TREND: ${existingTrend.title} (${existingTrend.country})
+TREND SUMMARY: ${existingTrend.summary}
+
+NEW ALERT: ${alert.title} (${alert.country})
+NEW ALERT SUMMARY: ${alert.summary}
+
+Rules:
+- MUST be same country (already confirmed)
+- MUST be same or related event type
+- MUST be part of ongoing situation in SAME LOCATION/REGION
+- Different severity levels CAN belong to same trend
+- New development in ongoing situation should be added
+
+Answer ONLY "MATCH" or "NO MATCH"`;
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1,
+        max_tokens: 150,
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) return false;
+    
+    const data = await response.json();
+    const answer = data.choices?.[0]?.message?.content?.trim().toUpperCase();
+    return answer?.includes('MATCH') || false;
+  } catch {
+    return false;
+  }
+}
+
+async function createTrendsFromAlerts(
+  alerts: Alert[],
+  existingTrends: Trend[],
+  openaiKey: string
+): Promise<Trend[]> {
+  if (alerts.length < 2) {
+    console.log('Not enough unmatched alerts to create trend (<2)');
+    return [];
+  }
+
+  // Group alerts by country and event type
+  const alertsByCountryType = new Map<string, Alert[]>();
+  
+  for (const alert of alerts) {
+    const key = `${alert.country}|${alert.eventType || alert.event_type}`;
+    if (!alertsByCountryType.has(key)) {
+      alertsByCountryType.set(key, []);
+    }
+    alertsByCountryType.get(key)!.push(alert);
+  }
+
+  const newTrends: Trend[] = [];
+
+  for (const [key, groupedAlerts] of alertsByCountryType) {
+    if (groupedAlerts.length < 2) continue;
+
+    const [country, eventType] = key.split('|');
+    const continent = getContinent(country);
+
+    // Use AI to analyze pattern and create trend
+    const alertSummaries = groupedAlerts
+      .map((a) => `- ${a.title} (${a.location}, ${a.region || 'N/A'}) [${a.severity}]`)
+      .join('\n');
+
+    const prompt = `Analyze these RELATED alerts (same country, same event type) and create a DESCRIPTIVE trend title and summary.
+
+COUNTRY: ${country}
+EVENT TYPE: ${eventType}
+
+ALERTS:
+${alertSummaries}
+
+Generate:
+1. DESCRIPTIVE trend title (specific, not generic like "Incidents in ${country}")
+2. 2-3 sentence summary of the pattern
+3. Predictive analysis (what this pattern indicates)
+4. Forecast (expected developments)
+
+Format as JSON:
+{
+  "title": "Specific descriptive title",
+  "summary": "Pattern summary",
+  "predictiveAnalysis": "What this indicates",
+  "forecast": "Expected developments"
+}
+
+CRITICAL: Title must be SPECIFIC to ${country}. Examples:
+- YES: "Flooding Events in Thailand"
+- YES: "Airport Strikes in France"
+- NO: "Global Incidents"
+- NO: "Multiple Events"`;
+
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.3,
+          max_tokens: 2000,
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!response.ok) continue;
+
+      const data = await response.json();
+      const aiResponse = data.choices?.[0]?.message?.content || '{}';
+      
+      let trendData: any = {};
+      try {
+        const cleaned = aiResponse.trim().replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        trendData = JSON.parse(cleaned);
+      } catch {
+        const match = aiResponse.match(/\{[\s\S]*\}/);
+        if (match) trendData = JSON.parse(match[0]);
+      }
+
+      // Validate trend title (reject generic titles)
+      const title = trendData.title || `${eventType} Events in ${country}`;
+      if (title.includes('undefined') || title.includes('multiple') || title.includes('global')) {
+        console.log(`Rejected generic trend title: ${title}`);
+        continue;
+      }
+
+      const severity = groupedAlerts.reduce((max, a) => {
+        const severityRank: Record<string, number> = { critical: 4, warning: 3, caution: 2, informative: 1 };
+        return (severityRank[a.severity] || 0) > (severityRank[max.severity] || 0) ? a : max;
+      }).severity;
+
+      const now = new Date().toISOString();
+      const trend: Trend = {
+        id: crypto.randomUUID(),
+        title,
+        alertIds: groupedAlerts.map((a) => a.id),
+        subItems: groupedAlerts.map((a) => a.id),
+        subItemCount: groupedAlerts.length,
+        country,
+        region: groupedAlerts[0]?.region,
+        continent,
+        eventType,
+        severity,
+        summary: trendData.summary || `Multiple ${eventType} events in ${country}`,
+        predictiveAnalysis: trendData.predictiveAnalysis,
+        forecast: trendData.forecast,
+        sources: [...new Set(groupedAlerts.flatMap((a) => a.sources ? [a.sources] : []))],
+        sourceCount: [...new Set(groupedAlerts.flatMap((a) => a.sources ? [a.sources] : []))].length,
+        firstIncidentDate: groupedAlerts[groupedAlerts.length - 1]?.created_at || now,
+        lastIncidentDate: groupedAlerts[0]?.created_at || now,
+        autoGenerated: true,
+        created_at: now,
+        updated_at: now,
+      };
+
+      newTrends.push(trend);
+    } catch (err: any) {
+      console.error('Error creating trend:', err);
+      continue;
+    }
+  }
+
+  return newTrends;
+}
+
+// ============================================================================
 // SCOUR WORKER & ALERT EXTRACTION
 // ============================================================================
 
@@ -20,17 +381,29 @@ interface Alert {
   id: string;
   title: string;
   summary: string;
+  eventSummary?: string;
   location: string;
   country: string;
+  countryFlag?: string;
   region?: string;
+  latitude?: number;
+  longitude?: number;
+  radiusKm?: number;
+  geoScope?: 'local' | 'city' | 'regional' | 'national' | 'multinational';
+  geoJSON?: any;
   event_type: string;
+  eventType?: string;
   severity: 'critical' | 'warning' | 'caution' | 'informative';
   status: 'draft' | 'approved' | 'published' | 'dismissed';
   source_url: string;
   article_url?: string;
   sources?: string;
+  additionalSources?: string[];
+  sourceCount?: number;
   event_start_date?: string;
+  eventStartDate?: string;
   event_end_date?: string;
+  eventEndDate?: string;
   ai_generated: boolean;
   ai_model: string;
   ai_confidence?: number;
@@ -40,6 +413,37 @@ interface Alert {
   wordpress_post_id?: number;
   wordpress_url?: string;
   recommendations?: string;
+  mitigation?: string;
+  recommendedActions?: string[];
+  topics?: string[];
+  regions?: string[];
+  alertType?: 'Current' | 'Forecast' | 'Escalation Watch' | 'Emerging Pattern' | 'Seasonal Risk';
+  escalationLikelihood?: 'low' | 'medium' | 'high';
+  secondaryImpacts?: string[];
+  parentTrendId?: string;
+}
+
+interface Trend {
+  id: string;
+  title: string;
+  alertIds: string[];
+  subItems?: string[];
+  subItemCount: number;
+  country: string;
+  region?: string;
+  continent: string;
+  eventType: string;
+  severity: 'critical' | 'warning' | 'caution' | 'informative';
+  summary: string;
+  predictiveAnalysis?: string;
+  forecast?: string;
+  sources: string[];
+  sourceCount?: number;
+  firstIncidentDate: string;
+  lastIncidentDate: string;
+  autoGenerated: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 async function querySupabaseForWorker(url: string, serviceKey: string, options: RequestInit = {}) {
@@ -142,17 +546,33 @@ OUTPUT: JSON array of alerts with these MANDATORY fields:
 {
   "severity": "critical"|"warning"|"caution"|"informative",
   "country": "Country name",
-  "event_type": "Category",
+  "countryFlag": "Country flag emoji",
+  "eventType": "Category (Natural Disaster, Transportation, Medical Emergency, Political, Terrorism, War, Hate Crime, etc)",
   "title": "Alert headline",
   "location": "City/location",
-  "region": "Regional context",
-  "summary": "2-3 sentences under 150 words",
-  "source_url": "${source_url}",
-  "event_start_date": "2026-01-14T12:00:00Z",
-  "event_end_date": "2026-01-17T12:00:00Z"
+  "latitude": decimal degrees,
+  "longitude": decimal degrees,
+  "region": "Broader regional context",
+  "geoScope": "local"|"city"|"regional"|"national"|"multinational",
+  "eventSummary": "2-3 sentences under 150 words",
+  "mitigation": "Safety precautions and recommendations",
+  "recommendedActions": ["action 1", "action 2", "action 3"],
+  "topics": ["relevant", "topics", "for", "indexing"],
+  "regions": ["affected", "regions"],
+  "alertType": "Current"|"Forecast"|"Escalation Watch"|"Emerging Pattern"|"Seasonal Risk",
+  "escalationLikelihood": "low"|"medium"|"high",
+  "secondaryImpacts": ["predicted downstream effect 1", "effect 2"],
+  "eventStartDate": "2026-01-14T12:00:00Z",
+  "eventEndDate": "2026-01-17T12:00:00Z"
 }
 
-event_end_date: Critical=72h, Warning=48h, Caution=36h, Informative=24h from start.
+CRITICAL DATES:
+- eventEndDate: Critical=72h from start, Warning=48h, Caution=36h, Informative=24h
+- Format: ISO 8601 timestamp
+
+COORDINATES:
+- latitude/longitude: Required! Provide best estimate if not exact
+- For countries: Use capital city coordinates if location not specific
 
 Return ONLY JSON array, no markdown.`;
 
@@ -170,7 +590,7 @@ Return ONLY JSON array, no markdown.`;
           { role: 'user', content: `Source: ${sourceName}\n\nContent:\n${content.slice(0, 12000)}` },
         ],
         temperature: 0.2,
-        max_tokens: 2500,
+        max_tokens: 3500,
       }),
       signal: AbortSignal.timeout(30000),
     });
@@ -205,32 +625,61 @@ Return ONLY JSON array, no markdown.`;
     }
 
     const now = new Date().toISOString();
-    return alerts.map(alert => ({
-      id: crypto.randomUUID(),
-      title: alert.title,
-      summary: alert.summary,
-      location: alert.location,
-      country: alert.country,
-      region: alert.region,
-      event_type: alert.event_type,
-      severity: alert.severity,
-      status: 'draft' as const,
-      source_url: source_url,
-      article_url: source_url,
-      sources: sourceName,
-      event_start_date: alert.event_start_date,
-      event_end_date: alert.event_end_date,
-      ai_generated: true,
-      ai_model: 'gpt-4o-mini',
-      ai_confidence: 0.8,
-      generation_metadata: JSON.stringify({
-        extracted_at: now,
-        source_name: sourceName,
-        days_back: config.daysBack,
-      }),
-      created_at: now,
-      updated_at: now,
-    }));
+    return alerts.map((alert: any) => {
+      const lat = alert.latitude || 0;
+      const lon = alert.longitude || 0;
+      const severity = alert.severity || 'informative';
+      const geoScope = alert.geoScope || determineGeoScope(severity, alert.country, alert.region);
+      const radiusKm = alert.radiusKm || getRadiusFromSeverity(severity, geoScope);
+      const geoJSON = lat && lon ? generateCircleGeoJSON(lat, lon, radiusKm) : generatePointGeoJSON(lat, lon);
+
+      return {
+        id: crypto.randomUUID(),
+        title: alert.title,
+        summary: alert.eventSummary || alert.summary,
+        eventSummary: alert.eventSummary || alert.summary,
+        location: alert.location,
+        country: alert.country,
+        countryFlag: alert.countryFlag || '🌍',
+        region: alert.region,
+        latitude: lat,
+        longitude: lon,
+        radiusKm,
+        geoScope,
+        geoJSON,
+        event_type: alert.eventType || alert.event_type,
+        eventType: alert.eventType || alert.event_type,
+        severity,
+        status: 'draft' as const,
+        source_url,
+        article_url: source_url,
+        sources: sourceName,
+        additionalSources: [sourceName],
+        sourceCount: 1,
+        event_start_date: alert.eventStartDate || alert.event_start_date,
+        eventStartDate: alert.eventStartDate || alert.event_start_date,
+        event_end_date: alert.eventEndDate || alert.event_end_date,
+        eventEndDate: alert.eventEndDate || alert.event_end_date,
+        ai_generated: true,
+        ai_model: 'gpt-4o-mini',
+        ai_confidence: 0.85,
+        mitigation: alert.mitigation,
+        recommendedActions: alert.recommendedActions || [],
+        topics: alert.topics || [],
+        regions: alert.regions || [alert.region].filter(Boolean),
+        alertType: alert.alertType || 'Current',
+        escalationLikelihood: alert.escalationLikelihood || 'low',
+        secondaryImpacts: alert.secondaryImpacts || [],
+        generation_metadata: JSON.stringify({
+          extracted_at: now,
+          source_name: sourceName,
+          days_back: config.daysBack,
+          model: 'gpt-4o-mini',
+        }),
+        created_at: now,
+        updated_at: now,
+      };
+    });
 
   } catch (err: any) {
     console.error('AI extraction error:', err);
