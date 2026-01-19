@@ -2414,26 +2414,58 @@ Format the response as plain text with clear section headers. Include specific, 
     </header>
 
     <div class="content">
-${reportContent.split('\n').map((line: string) => {
-  // Convert plain text sections to HTML
+${reportContent.split('\n').reduce((acc: string[], line: string, idx: number, arr: string[]) => {
+  const trimmed = line.trim();
+  
+  // Skip empty lines
+  if (trimmed === '') return acc;
+  
+  // Section headers (numbered): Convert to title case and use h2
   if (line.match(/^\\d+\\. /)) {
     const title = line.replace(/^\\d+\\. /, '');
-    return `<h2>${title}</h2>`;
+    // Convert to title case: capitalize first letter of each word
+    const titleCase = title.split(' ').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    ).join(' ');
+    acc.push(`<h2>${titleCase}</h2>`);
+    return acc;
   }
+  
+  // Bullet points: wrap in ul/li
   if (line.match(/^   -/)) {
-    return `<li>${line.replace(/^   - /, '')}</li>`;
+    const content = line.replace(/^   - /, '');
+    // Check if we need to open a ul
+    const prevLine = idx > 0 ? arr[idx - 1] : '';
+    const nextLine = idx < arr.length - 1 ? arr[idx + 1] : '';
+    
+    if (!prevLine.match(/^   -/)) {
+      acc.push('<ul>');
+    }
+    acc.push(`  <li>${content}</li>`);
+    if (!nextLine.match(/^   -/)) {
+      acc.push('</ul>');
+    }
+    return acc;
   }
-  if (line.trim() === '') {
-    return '';
+  
+  // Subsection headers (starts with caps after indent): use h3
+  if (line.match(/^   [A-Z][a-z]+ [A-Z]/)) {
+    const title = line.trim();
+    acc.push(`<h3>${title}</h3>`);
+    return acc;
   }
-  if (line.match(/^   [A-Z]/)) {
-    return `<h3>${line.trim()}</h3>`;
-  }
+  
+  // Regular indented text: paragraph
   if (line.match(/^   /)) {
-    return `<p>${line.replace(/^   /, '')}</p>`;
+    const content = line.replace(/^   /, '');
+    acc.push(`<p>${content}</p>`);
+    return acc;
   }
-  return `<p>${line}</p>`;
-}).join('\\n')}
+  
+  // Fallback: wrap in paragraph
+  acc.push(`<p>${line}</p>`);
+  return acc;
+}, []).join('\\n')}
     </div>
 
     <footer>
