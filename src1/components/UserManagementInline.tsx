@@ -145,6 +145,12 @@ export function UserManagementInline({
     e.preventDefault();
     setFormError(null);
 
+    if (!accessToken) {
+      console.error('[UserManagement] No access token available');
+      setFormError('Authentication required. Please log in again.');
+      return;
+    }
+
     // Validation
     if (!formData.name.trim()) {
       setFormError('Name is required');
@@ -166,17 +172,21 @@ export function UserManagementInline({
     setSubmitting(true);
     try {
       const endpoint = editingUser ? `/admin/users/${editingUser.id}` : '/admin/users';
-      const method = editingUser ? apiPatchJson : apiPostJson;
       const payload = editingUser
         ? { name: formData.name, role: formData.role }
         : { name: formData.name, email: formData.email, password: formData.password, role: formData.role };
 
-      console.log('[UserManagement] Creating/updating user:', { endpoint, payload });
-      const res = await method<{ ok: boolean; error?: string }>(
-        endpoint,
-        payload,
-        accessToken
-      );
+      console.log('[UserManagement] Creating/updating user:', { 
+        endpoint, 
+        payload, 
+        hasAccessToken: !!accessToken,
+        accessTokenLength: accessToken?.length 
+      });
+
+      // Call API directly with explicit parameters instead of variable method reference
+      const res = editingUser
+        ? await apiPatchJson<{ ok: boolean; error?: string }>(endpoint, payload, accessToken)
+        : await apiPostJson<{ ok: boolean; error?: string }>(endpoint, payload, accessToken);
 
       if (res.ok) {
         resetForm();
