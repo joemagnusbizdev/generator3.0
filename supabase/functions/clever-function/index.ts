@@ -1848,8 +1848,13 @@ Return recommendations in plain text format, organized by category if helpful.`;
         buckets.get(key)!.push(a);
       }
 
-      // clear existing trends - delete all rows using id=notnull. filter (matches all rows with non-null ids)
-      await safeQuerySupabaseRest(`/trends?id=notnull.`, { method: "DELETE" });
+      // clear existing trends - fetch all trend IDs first, then delete them
+      const existingTrends = await safeQuerySupabaseRest(`/trends?select=id`) || [];
+      if (existingTrends.length > 0) {
+        const trendIds = existingTrends.map((t: any) => t.id);
+        const ids = trendIds.map((id: string) => `"${id}"`).join(",");
+        await safeQuerySupabaseRest(`/trends?id=in.(${ids})`, { method: "DELETE" });
+      }
 
       const severityRank: Record<string, number> = {
         critical: 4,
