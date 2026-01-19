@@ -2438,7 +2438,7 @@ ${reportContent.split('\n').map((line: string) => {
         const report = {
           id: crypto.randomUUID(),
           trendId: trend.id,
-          title: \`\${trend.title} - Situational Report\`,
+          title: `${trend.title} - Situational Report`,
           generatedAt: nowIso(),
           country: trend.country,
           severity: highestSeverity,
