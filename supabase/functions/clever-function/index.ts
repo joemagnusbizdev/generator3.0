@@ -1086,23 +1086,6 @@ async function approveAndPublishToWP(id: string) {
         html += `</ul>`;
       }
 
-      // Sources
-      html += `<h2>Sources</h2>`;
-      html += `<ul>`;
-      if (alert.sources) html += `<li><strong>Primary:</strong> ${alert.sources}</li>`;
-      if (alert.additionalSources && alert.additionalSources.length > 0) {
-        alert.additionalSources.forEach((src) => {
-          html += `<li>${src}</li>`;
-        });
-      }
-      if (alert.article_url) {
-        html += `<li><a href="${alert.article_url}" target="_blank">Full Article</a></li>`;
-      }
-      if (alert.source_url) {
-        html += `<li><a href="${alert.source_url}" target="_blank">Source Link</a></li>`;
-      }
-      html += `</ul>`;
-
       // Metadata
       html += `<hr style="margin: 30px 0;">`;
       html += `<p style="font-size: 12px; color: #666;">`;
@@ -1116,7 +1099,7 @@ async function approveAndPublishToWP(id: string) {
     };
 
     const wpAuth = btoa(`${WP_USER}:${WP_APP_PASSWORD}`);
-    const wpResponse = await fetch(`${WP_URL}/wp-json/wp/v2/posts`, {
+    const wpResponse = await fetch(`${WP_URL}/wp-json/wp/v2/rss-feed`, {
       method: "POST",
       headers: {
         "Authorization": `Basic ${wpAuth}`,
@@ -1126,8 +1109,17 @@ async function approveAndPublishToWP(id: string) {
         title: alert.title || "Travel Alert",
         content: buildContent(),
         status: "publish",
-        categories: alert.eventType ? [alert.eventType] : [],
-        tags: alert.topics || [],
+        // ACF Fields for RSS-FEED custom post type
+        acf: {
+          country: alert.country,
+          severity: alert.severity,
+          event_type: alert.eventType || alert.event_type,
+          location: alert.location,
+          latitude: alert.latitude,
+          longitude: alert.longitude,
+          geo_scope: alert.geoScope,
+          geo_json: alert.geoJSON,
+        },
       }),
       signal: AbortSignal.timeout(15000),
     });
