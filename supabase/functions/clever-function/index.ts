@@ -534,45 +534,80 @@ async function approveAndPublishToWP(id: string) {
   const alert = await fetchAlertById(id);
   if (!alert) return { status: 404, body: { ok: false, error: "Alert not found" } };
 
+  // If WordPress not configured, just approve the alert
   if (!WP_URL || !WP_USER || !WP_APP_PASSWORD) {
-    return { status: 500, body: { ok: false, error: "WordPress credentials not configured" } };
+    const updated = await patchAlertById(id, { status: "approved" });
+    return { 
+      status: 200, 
+      body: { 
+        ok: true, 
+        alert: updated,
+        message: "Alert approved (WordPress not configured for publishing)" 
+      } 
+    };
   }
 
-  const wpAuth = btoa(`${WP_USER}:${WP_APP_PASSWORD}`);
-  const wpResponse = await fetch(`${WP_URL}/wp-json/wp/v2/posts`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Basic ${wpAuth}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      title: alert.title || "Travel Alert",
-      content: alert.summary || "",
-      status: "publish",
-    })
-  });
+  try {
+    const wpAuth = btoa(`${WP_USER}:${WP_APP_PASSWORD}`);
+    const wpResponse = await fetch(`${WP_URL}/wp-json/wp/v2/posts`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Basic ${wpAuth}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: alert.title || "Travel Alert",
+        content: `<h2>${alert.summary}</h2>\n\n<h3>Location:</h3>\n<p>${alert.location}, ${alert.country}</p>\n\n${alert.region ? `<h3>Region:</h3>\n<p>${alert.region}</p>\n\n` : ''}<h3>Event Type:</h3>\n<p>${alert.event_type || "General"}</p>\n\n<h3>Severity:</h3>\n<p>${alert.severity}</p>\n\n${alert.event_start_date ? `<h3>Timeframe:</h3>\n<p>Start: ${alert.event_start_date}</p>\n<p>End: ${alert.event_end_date || "Ongoing"}</p>\n\n` : ''}${alert.recommendations ? `<h3>Recommendations:</h3>\n<p>${alert.recommendations}</p>\n\n` : ''}<h3>Sources:</h3>\n<p>${alert.sources || alert.source_url || "Internal"}</p>`,
+        status: "publish",
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
 
-  if (!wpResponse.ok) {
-    const text = await wpResponse.text();
-    return { status: 500, body: { ok: false, error: `WordPress error: ${wpResponse.status} - ${text}` } };
-  }
-
-  const wpPost = await wpResponse.json();
-  const updated = await patchAlertById(id, {
-    status: "published",
-    wordpress_post_id: wpPost.id,
-    wordpress_url: wpPost.link,
-  });
-
-  return {
-    status: 200,
-    body: {
-      ok: true,
-      alert: updated,
-      wordpress_post_id: wpPost.id,
-      wordpress_url: wpPost.link
+    if (!wpResponse.ok) {
+      const text = await wpResponse.text();
+      console.error(`WordPress error: ${wpResponse.status}`, text);
+      // Still approve locally even if WordPress fails
+      const updated = await patchAlertById(id, { status: "approved" });
+      return { 
+        status: 200, 
+        body: { 
+          ok: true, 
+          alert: updated,
+          message: `Alert approved (WordPress publish failed: ${wpResponse.status})`
+        } 
+      };
     }
-  };
+
+    const wpPost = await wpResponse.json();
+    const updated = await patchAlertById(id, {
+      status: "published",
+      wordpress_post_id: wpPost.id,
+      wordpress_url: wpPost.link,
+    });
+
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        alert: updated,
+        wordpress_post_id: wpPost.id,
+        wordpress_url: wpPost.link,
+        message: "Alert approved and published to WordPress"
+      }
+    };
+  } catch (err: any) {
+    console.error("WordPress integration error:", err);
+    // Still approve locally even if WordPress fails
+    const updated = await patchAlertById(id, { status: "approved" });
+    return { 
+      status: 200, 
+      body: { 
+        ok: true, 
+        alert: updated,
+        message: `Alert approved (WordPress integration failed: ${err.message})`
+      } 
+    };
+  }
 }
 
 function respondNotFound(path: string) {
@@ -848,8 +883,13 @@ Deno.serve(async (req) => {
       // only allow pure /alerts/:id
       if (path.split("/").filter(Boolean).length !== 2) return respondNotFound(rawPath);
 
-      await querySupabaseRest(`/alerts?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
-      return json({ ok: true, deleted: id });
+      try {
+        await querySupabaseRest(`/alerts?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
+        return json({ ok: true, deleted: id });
+      } catch (err: any) {
+        console.error("Delete error:", err);
+        return json({ ok: false, error: `Failed to delete alert: ${err.message}` }, 500);
+      }
     }
 
     // ALERTS — DISMISS (POST /alerts/:id/dismiss)
@@ -872,8 +912,13 @@ Deno.serve(async (req) => {
     if ((path.endsWith("/approve") || path.endsWith("/publish")) && method === "POST") {
       const id = parseIdFromPath(path);
       if (!id) return respondNotFound(rawPath);
-      const result = await approveAndPublishToWP(id);
-      return json(result.body, result.status);
+      try {
+        const result = await approveAndPublishToWP(id);
+        return json(result.body, result.status);
+      } catch (err: any) {
+        console.error("Approve error:", err);
+        return json({ ok: false, error: `Failed to approve alert: ${err.message}` }, 500);
+      }
     }
 
     // LEGACY: POST TO WP (POST /alerts/:id/post-to-wp)
@@ -893,16 +938,26 @@ Deno.serve(async (req) => {
       if (!alert) return json({ ok: false, error: "Alert not found" }, 404);
       if (!OPENAI_API_KEY) return json({ ok: false, error: "AI not configured" }, 500);
 
-      const prompt = `You are a MAGNUS travel risk analyst.
-Generate clear, actionable safety recommendations for the following event.
+      const prompt = `You are a MAGNUS Travel Safety Intelligence Analyst specializing in risk mitigation.
 
-EVENT:
-${alert.summary}
+Generate detailed, actionable traveler recommendations based on this alert:
 
-LOCATION:
-${alert.location}, ${alert.country}
+EVENT: ${alert.summary}
+SEVERITY: ${alert.severity}
+LOCATION: ${alert.location}, ${alert.country}
+EVENT TYPE: ${alert.event_type || "General"}
 
-Return plain text only.`;
+GUIDELINES:
+- Provide specific, practical advice for travelers
+- Include safety precautions and risk mitigation strategies
+- Mention areas to avoid if applicable
+- Recommend communication methods with embassies/local authorities
+- Include transport and movement recommendations
+- Suggest evacuation considerations if severity is critical/warning
+- Keep recommendations concise but comprehensive
+- Use bullet points or numbered lists for clarity
+
+Return recommendations in plain text format, organized by category if helpful.`;
 
       const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
