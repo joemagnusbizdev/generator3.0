@@ -1,0 +1,119 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* MAGNUS Brand Theme Tokens */
+:root {
+  --background: 0 0% 95.3%;           /* #F3F3F5 */
+  --foreground: 150 25% 10%;          /* #1A2622 */
+  --card: 0 0% 100%;
+  --card-foreground: 150 25% 10%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 150 25% 10%;
+  --primary: 160 54% 18%;             /* #1A4234 */
+  --primary-foreground: 0 0% 95.3%;
+  --secondary: 28 98% 60%;            /* #F89A35 */
+  --secondary-foreground: 0 0% 100%;
+  --muted: 0 0% 92%;
+  --muted-foreground: 150 15% 35%;
+  --accent: 28 98% 60%;               /* #F89A35 */
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 150 25% 10% / 0.15;
+  --input: 150 25% 10% / 0.1;
+  --ring: 160 54% 18%;
+  --radius: 0.75rem;
+  
+  /* Chart colors */
+  --chart-1: 160 54% 18%;
+  --chart-2: 160 91% 13%;
+  --chart-3: 28 98% 60%;
+  --chart-4: 160 54% 25%;
+  --chart-5: 150 15% 35%;
+  
+  /* Sidebar colors */
+  --sidebar-background: 160 54% 18%;
+  --sidebar-foreground: 0 0% 95.3%;
+  --sidebar-primary: 28 98% 60%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 160 91% 13%;
+  --sidebar-accent-foreground: 0 0% 95.3%;
+  --sidebar-border: 0 0% 95.3% / 0.2;
+  --sidebar-ring: 28 98% 60%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1 {
+    @apply scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl;
+  }
+
+  h2 {
+    @apply scroll-m-20 text-3xl font-semibold tracking-tight;
+  }
+
+  h3 {
+    @apply scroll-m-20 text-2xl font-semibold tracking-tight;
+  }
+
+  h4 {
+    @apply scroll-m-20 text-xl font-semibold tracking-tight;
+  }
+
+  p {
+    @apply leading-7;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white border border-slate-200 rounded-2xl shadow-sm;
+  }
+  
+  .btn-primary {
+    @apply bg-gradient-to-r from-magnus-dark-green to-magnus-accent-green text-white 
+           px-5 py-2.5 rounded-lg font-bold uppercase tracking-wider text-sm
+           shadow-md hover:shadow-lg transition-all duration-200;
+  }
+  
+  .btn-secondary {
+    @apply bg-white text-magnus-orange border-2 border-magnus-orange
+           px-5 py-2.5 rounded-lg font-bold uppercase tracking-wider text-sm
+           hover:bg-orange-50 transition-all duration-200;
+  }
+}
+
+@layer utilities {
+  .animate-pulse-custom {
+    animation: pulse 2s ease-in-out infinite;
+  }
+  
+  .animate-slide-in {
+    animation: slideIn 0.3s ease-out;
+  }
+  
+  .animate-shimmer {
+    animation: shimmer 2s linear infinite;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    background-size: 200% 100%;
+  }
+}

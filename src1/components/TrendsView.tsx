@@ -35,7 +35,6 @@ const SEVERITY_COLOR: Record<string, string> = {
 /* =========================
    Component
 ========================= */
-
 export default function TrendsView({
   accessToken,
 }: {
@@ -46,109 +45,102 @@ export default function TrendsView({
   const [rebuilding, setRebuilding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  /* =========================
-     Load Trends
-  ========================= */
-const loadTrends = async () => {
-  if (!accessToken) return;
+  const loadTrends = async () => {
+    if (!accessToken) return;
 
-  try {
-    setLoading(true);
-    setError(null);
+    try {
+      setLoading(true);
+      setError(null);
 
-    const res = await apiFetchJson<{ ok: boolean; trends?: Trend[] }>(
-      "/trends",
-      accessToken
-    );
+      const res = await apiFetchJson<{ ok: boolean; trends?: Trend[] }>(
+        "/trends",
+        accessToken
+      );
 
-    if (!res?.ok) throw new Error("Failed to fetch trends");
+      if (!res?.ok) throw new Error("Failed to fetch trends");
 
-    const sorted =
-      (res.trends ?? [])
-        .slice()
-        .sort(
-          (a, b) =>
-            (SEVERITY_ORDER[b.highest_severity] ?? 0) -
-            (SEVERITY_ORDER[a.highest_severity] ?? 0)
-        );
+      const sorted =
+        (res.trends ?? [])
+          .slice()
+          .sort(
+            (a, b) =>
+              (SEVERITY_ORDER[b.highest_severity] ?? 0) -
+              (SEVERITY_ORDER[a.highest_severity] ?? 0)
+          );
 
-    setTrends(sorted);
-  } catch (e: any) {
-    setError(e?.message || "Failed to load trends");
-    setTrends([]);
-  } finally {
-    setLoading(false);
-  }
-};
+      setTrends(sorted);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load trends");
+      setTrends([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  const rebuildTrends = async () => {
+    if (!accessToken) return;
 
-  /* =========================
-     Rebuild Trends
-  ========================= */
+    try {
+      setLoading(true);
+      setError(null);
 
-const rebuildTrends = async () => {
-  if (!accessToken) return;
+      await apiFetchJson("/trends/rebuild", accessToken, {
+        method: "POST",
+      });
 
-  try {
-    setLoading(true);
-    setError(null);
+      await loadTrends();
+    } catch (e: any) {
+      setError(e?.message || "Failed to rebuild trends");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    await apiFetchJson("/trends/rebuild", accessToken, {
-      method: "POST",
-    });
+  useEffect(() => {
+    loadTrends();
+  }, [accessToken]);
 
-    await loadTrends();
-  } catch (e: any) {
-    setError(e?.message || "Failed to rebuild trends");
-  } finally {
-    setLoading(false);
-  }
-};
+  if (loading) return <div className="p-4">Loading trends…</div>;
 
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Trends</h2>
 
-  /* =========================
-     Render
-  ========================= */
+        <button
+          onClick={rebuildTrends}
+          disabled={rebuilding}
+          className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+        >
+          {rebuilding ? "Rebuilding..." : "Rebuild Trends"}
+        </button>
+      </div>
 
- if (loading) return <div className="p-4">Loading trends…</div>;
+      {error && <div className="text-red-600 text-sm">{error}</div>}
 
-return (
-  <div className="space-y-4">
-    <div className="flex items-center justify-between">
-      <h2 className="text-lg font-semibold">Trends</h2>
+      {!trends.length && (
+        <div className="p-4 text-gray-500">
+          No trends detected (≥ 3 alerts in last 14 days)
+        </div>
+      )}
 
-      <button
-        onClick={rebuildTrends}
-        className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700"
-      >
-        Rebuild Trends
-      </button>
+      {trends.map((t) => (
+        <div
+          key={t.id}
+          className="border rounded p-4 bg-white shadow-sm"
+        >
+          <div className="font-semibold">
+            {t.country} — {t.category}
+          </div>
+          <div className="text-sm text-gray-600">
+            {t.count} alerts · highest severity {t.highest_severity}
+          </div>
+          <div className="text-xs text-gray-400">
+            Last seen: {new Date(t.last_seen_at).toLocaleString()}
+          </div>
+        </div>
+      ))}
     </div>
-
-    {error && <div className="text-red-600 text-sm">{error}</div>}
-
-    {!trends.length && (
-      <div className="p-4 text-gray-500">
-        No trends detected (≥ 3 alerts in last 14 days)
-      </div>
-    )}
-
-    {trends.map((t) => (
-      <div
-        key={t.id}
-        className="border rounded p-4 bg-white shadow-sm"
-      >
-        <div className="font-semibold">
-          {t.country} — {t.category}
-        </div>
-        <div className="text-sm text-gray-600">
-          {t.count} alerts · highest severity {t.highest_severity}
-        </div>
-        <div className="text-xs text-gray-400">
-          Last seen: {new Date(t.last_seen_at).toLocaleString()}
-        </div>
-      </div>
-    ))}
-  </div>
-);
+  );
+}
 

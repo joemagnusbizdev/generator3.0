@@ -21,9 +21,6 @@ type Tab = "review" | "create" | "sources" | "trends" | "analytics" | "admin";
 // -------------------------
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string) || "";
 const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || "";
-const API_BASE =
-  (import.meta.env.VITE_API_BASE as string) ||
-  "https://gnobnyzezkuyptuakztf.supabase.co/functions/v1/clever-function";
 
 // Create Supabase client once
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -229,11 +226,12 @@ export default function App(): JSX.Element {
           />
         )}
 
-        {tab === "trends" && <TrendsView />}
+        {tab === "trends" && <TrendsView accessToken={accessToken} />}
 
         {tab === "analytics" && (
           <AnalyticsDashboardInline
-            apiBase={API_BASE}
+            apiBase=""
+            accessToken={accessToken}
             permissions={{ canAccessAnalytics: permissions.canAccessAnalytics }}
           />
         )}

@@ -50,8 +50,9 @@ export interface Alert {
    Config
 ========================= */
 
-const API_BASE =
-  "https://gnobnyzezkuyptuakztf.supabase.co/functions/v1/clever-function";
+import { getApiUrl } from "../lib/supabase/api";
+
+const API_BASE = getApiUrl("");
 
 const SEVERITY_META: Record<
   Alert["severity"],
