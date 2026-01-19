@@ -2467,6 +2467,56 @@ Return recommendations in plain text format, organized by category if helpful.`;
         const highestSeverity = trend.severity || trend.highest_severity || "warning";
         const lastSeen = trend.last_seen || trend.last_seen_at || trend.updated_at || trend.created_at;
         const incidentCount = (typeof trend.incident_count === "number" ? trend.incident_count : trend.count) || alerts.length;
+
+        // Gather current information using Brave Search if available
+        let currentNewsContext = "";
+        const braveApiKey = Deno.env.get("BRAVE_SEARCH_API_KEY");
+        if (braveApiKey) {
+          console.log(`🔍 Fetching current news for trend: "${trend.title}"`);
+          
+          // Search for trend-specific news
+          const searchQueries = [
+            `${trend.title} ${trend.country}`,
+            `${trend.country} ${trend.event_type || "incident"} latest`,
+            `travel advisory ${trend.country}`,
+          ];
+          
+          const newsResults: string[] = [];
+          for (const query of searchQueries) {
+            try {
+              const searchRes = await fetch(
+                `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5`,
+                {
+                  headers: {
+                    'Accept': 'application/json',
+                    'X-Subscription-Token': braveApiKey,
+                  },
+                  signal: AbortSignal.timeout(10000),
+                }
+              );
+              
+              if (searchRes.ok) {
+                const searchData = await searchRes.json();
+                const results = searchData.web?.results || [];
+                if (results.length > 0) {
+                  newsResults.push(`\n[From: "${query}"]`);
+                  results.slice(0, 3).forEach((r: any) => {
+                    newsResults.push(`• ${r.title}: ${r.description}`);
+                  });
+                }
+              }
+            } catch (err) {
+              console.warn(`⚠️  Search failed for "${query}":`, err);
+            }
+          }
+          
+          if (newsResults.length > 0) {
+            currentNewsContext = `\nCURRENT NEWS & ADVISORIES:\n${newsResults.join('\n')}\n`;
+            console.log(`✅ Found ${newsResults.length} current news items`);
+          }
+        } else {
+          console.warn(`⚠️  No Brave API key - skipping current news gathering`);
+        }
         const prompt = `You are a MAGNUS Travel Safety Intelligence analyst creating a professional situational report on a developing travel safety trend.
 
 TREND: ${trend.title}
@@ -2477,8 +2527,7 @@ RELATED INCIDENTS: ${incidentCount}
 
 RECENT EVENTS:
 ${alertSummaries || "No specific incidents available"}
-
-Generate a professional Situational Report in the following sections:
+${currentNewsContext}Generate a professional Situational Report in the following sections:
 
 1. EXECUTIVE SUMMARY
    - 2-3 sentence overview of the situation
