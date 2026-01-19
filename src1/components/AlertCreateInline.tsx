@@ -11,7 +11,7 @@
  * - severity (required) - critical/warning/caution/informative
  * - event_type - Type of event (conflict, natural disaster, etc.)
  * - geo fields - latitude, longitude, radius_km, geo_scope
- * - dates - event_start_at, event_end_at
+ * - dates - event_start_date, event_end_date
  */
 import React, { useState, useCallback, useMemo } from 'react';
 import { apiPostJson } from '../lib/utils/api';
@@ -44,8 +44,8 @@ interface AlertFormData {
   latitude: string;
   longitude: string;
   radius_km: string;
-  event_start_at: string;
-  event_end_at: string;
+  event_start_date: string;
+  event_end_date: string;
 }
 
 interface AlertCreateInlineProps {
@@ -144,8 +144,8 @@ const initialFormData: AlertFormData = {
   latitude: '',
   longitude: '',
   radius_km: '25',
-  event_start_at: '',
-  event_end_at: '',
+  event_start_date: '',
+  event_end_date: '',
 };
 
 // ============================================================================
@@ -345,12 +345,12 @@ export default function AlertCreateInline({
         );
       }
 
-      // Add dates if provided
-      if (formData.event_start_at) {
-        payload.event_start_at = new Date(formData.event_start_at).toISOString();
+      // Add dates if provided (store as ISO date strings, database converts to DATE type)
+      if (formData.event_start_date) {
+        payload.event_start_date = new Date(formData.event_start_date).toISOString().split('T')[0];
       }
-      if (formData.event_end_at) {
-        payload.event_end_at = new Date(formData.event_end_at).toISOString();
+      if (formData.event_end_date) {
+        payload.event_end_date = new Date(formData.event_end_date).toISOString().split('T')[0];
       }
 
       const result = await apiPostJson<{ ok: boolean; alert?: any; error?: string }>(
@@ -945,8 +945,8 @@ export default function AlertCreateInline({
               <label style={labelStyle}>Event Start</label>
               <input
                 type="datetime-local"
-                value={formData.event_start_at}
-                onChange={e => updateField('event_start_at', e.target.value)}
+                value={formData.event_start_date}
+                onChange={e => updateField('event_start_date', e.target.value)}
                 style={inputStyle}
               />
             </div>
@@ -955,8 +955,8 @@ export default function AlertCreateInline({
               <label style={labelStyle}>Event End</label>
               <input
                 type="datetime-local"
-                value={formData.event_end_at}
-                onChange={e => updateField('event_end_at', e.target.value)}
+                value={formData.event_end_date}
+                onChange={e => updateField('event_end_date', e.target.value)}
                 style={inputStyle}
               />
             </div>
