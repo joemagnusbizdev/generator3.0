@@ -1000,7 +1000,14 @@ async function approveAndPublishToWP(id: string) {
       body: { 
         ok: true, 
         alert: updated,
-        message: "Alert approved (WordPress not configured for publishing)" 
+        message: "Alert approved (WordPress not configured for publishing)",
+        wordpress_configured: false,
+        wordpress_debug: {
+          has_url: !!WP_URL,
+          has_user: !!WP_USER,
+          has_app_password: !!WP_APP_PASSWORD,
+          post_type: WP_POST_TYPE,
+        }
       } 
     };
   }
@@ -1106,7 +1113,9 @@ async function approveAndPublishToWP(id: string) {
     };
 
     const wpAuth = btoa(`${WP_USER}:${WP_APP_PASSWORD}`);
-    const wpResponse = await fetch(`${WP_URL}/wp-json/wp/v2/${WP_POST_TYPE}`, {
+    const wpEndpoint = `${WP_URL}/wp-json/wp/v2/${WP_POST_TYPE}`;
+    console.log("[WP Publish] Attempting POST", { endpoint: wpEndpoint, post_type: WP_POST_TYPE, has_url: !!WP_URL });
+    const wpResponse = await fetch(wpEndpoint, {
       method: "POST",
       headers: {
         "Authorization": `Basic ${wpAuth}`,
@@ -1141,7 +1150,11 @@ async function approveAndPublishToWP(id: string) {
         body: { 
           ok: true, 
           alert: updated,
-          message: `Alert approved (WordPress publish failed: ${wpResponse.status})`
+          message: `Alert approved (WordPress publish failed: ${wpResponse.status})`,
+          wordpress_error_status: wpResponse.status,
+          wordpress_error_text: text,
+          wordpress_endpoint: wpEndpoint,
+          wordpress_post_type: WP_POST_TYPE,
         } 
       };
     }
