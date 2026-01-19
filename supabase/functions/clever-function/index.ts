@@ -948,12 +948,20 @@ async function batchInsert(table: string, records: any[], chunkSize = 100) {
 
 function normalizePath(pathname: string): string {
   let p = pathname;
-  if (p.includes("/functions/v1/clever-function")) {
-    p = p.replace("/functions/v1/clever-function", "");
+  // Strip common prefixes for various deployments (Supabase, Vercel, generic API routes)
+  // Remove everything up to and including "/clever-function" if present
+  const cfIdx = p.indexOf("/clever-function");
+  if (cfIdx >= 0) {
+    p = p.slice(cfIdx + "/clever-function".length);
   }
-  if (p.startsWith("/clever-function")) {
-    p = p.replace("/clever-function", "");
+  // Generic removals if function prefix isn't present
+  if (p.includes("/functions/v1")) {
+    p = p.replace("/functions/v1", "");
   }
+  if (p.startsWith("/api")) {
+    p = p.replace("/api", "");
+  }
+  // Normalize final shape
   if (p.endsWith("/") && p.length > 1) p = p.slice(0, -1);
   if (!p.startsWith("/")) p = `/${p}`;
   return p;
