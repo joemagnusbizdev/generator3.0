@@ -1,5 +1,6 @@
 ﻿import React from "react";
 import { useScour } from "./ScourContext";
+import MAGNUS_COLORS from "../styles/magnus-colors";
 
 export default function ScourStatusBarInline() {
   const {
@@ -22,8 +23,8 @@ export default function ScourStatusBarInline() {
   }
 
   return (
-    <div className="border rounded bg-slate-50 px-4 py-3 text-sm space-y-1">
-      <div className="font-semibold">
+    <div className="border rounded px-4 py-3 text-sm space-y-1" style={{ backgroundColor: MAGNUS_COLORS.offWhite, borderColor: MAGNUS_COLORS.border }}>
+      <div className="font-semibold" style={{ color: MAGNUS_COLORS.darkGreen }}>
         🔍 AI Scour Status
       </div>
 
@@ -34,20 +35,20 @@ export default function ScourStatusBarInline() {
       )}
 
       {!isScouring && lastResult && (
-        <div className="text-green-700">
+        <div style={{ color: MAGNUS_COLORS.caution }}>
           ✅ Completed — {lastResult.created} alerts created ·{" "}
           {lastResult.duplicatesSkipped} duplicates skipped
         </div>
       )}
 
       {lastError && (
-        <div className="text-red-700">
+        <div style={{ color: MAGNUS_COLORS.critical }}>
           ❌ {lastError}
         </div>
       )}
 
       {lastStartedAt && (
-        <div className="text-xs text-gray-500">
+        <div className="text-xs" style={{ color: MAGNUS_COLORS.secondaryText }}>
           Started: {new Date(lastStartedAt).toLocaleString()}
         </div>
       )}

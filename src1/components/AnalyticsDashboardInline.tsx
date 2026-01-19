@@ -9,6 +9,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { apiFetchJson } from '../lib/utils/api';
 import { colors } from '../styles/inline';
 import { buttons } from '../styles/designSystem';
+import MAGNUS_COLORS from '../styles/magnus-colors';
 
 // ============================================================================
 // Types
@@ -93,25 +94,25 @@ function percentChange(current: number, previous: number): { value: number; dire
 // ============================================================================
 
 const COLORS = {
-  bg: '#F9F8F6',
+  bg: MAGNUS_COLORS.offWhite,
   card: '#FFFFFF',
-  border: '#E5E7EB',
-  text: '#192622',
-  muted: '#6B7280',
-  primary: '#144334',
-  accent: '#F88A35',
-  success: '#059669',
-  warning: '#D97706',
-  danger: '#DC2626',
-  info: '#2563EB',
+  border: MAGNUS_COLORS.border,
+  text: MAGNUS_COLORS.primaryText,
+  muted: MAGNUS_COLORS.secondaryText,
+  primary: MAGNUS_COLORS.darkGreen,
+  accent: MAGNUS_COLORS.orange,
+  success: MAGNUS_COLORS.caution,
+  warning: MAGNUS_COLORS.warning,
+  danger: MAGNUS_COLORS.critical,
+  info: MAGNUS_COLORS.informative,
 };
 
 const SEVERITY_COLORS: Record<string, string> = {
-  critical: COLORS.danger,
-  warning: COLORS.warning,
-  caution: COLORS.info,
-  informative: COLORS.muted,
-  unknown: '#9CA3AF',
+  critical: MAGNUS_COLORS.critical,
+  warning: MAGNUS_COLORS.warning,
+  caution: MAGNUS_COLORS.informative,
+  informative: MAGNUS_COLORS.secondaryText,
+  unknown: MAGNUS_COLORS.tertiaryText,
 };
 
 // ============================================================================

@@ -4,6 +4,7 @@ import { useScour } from "./ScourContext";
 import { SourceBulkUpload } from "./SourceBulkUpload";
 import ScourStatusBarInline from "./ScourStatusBarInline";
 import { AutoScourSettings } from "./AutoScourSettings";
+import MAGNUS_COLORS from "../styles/magnus-colors";
 
 /* =========================
    Types
@@ -175,7 +176,8 @@ const SourceManagerInline: React.FC<Props> = ({
         <button
           onClick={runScour}
           disabled={isScouring || !canScour}
-          className="px-3 py-1 rounded bg-indigo-600 text-white disabled:opacity-50"
+          className="px-3 py-1 rounded text-white disabled:opacity-50 font-semibold transition hover:opacity-90"
+          style={{ backgroundColor: MAGNUS_COLORS.darkGreen }}
         >
           {isScouring ? "Scouring…" : "Run Scour"}
         </button>
@@ -300,19 +302,21 @@ const SourceManagerInline: React.FC<Props> = ({
         <button
           onClick={() => setPage((p) => Math.max(1, p - 1))}
           disabled={page <= 1}
-          className="px-3 py-1 rounded bg-gray-100 text-gray-800 disabled:opacity-50"
+          className="px-3 py-1 rounded font-semibold transition hover:opacity-90 disabled:opacity-50"
+          style={{ backgroundColor: MAGNUS_COLORS.offWhite, color: MAGNUS_COLORS.darkGreen }}
         >
           Prev
         </button>
-        <span className="text-sm text-gray-600">Page {page}</span>
+        <span className="text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>Page {page}</span>
         <button
           onClick={() => setPage((p) => (p * pageSize < total ? p + 1 : p))}
           disabled={page * pageSize >= total}
-          className="px-3 py-1 rounded bg-gray-100 text-gray-800 disabled:opacity-50"
+          className="px-3 py-1 rounded font-semibold transition hover:opacity-90 disabled:opacity-50"
+          style={{ backgroundColor: MAGNUS_COLORS.offWhite, color: MAGNUS_COLORS.darkGreen }}
         >
           Next
         </button>
-        <span className="text-sm text-gray-600">Total: {total}</span>
+        <span className="text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>Total: {total}</span>
         <select
           value={pageSize}
           onChange={(e) => setPageSize(parseInt(e.target.value, 10))}
