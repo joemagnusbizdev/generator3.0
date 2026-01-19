@@ -398,7 +398,6 @@ interface Alert {
   source_url: string;
   article_url?: string;
   sources?: string;
-  additionalSources?: string[];
   sourceCount?: number;
   event_start_date?: string;
   event_end_date?: string;
@@ -662,28 +661,49 @@ CRITICAL RULES:
 3. DO NOT create alerts similar to these existing ones:
 ${existingAlertsStr}
 
-PRIORITY TOPICS (Extract Individual Alerts):
-- Natural disasters, severe weather, infrastructure disruptions
-- Transportation disruptions, medical emergencies, political instability
-- Mass casualty incidents, terrorism, war/armed conflict
-- Hate crimes, ANY Critical/Warning severity events
+EXTRACT ALERTS FOR ANY EVENT THAT COULD IMPACT TRAVELER SAFETY:
+
+PRIORITY EVENTS (Always Extract):
+- Natural disasters: earthquakes, tsunamis, hurricanes, typhoons, floods, wildfires, volcanic eruptions
+- Severe weather: extreme heat/cold, heavy snow, dangerous storms, monsoons
+- Infrastructure failures: power outages, water shortages, bridge/road collapses
+- Transportation disruptions: airport closures, flight cancellations, train strikes, road blockades
+- Health emergencies: disease outbreaks, medical facility closures, public health alerts
+- Political instability: coups, government collapses, mass protests, civil unrest, riots
+- Security incidents: terrorist attacks, mass shootings, bombings, kidnappings
+- Armed conflict: war zones, active combat, airstrikes, military operations, border conflicts
+- Border issues: border closures, visa suspensions, entry restrictions, deportations
+- Crime waves: increased violence, gang activity, tourist targeting, safety warnings
+- Aviation incidents: plane crashes, airport attacks, airspace closures
+- Maritime incidents: port closures, piracy, ferry disasters, cruise ship emergencies
+- Hate crimes and discrimination: targeted violence, xenophobic attacks, religious persecution
+- Event cancellations: major festivals/conferences cancelled due to safety concerns
+- Evacuations: mass evacuations, embassy warnings to leave, travel bans
+
+ALSO CONSIDER (If Relevant to Travelers):
+- Major government policy changes affecting visitors
+- Currency crises or economic instability
+- Food/water safety alerts
+- Environmental hazards (pollution, radiation, toxic spills)
+- Wildlife hazards (animal attacks, disease-carrying insects)
+- Infrastructure strikes (utilities, communications, transport workers)
 
 OUTPUT: JSON array of alerts with these MANDATORY fields:
 {
   "severity": "critical"|"warning"|"caution"|"informative",
   "country": "Country name",
   "countryFlag": "Country flag emoji",
-  "eventType": "Category (Natural Disaster, Transportation, Medical Emergency, Political, Terrorism, War, Hate Crime, etc)",
-  "title": "Alert headline",
-  "location": "City/location",
+  "eventType": "Category (Natural Disaster, Transportation, Medical Emergency, Political, Terrorism, War, Hate Crime, Infrastructure, Border Security, Crime, Aviation, Maritime, Health, Environmental, etc)",
+  "title": "Clear, specific alert headline",
+  "location": "City/location (or 'Multiple locations' if widespread)",
   "latitude": decimal degrees,
   "longitude": decimal degrees,
   "region": "Broader regional context",
   "geoScope": "local"|"city"|"regional"|"national"|"multinational",
-  "eventSummary": "2-3 sentences under 150 words",
-  "recommendations": "Practical advice for travelers in 2-3 sentences",
-  "mitigation": "Safety precautions and official recommendations",
-  "recommendedActions": ["action 1", "action 2", "action 3"],
+  "eventSummary": "What happened, when, where, current status - 2-3 sentences under 150 words",
+  "recommendations": "Specific, actionable advice for travelers - what to do/avoid",
+  "mitigation": "Safety precautions, official guidance, and protective measures",
+  "recommendedActions": ["specific action 1", "specific action 2", "specific action 3"],
   "topics": ["relevant", "topics", "for", "indexing"],
   "regions": ["affected", "regions"],
   "alertType": "Current"|"Forecast"|"Escalation Watch"|"Emerging Pattern"|"Seasonal Risk",
@@ -693,15 +713,22 @@ OUTPUT: JSON array of alerts with these MANDATORY fields:
   "eventEndDate": "2026-01-17T12:00:00Z"
 }
 
+SEVERITY GUIDELINES:
+- CRITICAL: Imminent danger to life, active conflict, major disasters, urgent evacuations
+- WARNING: Significant risk, developing situations, protests turning violent, serious disruptions
+- CAUTION: Elevated risk, ongoing monitoring needed, minor disruptions, heightened security
+- INFORMATIVE: Awareness advisories, resolved situations, general travel considerations
+
 CRITICAL DATES:
-- eventEndDate: Critical=72h from start, Warning=48h, Caution=36h, Informative=24h
+- eventEndDate: Critical=72h from start, Warning=48h, Caution=36h, Informative=24h (adjust based on event duration if specified)
 - Format: ISO 8601 timestamp
 
 COORDINATES:
-- latitude/longitude: Required! Provide best estimate if not exact
-- For countries: Use capital city coordinates if location not specific
+- latitude/longitude: Required! Provide best estimate for affected area
+- For countries: Use capital city coordinates if specific location unclear
+- For regional events: Use geographic center of affected area
 
-Return ONLY JSON array, no markdown.`;
+Return ONLY valid JSON array, no markdown formatting, no explanatory text.`;
 
   try {
     console.log(`🔗 OpenAI API → Calling gpt-4o-mini (API key: ${config.openaiKey ? config.openaiKey.slice(0, 8) + '...' : 'MISSING'})`);
@@ -797,7 +824,6 @@ Return ONLY JSON array, no markdown.`;
         source_url,
         article_url: source_url,
         sources: sourceName,
-        additionalSources: [sourceName],
         sourceCount: 1,
         event_start_date: alert.eventStartDate || alert.event_start_date,
         event_end_date: alert.eventEndDate || alert.event_end_date,
@@ -1496,7 +1522,7 @@ async function approveAndPublishToWP(id: string) {
 
     const wpPost = await wpResponse.json();
     const updated = await patchAlertById(id, {
-      status: "published",
+      status: "posted",
       wordpress_post_id: wpPost.id,
       wordpress_url: wpPost.link,
     });
