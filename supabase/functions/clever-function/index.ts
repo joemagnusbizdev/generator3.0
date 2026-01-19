@@ -1215,8 +1215,30 @@ Deno.serve(async (req) => {
 
     // USERS — GET ALL
     if (path === "/users" && method === "GET") {
-      const users = (await querySupabaseRest("/auth.users?select=id,email,user_metadata,created_at,last_sign_in_at")) || [];
-      return json({ ok: true, users: users || [] });
+      try {
+        // Use Supabase Auth Admin API instead of REST (auth.users table is not exposed via PostgREST)
+        const authResponse = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${serviceKey}`,
+            "apikey": serviceKey,
+          },
+        });
+
+        if (!authResponse.ok) {
+          const errText = await authResponse.text();
+          return json(
+            { ok: false, error: `Auth API error: ${authResponse.status}`, details: errText },
+            authResponse.status
+          );
+        }
+
+        const data = await authResponse.json();
+        const users = Array.isArray(data) ? data : data.users || [];
+        return json({ ok: true, users });
+      } catch (err: any) {
+        return json({ ok: false, error: String(err?.message || err) }, 500);
+      }
     }
 
     // USERS — CREATE
@@ -1226,19 +1248,35 @@ Deno.serve(async (req) => {
         return json({ ok: false, error: "Email is required" }, 400);
       }
       try {
-        const created = await querySupabaseRest("/auth.users", {
+        // Use Supabase Auth Admin API instead of REST (auth.users table is not exposed via PostgREST)
+        const password = body.password || crypto.randomUUID();
+        const authResponse = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
           method: "POST",
+          headers: {
+            "Authorization": `Bearer ${serviceKey}`,
+            "apikey": serviceKey,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({
             email: body.email,
-            password: body.password || crypto.randomUUID(),
-            user_metadata: body.user_metadata || {},
+            password,
             email_confirm: body.email_confirm ?? true,
+            user_metadata: body.user_metadata || {},
           }),
-          headers: { Prefer: "return=representation" },
         });
-        return json({ ok: true, user: created?.[0] });
+
+        if (!authResponse.ok) {
+          const errText = await authResponse.text();
+          return json(
+            { ok: false, error: `Auth API error: ${authResponse.status}`, details: errText },
+            authResponse.status
+          );
+        }
+
+        const created = await authResponse.json();
+        return json({ ok: true, user: created });
       } catch (err: any) {
-        return json({ ok: false, error: String(err?.message || err) }, 400);
+        return json({ ok: false, error: String(err?.message || err) }, 500);
       }
     }
 
@@ -1247,14 +1285,29 @@ Deno.serve(async (req) => {
       const id = path.split("/").pop()!;
       const body = await req.json().catch(() => ({}));
       try {
-        const updated = await querySupabaseRest(`/auth.users/${encodeURIComponent(id)}`, {
+        // Use Supabase Auth Admin API instead of REST
+        const authResponse = await fetch(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(id)}`, {
           method: "PATCH",
+          headers: {
+            "Authorization": `Bearer ${serviceKey}`,
+            "apikey": serviceKey,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify(body),
-          headers: { Prefer: "return=representation" },
         });
+
+        if (!authResponse.ok) {
+          const errText = await authResponse.text();
+          return json(
+            { ok: false, error: `Auth API error: ${authResponse.status}`, details: errText },
+            authResponse.status
+          );
+        }
+
+        const updated = await authResponse.json();
         return json({ ok: true, user: updated });
       } catch (err: any) {
-        return json({ ok: false, error: String(err?.message || err) }, 400);
+        return json({ ok: false, error: String(err?.message || err) }, 500);
       }
     }
 
