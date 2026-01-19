@@ -785,34 +785,37 @@ async function runScourWorker(config: ScourConfig): Promise<{
           continue;
         }
 
-        console.log(`Processing ${source.name}...`);
+        console.log(`\n🔍 [${stats.processed + 1}/${config.sourceIds.length}] Processing: ${source.name}`);
 
         let content = '';
         let articleUrl: string | null = null;
         
-        console.log(`🔎 Source config - query: "${source.query || 'NONE'}", url: "${source.url}", braveApiKey: ${config.braveApiKey ? 'YES' : 'NO'}`);
+        console.log(`  Config - Query: "${source.query || 'NONE'}", BraveAPI: ${config.braveApiKey ? '✓' : '✗'}`);
         
         if (config.braveApiKey && source.query) {
-          console.log(`📡 Attempting Brave Search for: ${source.query}`);
+          console.log(`  🔎 Brave Search → "${source.query}"`);
           const br = await fetchWithBraveSearch(source.query, config.braveApiKey);
           content = br.content;
           articleUrl = br.primaryUrl;
-          console.log(`📊 Brave Search result: ${content.length} chars, primaryUrl: ${articleUrl || 'none'}`);
+          console.log(`  ✓ Search: ${content.length} chars, URL: ${articleUrl ? '✓' : '✗'}`);
         } else {
-          if (!config.braveApiKey) console.warn('⚠️ No Brave API key - skipping search');
-          if (!source.query) console.warn(`⚠️ No query for ${source.name} - skipping Brave search`);
+          if (!config.braveApiKey) console.warn(`  ⚠ No Brave API key`);
+          if (!source.query) console.warn(`  ⚠ No search query`);
         }
         
         if (!content || content.length < 100) {
+          console.log(`  🌐 Falling back to scrape: ${source.url}`);
           content = await scrapeUrl(source.url);
           articleUrl = articleUrl || source.url;
         }
 
         if (!content || content.length < 50) {
           stats.errors.push(`No content from ${source.name}`);
+          console.log(`  ❌ No content extracted`);
           continue;
         }
 
+        console.log(`  🤖 AI Analysis → Extracting alerts...`);
         const extractedAlerts = await extractAlertsWithAI(
           content,
           articleUrl || source.url,
@@ -821,7 +824,7 @@ async function runScourWorker(config: ScourConfig): Promise<{
           config
         );
 
-        console.log(`Extracted ${extractedAlerts.length} alerts`);
+        console.log(`  ✓ AI extracted ${extractedAlerts.length} alerts (${stats.created + extractedAlerts.length} total)`);
 
         for (const alert of extractedAlerts) {
           let isDuplicate = false;
@@ -854,10 +857,32 @@ async function runScourWorker(config: ScourConfig): Promise<{
               
               existingAlerts.push(alert);
               stats.created++;
-              console.log(`Created: ${alert.title}`);
+              
+              // Update job tracking in real-time for frontend progress display
+              try {
+                await setKV(`scour_job:${config.jobId}`, {
+                  id: config.jobId,
+                  status: 'running',
+                  total: config.sourceIds.length,
+                  processed: stats.processed,
+                  created: stats.created,
+                  duplicatesSkipped: stats.duplicates,
+                  errorCount: stats.errors.length,
+                  currentSource: source.name,
+                  lastAlert: alert.title,
+                  updated_at: new Date().toISOString(),
+                });
+              } catch (e) {
+                // Non-critical: job tracking update failed, continue
+              }
+              
+              console.log(`    ✓ Created: "${alert.title}" (${alert.location}, ${alert.country})`);
             } catch (insertErr: any) {
               stats.errors.push(`Insert failed: ${insertErr.message}`);
+              console.log(`    ❌ Insert error: ${insertErr.message}`);
             }
+          } else {
+            console.log(`    ⊘ Duplicate: "${alert.title}"`);
           }
         }
 
@@ -2067,10 +2092,14 @@ Return recommendations in plain text format, organized by category if helpful.`;
 
       const since = new Date(Date.now() - DAYS_BACK * 86400000).toISOString();
 
+      // Include ALL alerts regardless of status (approved, dismissed, draft, published)
+      // This ensures trends represent the complete picture of all incidents
       const alerts =
         (await querySupabaseRest(
-          `/alerts?created_at=gte.${since}&status=neq.dismissed&select=id,country,event_type,severity,created_at`
+          `/alerts?created_at=gte.${since}&select=id,country,event_type,severity,created_at`
         )) || [];
+      
+      console.log(`📊 Trends rebuild: fetched ${alerts.length} alerts from last ${DAYS_BACK} days`);
 
       if (!alerts.length) {
         return json({ ok: true, created: 0, message: "No alerts found" });
