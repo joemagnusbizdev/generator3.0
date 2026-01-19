@@ -401,9 +401,7 @@ interface Alert {
   additionalSources?: string[];
   sourceCount?: number;
   event_start_date?: string;
-  eventStartDate?: string;
   event_end_date?: string;
-  eventEndDate?: string;
   ai_generated: boolean;
   ai_model: string;
   ai_confidence?: number;
@@ -687,9 +685,7 @@ Return ONLY JSON array, no markdown.`;
         additionalSources: [sourceName],
         sourceCount: 1,
         event_start_date: alert.eventStartDate || alert.event_start_date,
-        eventStartDate: alert.eventStartDate || alert.event_start_date,
         event_end_date: alert.eventEndDate || alert.event_end_date,
-        eventEndDate: alert.eventEndDate || alert.event_end_date,
         ai_generated: true,
         ai_model: 'gpt-4o-mini',
         ai_confidence: 0.85,
@@ -1097,14 +1093,14 @@ async function approveAndPublishToWP(id: string) {
       html += `<p style="color: ${secondaryText}; margin-bottom: 15px;">${alert.summary || alert.eventSummary || 'No summary available'}</p>`;
 
       // Timeline
-      if (alert.eventStartDate || alert.eventEndDate) {
+      if (alert.event_start_date || alert.event_end_date) {
         html += `<h2 style="color: ${darkGreen}; border-bottom: 3px solid ${orange}; padding-bottom: 8px; margin: 25px 0 15px 0; font-size: 1.3em;">Timeline</h2>`;
         html += `<ul style="margin-left: 20px; margin-bottom: 15px;">`;
-        if (alert.eventStartDate) {
-          html += `<li style="margin-bottom: 8px; color: ${secondaryText};"><strong>Start:</strong> ${new Date(alert.eventStartDate).toLocaleString()}</li>`;
+        if (alert.event_start_date) {
+          html += `<li style="margin-bottom: 8px; color: ${secondaryText};"><strong>Start:</strong> ${new Date(alert.event_start_date).toLocaleString()}</li>`;
         }
-        if (alert.eventEndDate) {
-          html += `<li style="margin-bottom: 8px; color: ${secondaryText};"><strong>End/Expiration:</strong> ${new Date(alert.eventEndDate).toLocaleString()}</li>`;
+        if (alert.event_end_date) {
+          html += `<li style="margin-bottom: 8px; color: ${secondaryText};"><strong>End/Expiration:</strong> ${new Date(alert.event_end_date).toLocaleString()}</li>`;
         }
         html += `</ul>`;
       }

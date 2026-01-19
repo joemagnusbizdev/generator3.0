@@ -190,7 +190,6 @@ export default function AlertCreateInline({
     if (validAdvice.length < 2) errors.push('At least 2 recommendations items are required');
     
     const validSources = formData.sources.filter(s => s.url.trim());
-    if (validSources.length === 0) errors.push('At least 1 source URL is recommended for WP export');
     
     // Validate URLs
     for (const source of validSources) {
@@ -223,7 +222,7 @@ export default function AlertCreateInline({
     return {
       isValid: errors.length === 0,
       errors,
-      warnings: validSources.length === 0 ? ['No sources provided - WordPress export may be incomplete'] : [],
+      warnings: [],
     };
   }, [formData]);
 
