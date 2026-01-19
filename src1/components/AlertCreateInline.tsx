@@ -39,6 +39,7 @@ interface AlertFormData {
   sources: SourceInput[];
   severity: Severity;
   event_type: string;
+  geoJSON: string; // Mandatory GeoJSON string
   geo_scope: string;
   latitude: string;
   longitude: string;
@@ -138,6 +139,7 @@ const initialFormData: AlertFormData = {
   sources: [{ url: '', title: '' }],
   severity: 'informative',
   event_type: '',
+  geoJSON: '',
   geo_scope: 'city',
   latitude: '',
   longitude: '',
@@ -199,7 +201,18 @@ export default function AlertCreateInline({
       }
     }
 
-    // Geo validation
+    // GeoJSON validation (MANDATORY)
+    if (!formData.geoJSON.trim()) {
+      errors.push('GeoJSON is required. Provide a valid GeoJSON FeatureCollection, Feature, or geometry object.');
+    } else {
+      try {
+        JSON.parse(formData.geoJSON);
+      } catch {
+        errors.push('Invalid GeoJSON format. Ensure it is valid JSON.');
+      }
+    }
+
+    // Geo validation (optional)
     if (formData.latitude && formData.longitude) {
       const lat = parseFloat(formData.latitude);
       const lng = parseFloat(formData.longitude);
@@ -313,6 +326,7 @@ export default function AlertCreateInline({
         severity: formData.severity,
         event_type: formData.event_type || null,
         geo_scope: formData.geo_scope || null,
+        geoJSON: JSON.parse(formData.geoJSON),
       };
 
       // Add geo fields if provided
@@ -841,11 +855,31 @@ export default function AlertCreateInline({
 
         {/* Geo Section */}
         <div style={sectionStyle}>
-          <h3 style={sectionTitleStyle}> Geographic Data (Optional)</h3>
+          <h3 style={sectionTitleStyle}>🗺 Geographic Data</h3>
+          
+          <div style={fieldStyle}>
+            <label style={labelStyle}>
+              GeoJSON <span style={requiredStyle}>*</span>
+            </label>
+            <textarea
+              value={formData.geoJSON}
+              onChange={e => updateField('geoJSON', e.target.value)}
+              style={{
+                ...textareaStyle,
+                fontFamily: 'monospace',
+                fontSize: '12px',
+              }}
+              placeholder={'{\n  "type": "Feature",\n  "geometry": {\n    "type": "Point",\n    "coordinates": [35.2137, 31.7683]\n  },\n  "properties": {}\n}'}
+              rows={8}
+            />
+            <div style={helpTextStyle}>
+              <strong>Required.</strong> Valid GeoJSON object (Point, Polygon, MultiPolygon, FeatureCollection, or Feature). Use tools like geojson.io to generate.
+            </div>
+          </div>
           
           <div style={gridStyle}>
             <div style={fieldStyle}>
-              <label style={labelStyle}>Geo Scope</label>
+              <label style={labelStyle}>Geo Scope <span style={{fontSize: '0.85rem', color: colors.gray500}}>(optional)</span></label>
               <select
                 value={formData.geo_scope}
                 onChange={e => updateField('geo_scope', e.target.value)}
@@ -858,7 +892,7 @@ export default function AlertCreateInline({
             </div>
 
             <div style={fieldStyle}>
-              <label style={labelStyle}>Latitude</label>
+              <label style={labelStyle}>Latitude <span style={{fontSize: '0.85rem', color: colors.gray500}}>(optional)</span></label>
               <input
                 type="number"
                 step="any"
@@ -872,7 +906,7 @@ export default function AlertCreateInline({
             </div>
 
             <div style={fieldStyle}>
-              <label style={labelStyle}>Longitude</label>
+              <label style={labelStyle}>Longitude <span style={{fontSize: '0.85rem', color: colors.gray500}}>(optional)</span></label>
               <input
                 type="number"
                 step="any"
@@ -886,7 +920,7 @@ export default function AlertCreateInline({
             </div>
 
             <div style={fieldStyle}>
-              <label style={labelStyle}>Radius (km)</label>
+              <label style={labelStyle}>Radius (km) <span style={{fontSize: '0.85rem', color: colors.gray500}}>(optional)</span></label>
               <input
                 type="number"
                 value={formData.radius_km}
