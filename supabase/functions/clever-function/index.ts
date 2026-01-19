@@ -1233,6 +1233,68 @@ Deno.serve(async (req) => {
       return json({ ok: true, lastIso });
     }
 
+    // WORDPRESS — STATUS DIAGNOSTICS
+    if (path === "/wp/status" && method === "GET") {
+      const configured = !!(WP_URL && WP_USER && WP_APP_PASSWORD);
+      const postType = WP_POST_TYPE;
+      const endpoints = {
+        usersMe: WP_URL ? `${WP_URL}/wp-json/wp/v2/users/me` : null,
+        types: WP_URL ? `${WP_URL}/wp-json/wp/v2/types` : null,
+        postType: WP_URL ? `${WP_URL}/wp-json/wp/v2/${postType}?per_page=1` : null,
+      };
+
+      const result: any = {
+        ok: true,
+        configured,
+        post_type: postType,
+        endpoints,
+        checks: {},
+      };
+
+      if (!configured) {
+        result.missing = {
+          has_url: !!WP_URL,
+          has_user: !!WP_USER,
+          has_app_password: !!WP_APP_PASSWORD,
+        };
+        return json(result);
+      }
+
+      const authHeader = `Basic ${btoa(`${WP_USER}:${WP_APP_PASSWORD}`)}`;
+      try {
+        // Validate credentials
+        if (endpoints.usersMe) {
+          const resMe = await fetch(endpoints.usersMe, {
+            headers: { Authorization: authHeader },
+            signal: AbortSignal.timeout(8000),
+          });
+          let body: any = null;
+          try { body = await resMe.json(); } catch {}
+          result.checks.usersMe = { status: resMe.status, ok: resMe.ok, bodySnippet: body?.name || body?.slug || null };
+        }
+
+        // Confirm CPT is registered in REST
+        if (endpoints.types) {
+          const resTypes = await fetch(endpoints.types, { signal: AbortSignal.timeout(8000) });
+          let typesJson: any = null;
+          try { typesJson = await resTypes.json(); } catch {}
+          const registered = !!typesJson?.[postType];
+          result.checks.types = { status: resTypes.status, ok: resTypes.ok, postTypeRegistered: registered };
+        }
+
+        // Verify CPT route is reachable
+        if (endpoints.postType) {
+          const resPT = await fetch(endpoints.postType, { headers: { Authorization: authHeader }, signal: AbortSignal.timeout(8000) });
+          const text = await resPT.text();
+          result.checks.postType = { status: resPT.status, ok: resPT.ok, textSnippet: text.slice(0, 120) };
+        }
+
+        return json(result);
+      } catch (err: any) {
+        return json({ ok: false, error: `WP diagnostics failed: ${err.message}` }, 500);
+      }
+    }
+
     // USERS — GET ALL (via /admin/users)
     if ((path === "/users" || path === "/admin/users") && method === "GET") {
       try {
