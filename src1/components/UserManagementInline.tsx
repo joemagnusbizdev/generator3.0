@@ -171,6 +171,7 @@ export function UserManagementInline({
         ? { name: formData.name, role: formData.role }
         : { name: formData.name, email: formData.email, password: formData.password, role: formData.role };
 
+      console.log('[UserManagement] Creating/updating user:', { endpoint, payload });
       const res = await method<{ ok: boolean; error?: string }>(
         endpoint,
         payload,
@@ -181,10 +182,14 @@ export function UserManagementInline({
         resetForm();
         refresh();
       } else {
-        setFormError(res.error || 'Failed to create user');
+        const errorMsg = res.error || 'Failed to create user';
+        console.error('[UserManagement] API error:', errorMsg);
+        setFormError(errorMsg);
       }
-    } catch (e) {
-      setFormError('Network error');
+    } catch (e: any) {
+      const errorMsg = e?.message || 'Network error';
+      console.error('[UserManagement] Network error:', e);
+      setFormError(errorMsg);
     } finally {
       setSubmitting(false);
     }
