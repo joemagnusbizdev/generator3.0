@@ -1934,6 +1934,143 @@ Return recommendations in plain text format, organized by category if helpful.`;
       return json({ ok: true, trend: updated?.[0] });
     }
 
+    // TRENDS — GENERATE SITUATIONAL REPORT (POST /trends/:id/generate-report)
+    if (path.endsWith("/generate-report") && method === "POST") {
+      const trendId = path.split("/").filter(Boolean)[1];
+      if (!trendId) return json({ ok: false, error: "Trend ID required" }, 400);
+
+      try {
+        const trends = await safeQuerySupabaseRest(`/trends?id=eq.${encodeURIComponent(trendId)}`);
+        if (!trends || trends.length === 0) return json({ ok: false, error: "Trend not found" }, 404);
+
+        const trend = trends[0];
+
+        // Fetch related alerts
+        const alertIds = (trend.alert_ids || []).slice(0, 10);
+        let alerts: any[] = [];
+        if (alertIds.length > 0) {
+          const ids = alertIds.map((id: string) => `"${id}"`).join(",");
+          alerts = await safeQuerySupabaseRest(`/alerts?id=in.(${ids})`) || [];
+        }
+
+        if (!OPENAI_API_KEY) {
+          return json({ ok: false, error: "AI not configured" }, 500);
+        }
+
+        // Build context from trend and related alerts
+        const alertSummaries = alerts
+          .map((a: any) => `- ${a.title}: ${a.summary} (${a.severity.toUpperCase()}, ${a.location})`)
+          .join("\n");
+
+        const prompt = `You are a MAGNUS Travel Safety Intelligence analyst creating a professional situational report on a developing travel safety trend.
+
+TREND: ${trend.title}
+COUNTRY: ${trend.country}
+SEVERITY: ${trend.highest_severity?.toUpperCase() || "WARNING"}
+LAST UPDATED: ${new Date(trend.last_seen_at || trend.created_at).toLocaleDateString()}
+RELATED INCIDENTS: ${trend.count || alerts.length}
+
+RECENT EVENTS:
+${alertSummaries || "No specific incidents available"}
+
+Generate a professional Situational Report in the following sections:
+
+1. EXECUTIVE SUMMARY
+   - 2-3 sentence overview of the situation
+   - Primary concern and scope
+
+2. SITUATION
+   - Current conditions and key developments
+   - Geographic distribution
+   - Timeline of recent events
+   - Impact on travelers
+
+3. AFFECTED AREAS & POPULATIONS
+   - Specific locations at risk
+   - Types of travelers affected
+   - Demographics most vulnerable
+
+4. SEVERITY ASSESSMENT
+   - Overall severity level
+   - Risk factors that elevate severity
+   - Potential for escalation
+
+5. TRAVELER SAFETY RECOMMENDATIONS
+   - Immediate actions travelers should take
+   - Areas to avoid
+   - Recommended transport routes
+   - When to evacuate if applicable
+   - Communication protocols with authorities
+
+6. FORECAST & OUTLOOK
+   - Expected developments in next 48-72 hours
+   - Seasonal/recurring patterns if applicable
+   - Long-term risk assessment
+
+7. RESOURCES & CONTACTS
+   - Embassy/consulate information (if applicable)
+   - Emergency services
+   - Relevant government advisories
+   - NGO/humanitarian resources
+
+Format the response as plain text with clear section headers. Include specific, actionable information. Maintain MAGNUS professional standards.`;
+
+        const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.3,
+            max_tokens: 2500,
+          }),
+          signal: AbortSignal.timeout(30000),
+        });
+
+        if (!aiRes.ok) {
+          const errText = await aiRes.text().catch(() => "Unknown error");
+          return json({ ok: false, error: `AI generation failed: ${errText}` }, 500);
+        }
+
+        const aiData = await aiRes.json();
+        const reportContent = aiData.choices?.[0]?.message?.content || "";
+
+        if (!reportContent) {
+          return json({ ok: false, error: "Failed to generate report content" }, 500);
+        }
+
+        // Build the final report with MAGNUS branding
+        const report = {
+          id: crypto.randomUUID(),
+          trendId: trend.id,
+          title: `${trend.title} - Situational Report`,
+          generatedAt: nowIso(),
+          country: trend.country,
+          severity: trend.highest_severity,
+          content: reportContent,
+          metadata: {
+            trendTitle: trend.title,
+            incidents: trend.count || alerts.length,
+            alertIds: alertIds,
+            generatedBy: "MAGNUS Intelligence System",
+            model: "gpt-4o-mini",
+          },
+        };
+
+        return json({
+          ok: true,
+          report,
+          message: "Situational report generated successfully",
+        });
+      } catch (err: any) {
+        console.error("Report generation error:", err);
+        return json({ ok: false, error: String(err?.message || err) }, 500);
+      }
+    }
+
     if (path.startsWith("/trends/") && method === "DELETE") {
       const id = path.split("/").pop()!;
       await safeQuerySupabaseRest(`/trends?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
