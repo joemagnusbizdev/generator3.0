@@ -1848,8 +1848,8 @@ Return recommendations in plain text format, organized by category if helpful.`;
         buckets.get(key)!.push(a);
       }
 
-      // clear existing trends
-      await safeQuerySupabaseRest(`/trends?select=id`, { method: "DELETE" });
+      // clear existing trends - delete all rows using id=notnull. filter (matches all rows with non-null ids)
+      await safeQuerySupabaseRest(`/trends?id=notnull.`, { method: "DELETE" });
 
       const severityRank: Record<string, number> = {
         critical: 4,
