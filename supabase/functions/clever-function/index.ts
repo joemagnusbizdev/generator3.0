@@ -855,7 +855,7 @@ const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") || Deno.env.get("OPENAI_KE
 const WP_URL = Deno.env.get("WP_URL");
 const WP_USER = Deno.env.get("WP_USER");
 const WP_APP_PASSWORD = Deno.env.get("WP_APP_PASSWORD");
-const WP_POST_TYPE = Deno.env.get("WP_POST_TYPE") || "intelligence-alert"; // ACF post location: Intelligence Alert
+const WP_POST_TYPE = Deno.env.get("WP_POST_TYPE") || "rss-feed"; // REST-enabled CPT slug
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
