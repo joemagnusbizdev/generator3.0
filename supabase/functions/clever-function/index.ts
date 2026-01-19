@@ -2213,14 +2213,23 @@ Return recommendations in plain text format, organized by category if helpful.`;
       const sourceIds: string[] = Array.isArray(body.sourceIds) ? body.sourceIds : [];
       const daysBack = typeof body.daysBack === "number" ? body.daysBack : 14;
 
-      console.log(`\n🚀 SCOUR START REQUEST: jobId=${jobId}, sourceIds=${sourceIds.length}, daysBack=${daysBack}`);
+      console.log(`\n🚀 SCOUR START REQUEST: jobId=${jobId}`);
+      console.log(`   sourceIds received: ${sourceIds.length} [${sourceIds.slice(0, 3).join(', ')}${sourceIds.length > 3 ? '...' : ''}]`);
+      console.log(`   daysBack: ${daysBack}`);
+      console.log(`   body keys: ${Object.keys(body).join(', ')}`);
       
       if (sourceIds.length === 0) {
-        console.warn(`⚠️  No source IDs provided to scour! Request body:`, body);
+        console.warn(`⚠️  No source IDs provided to scour!`);
+        console.warn(`   Request body:`, JSON.stringify(body, null, 2));
         return json({ 
           ok: false, 
           error: "No source IDs provided. Cannot start scour with 0 sources.",
-          debugInfo: { sourceIds, bodyKeys: Object.keys(body) }
+          debugInfo: { 
+            sourceIds, 
+            bodyKeys: Object.keys(body),
+            bodySourceIds: body.sourceIds,
+            isArray: Array.isArray(body.sourceIds)
+          }
         }, 400);
       }
 
@@ -2479,6 +2488,13 @@ Return recommendations in plain text format, organized by category if helpful.`;
       const sources = await querySupabaseRest(`/sources?order=created_at.desc&limit=${pageSize}&offset=${offset}`);
       const totalRows = await safeQuerySupabaseRest(`/sources?select=id`);
       const total = Array.isArray(totalRows) ? totalRows.length : 0;
+      
+      console.log(`📊 GET /sources: total=${total}, page=${page}, returning=${sources?.length || 0}`);
+      if (sources && sources.length > 0) {
+        const enabledCount = sources.filter((s: any) => s.enabled).length;
+        console.log(`   Enabled: ${enabledCount}/${sources.length}`);
+      }
+      
       return json({ ok: true, sources: sources || [], page, pageSize, total });
     }
 
