@@ -2643,7 +2643,7 @@ Format the response as plain text with clear section headers. Include specific, 
                   inList = false;
                 }
                 const headerText = trimmed.substring(3);
-                htmlLines.push(`<h2>${headerText}</h2>`);
+                htmlLines.push(`<div class="divider"></div><h2>${headerText}</h2>`);
                 continue;
               }
               
@@ -2739,10 +2739,11 @@ Format the response as plain text with clear section headers. Include specific, 
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
     header {
-      background: ${darkGreen};
+      background: linear-gradient(135deg, ${darkGreen} 0%, ${deepGreen} 100%);
       color: white;
-      padding: 40px;
-      margin-bottom: 40px;
+      padding: 30px 35px;
+      margin-bottom: 25px;
+      border-bottom: 4px solid ${orange};
     }
     .header-content {
       display: flex;
@@ -2751,83 +2752,120 @@ Format the response as plain text with clear section headers. Include specific, 
       gap: 20px;
     }
     .header-left h1 {
-      font-size: 2em;
-      margin-bottom: 10px;
+      font-size: 1.9em;
+      margin-bottom: 12px;
       color: white;
+      font-weight: 700;
     }
     .meta-info {
       display: flex;
-      gap: 30px;
-      margin-top: 15px;
-      font-size: 0.95em;
-      color: rgba(255,255,255,0.9);
+      gap: 25px;
+      margin-top: 12px;
+      font-size: 0.9em;
+      color: rgba(255,255,255,0.95);
+      flex-wrap: wrap;
+    }
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
     .meta-item strong {
-      color: white;
-      margin-right: 5px;
+      color: ${orange};
+      margin-right: 3px;
     }
     .severity-badge {
       background: ${orange};
       color: white;
-      padding: 8px 16px;
-      border-radius: 6px;
-      font-weight: 600;
-      font-size: 0.9em;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 0.85em;
       text-transform: uppercase;
       height: fit-content;
       white-space: nowrap;
+      letter-spacing: 0.5px;
+      box-shadow: 0 2px 6px rgba(248, 138, 53, 0.3);
     }
     .content {
-      white-space: pre-wrap;
       word-wrap: break-word;
       font-size: 0.95em;
-      line-height: 1.8;
-      margin: 40px;
+      line-height: 1.7;
+      margin: 0;
+      padding: 25px 35px;
       color: ${primaryText};
     }
     .content section {
-      margin-bottom: 30px;
+      margin-bottom: 18px;
+    }
+    .divider {
+      height: 2px;
+      background: linear-gradient(90deg, transparent, ${orange}, transparent);
+      margin: 20px 0 12px 0;
     }
     .content h2 {
-      font-size: 1.3em;
+      font-size: 1.25em;
       color: ${darkGreen};
-      margin-bottom: 12px;
-      margin-top: 25px;
-      padding-bottom: 8px;
-      border-bottom: 2px solid ${orange};
+      margin-bottom: 10px;
+      margin-top: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+      font-weight: 600;
+      letter-spacing: 0.3px;
     }
     .content h3 {
-      font-size: 1.1em;
+      font-size: 1.05em;
       color: ${deepGreen};
-      margin: 15px 0 8px 0;
+      margin: 12px 0 6px 0;
+      font-weight: 600;
+    }
+    .content p {
+      margin-bottom: 10px;
+      text-align: justify;
     }
     .content ul, .content ol {
-      margin-left: 20px;
-      margin-bottom: 12px;
+      margin-left: 22px;
+      margin-bottom: 10px;
+      margin-top: 6px;
     }
     .content li {
-      margin-bottom: 6px;
+      margin-bottom: 5px;
+      line-height: 1.6;
     }
     footer {
       background: ${deepGreen};
       color: white;
-      padding: 20px 40px;
-      margin-top: 50px;
+      padding: 18px 35px;
+      margin-top: 25px;
       font-size: 0.85em;
-      text-align: center;
+      border-top: 3px solid ${orange};
     }
     .footer-content {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 20px;
+      text-align: center;
       color: white;
     }
-    .logo {
+    .footer-content p:first-child {
       font-weight: 600;
+      font-size: 0.95em;
+      margin-bottom: 10px;
+      color: ${orange};
+      letter-spacing: 0.3px;
+    }
+    .footer-contacts {
+      display: flex;
+      justify-content: center;
+      gap: 25px;
+      flex-wrap: wrap;
+      font-size: 0.9em;
+      margin-bottom: 0;
+    }
+    .footer-contacts div {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .footer-contacts strong {
       color: white;
-      font-size: 1.1em;
     }
     @media print {
       body { background: white; }
@@ -2843,9 +2881,9 @@ Format the response as plain text with clear section headers. Include specific, 
         <div class="header-left">
           <h1>${trend.title}</h1>
           <div class="meta-info">
-            <div class="meta-item"><strong>Country:</strong> ${trend.country}</div>
-            <div class="meta-item"><strong>Generated:</strong> ${timestamp}</div>
-            <div class="meta-item"><strong>Related Incidents:</strong> ${incidentCount}</div>
+            <div class="meta-item">📍 <strong>Country:</strong> ${trend.country}</div>
+            <div class="meta-item">📅 <strong>Generated:</strong> ${timestamp}</div>
+            <div class="meta-item">📊 <strong>Incidents:</strong> ${incidentCount}</div>
           </div>
         </div>
         <div class="severity-badge">${String(highestSeverity).toUpperCase()}</div>
@@ -2858,17 +2896,10 @@ ${convertMarkdownToHTML(reportContent)}
 
     <footer>
       <div class="footer-content">
-        <div style="text-align: center; width: 100%;">
-          <p style="font-weight: 600; font-size: 1.1em; margin-bottom: 15px; color: white;">
-            Report generated by MAGNUS Intelligence Department
-          </p>
-          <div style="display: flex; justify-content: center; gap: 30px; flex-wrap: wrap; font-size: 0.95em;">
-            <div>Customer Service: <strong style="color: white;">Service@magnusafety.com</strong></div>
-            <div>Emergency Phone: <strong style="color: white;">+972-50-889-9698</strong></div>
-          </div>
-          <p style="margin-top: 15px; font-size: 0.85em; color: rgba(255,255,255,0.8);">
-            Trend ID: ${trend.id}
-          </p>
+        <p>Report generated by MAGNUS Intelligence Department</p>
+        <div class="footer-contacts">
+          <div>📧 Service@magnusafety.com</div>
+          <div>📞 <strong>+972-50-889-9698</strong></div>
         </div>
       </div>
     </footer>
