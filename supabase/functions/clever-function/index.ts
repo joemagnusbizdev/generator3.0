@@ -503,27 +503,54 @@ async function fetchWithBraveSearch(query: string, braveApiKey: string): Promise
 }
 
 async function scrapeUrl(url: string): Promise<string> {
+  const userAgents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+  ];
+  
+  const randomUA = userAgents[Math.floor(Math.random() * userAgents.length)];
+  
   try {
     console.log(`   📄 Scraping: ${url}`);
+    
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': randomUA,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
       },
       signal: AbortSignal.timeout(8000),
     });
 
     if (!response.ok) {
-      console.error(`   ❌ HTTP ${response.status} - ${url}`);
-      throw new Error(`Scrape failed: ${response.status}`);
+      // For 429 (rate limited) or 403 (forbidden), don't throw - return empty
+      // This allows Brave Search fallback to work
+      if (response.status === 429 || response.status === 403) {
+        console.warn(`   ⚠️  HTTP ${response.status} (blocked/rate-limited) - ${url}`);
+        console.log(`   💡 Will use Brave Search as fallback`);
+        return '';
+      }
+      throw new Error(`HTTP ${response.status}`);
     }
 
     const html = await response.text();
+    if (!html || html.length < 50) {
+      console.warn(`   ⚠️  Empty response from ${url}`);
+      return '';
+    }
+    
     const cleaned = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 15000);
     console.log(`   ✅ Scraped ${cleaned.length} chars from ${url}`);
     return cleaned;
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    console.error(`   ❌ Scrape error for ${url}: ${errMsg}`);
+    console.warn(`   ⚠️  Scrape failed for ${url}: ${errMsg}`);
     return '';
   }
 }
@@ -825,19 +852,30 @@ async function runScourWorker(config: ScourConfig): Promise<{
         if (!content || content.length < 100) {
           console.log(`  🌐 Scraping source: ${source.url}`);
           const scraped = await scrapeUrl(source.url);
-          if (scraped) {
+          if (scraped && scraped.length >= 100) {
             content = scraped;
             articleUrl = articleUrl || source.url;
             console.log(`  ✓ Scraped: ${content.length} chars`);
           } else {
-            console.warn(`  ❌ Scrape failed - trying Brave again as final fallback`);
-            // Last resort: try Brave Search without requiring query
-            if (config.braveApiKey) {
-              const br = await fetchWithBraveSearch(source.name || source.url, config.braveApiKey);
-              if (br.content) {
+            // Scrape failed or returned too little - use Brave as primary fallback
+            if (config.braveApiKey && source.query) {
+              console.log(`  💡 Scrape blocked/failed - retrying Brave Search`);
+              const br = await fetchWithBraveSearch(source.query, config.braveApiKey);
+              if (br.content && br.content.length >= 100) {
+                content = br.content;
+                articleUrl = br.primaryUrl || articleUrl || source.url;
+                console.log(`  ✓ Brave (retry): ${content.length} chars`);
+              }
+            }
+            
+            // Final fallback: try Brave with source name if no query
+            if ((!content || content.length < 100) && config.braveApiKey && !source.query) {
+              console.log(`  💡 No query configured - searching by source name`);
+              const br = await fetchWithBraveSearch(source.name, config.braveApiKey);
+              if (br.content && br.content.length >= 100) {
                 content = br.content;
                 articleUrl = br.primaryUrl;
-                console.log(`  ✓ Brave (fallback): ${content.length} chars`);
+                console.log(`  ✓ Brave (by name): ${content.length} chars`);
               }
             }
           }
