@@ -197,17 +197,18 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
   }
 
   if (!permissions.canReview) {
-    return <div className="p-4 text-gray-500">No review permissions</div>;
+    return <div className="p-4" style={{ color: MAGNUS_COLORS.secondaryText }}>No review permissions</div>;
   }
 
   if (loading) return <div className="p-6">Loading alerts</div>;
 
   if (error) {
     return (
-      <div className="p-4 border border-red-300 bg-red-50 rounded">
-        <div className="text-red-700 mb-2">{error}</div>
+      <div className="p-4 border rounded" style={{ borderColor: MAGNUS_COLORS.critical, backgroundColor: MAGNUS_COLORS.offWhite }}>
+        <div className="mb-2" style={{ color: MAGNUS_COLORS.critical }}>{error}</div>
         <button
-          className="px-3 py-1 bg-red-600 text-white rounded"
+          className="px-3 py-1 text-white rounded font-semibold transition hover:opacity-90"
+          style={{ backgroundColor: MAGNUS_COLORS.critical }}
           onClick={() => void loadAlerts()}
         >
           Retry
@@ -285,7 +286,7 @@ return (
                   className="mt-1"
                 />
                 <div className="flex-1">
-                  <h3 className="text-lg font-bold text-gray-900 mb-2">{a.title}</h3>
+                  <h3 className="text-lg font-bold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>{a.title}</h3>
                   <div className="flex gap-2 items-center flex-wrap">
                   <span
                     className={`text-sm font-semibold px-3 py-1 rounded-full ${meta.color}`}
@@ -299,7 +300,8 @@ return (
                 </div>
               </div>
               <button
-                className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 whitespace-nowrap"
+                className="text-sm font-semibold whitespace-nowrap hover:opacity-80 transition"
+                style={{ color: MAGNUS_COLORS.deepGreen }}
                 onClick={() =>
                   setExpanded((e) => ({ ...e, [a.id]: !open }))
                 }

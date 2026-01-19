@@ -54,7 +54,7 @@ export default function ScourStatusBarInline() {
       )}
 
       {lastFinishedAt && (
-        <div className="text-xs text-gray-500">
+        <div className="text-xs" style={{ color: MAGNUS_COLORS.secondaryText }}>
           Finished: {new Date(lastFinishedAt).toLocaleString()}
         </div>
       )}

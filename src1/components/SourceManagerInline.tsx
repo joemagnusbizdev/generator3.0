@@ -189,7 +189,7 @@ const SourceManagerInline: React.FC<Props> = ({
           className="border px-2 py-1 rounded text-sm"
         />
 
-        <span className="text-sm text-gray-600">
+        <span className="text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>
           {
             filteredSources.filter((s) => s.enabled).length
           }{" "}
@@ -197,8 +197,8 @@ const SourceManagerInline: React.FC<Props> = ({
         </span>
       </div>
 
-      {error && <div className="text-red-600">{error}</div>}
-      {loading && <div className="text-sm text-gray-500">Loading…</div>}
+      {error && <div style={{ color: MAGNUS_COLORS.critical }}>{error}</div>}
+      {loading && <div className="text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>Loading…</div>}
 
       {/* Sources List */}
       <div className="border rounded divide-y">
@@ -249,7 +249,8 @@ const SourceManagerInline: React.FC<Props> = ({
 
                 <button
                   onClick={saveEdit}
-                  className="text-green-600"
+                  className="font-semibold hover:opacity-80 transition"
+                  style={{ color: MAGNUS_COLORS.caution }}
                 >
                   Save
                 </button>
@@ -261,16 +262,16 @@ const SourceManagerInline: React.FC<Props> = ({
               <>
                 <strong className="w-40 truncate flex items-center gap-2">
                   {s.name}
-                  {s.reachable === false && <span title="Unreachable" className="text-red-600">❌</span>}
-                  {s.underperforming && <span title="Underperforming" className="text-yellow-600">⚠️</span>}
+                  {s.reachable === false && <span title="Unreachable" style={{ color: MAGNUS_COLORS.critical }}>❌</span>}
+                  {s.underperforming && <span title="Underperforming" style={{ color: MAGNUS_COLORS.warning }}>⚠️</span>}
                 </strong>
-                <span className="flex-1 truncate text-gray-500">
+                <span className="flex-1 truncate" style={{ color: MAGNUS_COLORS.secondaryText }}>
                   {s.url}
                 </span>
                 <span className="w-28">
                   {s.country || "—"}
                 </span>
-                <span className="w-28 text-gray-600">
+                <span className="w-28" style={{ color: MAGNUS_COLORS.secondaryText }}>
                   {typeof s.alertCount === 'number' ? `${s.alertCount} alerts` : '—'}
                 </span>
                 <span>{s.enabled ? "✅" : "❌"}</span>
@@ -279,13 +280,15 @@ const SourceManagerInline: React.FC<Props> = ({
                   <>
                     <button
                       onClick={() => startEdit(s)}
-                      className="text-blue-600"
+                      className="font-semibold hover:opacity-80 transition"
+                      style={{ color: MAGNUS_COLORS.deepGreen }}
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => deleteSource(s.id)}
-                      className="text-red-600"
+                      className="font-semibold hover:opacity-80 transition"
+                      style={{ color: MAGNUS_COLORS.critical }}
                     >
                       Delete
                     </button>
