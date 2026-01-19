@@ -165,14 +165,15 @@ export function UserManagementInline({
 
     setSubmitting(true);
     try {
-      const res = await apiPostJson<{ ok: boolean; error?: string }>(
-        '/admin/users',
-        {
-          name: formData.name,
-          email: formData.email,
-          password: formData.password,
-          role: formData.role,
-        },
+      const endpoint = editingUser ? `/admin/users/${editingUser.id}` : '/admin/users';
+      const method = editingUser ? apiPatchJson : apiPostJson;
+      const payload = editingUser
+        ? { name: formData.name, role: formData.role }
+        : { name: formData.name, email: formData.email, password: formData.password, role: formData.role };
+
+      const res = await method<{ ok: boolean; error?: string }>(
+        endpoint,
+        payload,
         accessToken
       );
 

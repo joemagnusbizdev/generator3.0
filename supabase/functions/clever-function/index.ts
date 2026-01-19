@@ -1220,10 +1220,9 @@ Deno.serve(async (req) => {
       return json({ ok: true, lastIso });
     }
 
-    // USERS — GET ALL
-    if (path === "/users" && method === "GET") {
+    // USERS — GET ALL (via /admin/users)
+    if ((path === "/users" || path === "/admin/users") && method === "GET") {
       try {
-        // Use Supabase Auth Admin API instead of REST (auth.users table is not exposed via PostgREST)
         const authResponse = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
           method: "GET",
           headers: {
@@ -1241,22 +1240,27 @@ Deno.serve(async (req) => {
         }
 
         const data = await authResponse.json();
-        const users = Array.isArray(data) ? data : data.users || [];
+        const users = (Array.isArray(data) ? data : data.users || []).map((u: any) => ({
+          id: u.id,
+          email: u.email,
+          name: u.user_metadata?.name || u.email?.split('@')[0] || 'Unknown',
+          role: u.user_metadata?.role || 'operator',
+          created_at: u.created_at,
+        }));
         return json({ ok: true, users });
       } catch (err: any) {
         return json({ ok: false, error: String(err?.message || err) }, 500);
       }
     }
 
-    // USERS — CREATE
-    if (path === "/users" && method === "POST") {
+    // USERS — CREATE (via /admin/users)
+    if ((path === "/users" || path === "/admin/users") && method === "POST") {
       const body = await req.json().catch(() => ({}));
       if (!body.email) {
         return json({ ok: false, error: "Email is required" }, 400);
       }
       try {
-        // Use Supabase Auth Admin API instead of REST (auth.users table is not exposed via PostgREST)
-        const password = body.password || crypto.randomUUID();
+        const password = body.password || crypto.randomUUID().slice(0, 16);
         const authResponse = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
           method: "POST",
           headers: {
@@ -1268,7 +1272,11 @@ Deno.serve(async (req) => {
             email: body.email,
             password,
             email_confirm: body.email_confirm ?? true,
-            user_metadata: body.user_metadata || {},
+            user_metadata: {
+              name: body.name || body.email?.split('@')[0] || 'User',
+              role: body.role || 'operator',
+              ...body.user_metadata,
+            },
           }),
         });
 
@@ -1281,18 +1289,26 @@ Deno.serve(async (req) => {
         }
 
         const created = await authResponse.json();
-        return json({ ok: true, user: created });
+        return json({ 
+          ok: true, 
+          user: {
+            id: created.id,
+            email: created.email,
+            name: created.user_metadata?.name || created.email?.split('@')[0],
+            role: created.user_metadata?.role || 'operator',
+            created_at: created.created_at,
+          }
+        });
       } catch (err: any) {
         return json({ ok: false, error: String(err?.message || err) }, 500);
       }
     }
 
-    // USERS — UPDATE
-    if (path.startsWith("/users/") && method === "PATCH") {
+    // USERS — UPDATE (via /admin/users/:id)
+    if ((path.startsWith("/users/") || path.startsWith("/admin/users/")) && method === "PATCH") {
       const id = path.split("/").pop()!;
       const body = await req.json().catch(() => ({}));
       try {
-        // Use Supabase Auth Admin API instead of REST
         const authResponse = await fetch(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(id)}`, {
           method: "PATCH",
           headers: {
@@ -1300,7 +1316,14 @@ Deno.serve(async (req) => {
             "apikey": serviceKey,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(body),
+          body: JSON.stringify({
+            ...body,
+            user_metadata: {
+              ...body.user_metadata,
+              ...(body.name && { name: body.name }),
+              ...(body.role && { role: body.role }),
+            },
+          }),
         });
 
         if (!authResponse.ok) {
@@ -1312,7 +1335,42 @@ Deno.serve(async (req) => {
         }
 
         const updated = await authResponse.json();
-        return json({ ok: true, user: updated });
+        return json({ 
+          ok: true, 
+          user: {
+            id: updated.id,
+            email: updated.email,
+            name: updated.user_metadata?.name || updated.email?.split('@')[0],
+            role: updated.user_metadata?.role || 'operator',
+            created_at: updated.created_at,
+          }
+        });
+      } catch (err: any) {
+        return json({ ok: false, error: String(err?.message || err) }, 500);
+      }
+    }
+
+    // USERS — DELETE (via /admin/users/:id)
+    if ((path.startsWith("/users/") || path.startsWith("/admin/users/")) && method === "DELETE") {
+      const id = path.split("/").pop()!;
+      try {
+        const authResponse = await fetch(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(id)}`, {
+          method: "DELETE",
+          headers: {
+            "Authorization": `Bearer ${serviceKey}`,
+            "apikey": serviceKey,
+          },
+        });
+
+        if (!authResponse.ok) {
+          const errText = await authResponse.text();
+          return json(
+            { ok: false, error: `Auth API error: ${authResponse.status}`, details: errText },
+            authResponse.status
+          );
+        }
+
+        return json({ ok: true, message: "User deleted successfully" });
       } catch (err: any) {
         return json({ ok: false, error: String(err?.message || err) }, 500);
       }
