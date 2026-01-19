@@ -1,9 +1,9 @@
 ﻿/// <reference lib="deno.unstable" />
 
-console.log("=== Function starting ===");
+console.log("=== Clever Function starting ===");
 
 // ============================================================================
-// SCOUR WORKER - Inline (with proper column names)
+// SCOUR WORKER & ALERT EXTRACTION
 // ============================================================================
 
 interface ScourConfig {
@@ -25,7 +25,7 @@ interface Alert {
   region?: string;
   event_type: string;
   severity: 'critical' | 'warning' | 'caution' | 'informative';
-  status: 'draft';
+  status: 'draft' | 'approved' | 'published' | 'dismissed';
   source_url: string;
   article_url?: string;
   sources?: string;
@@ -37,6 +37,9 @@ interface Alert {
   generation_metadata?: any;
   created_at: string;
   updated_at: string;
+  wordpress_post_id?: number;
+  wordpress_url?: string;
+  recommendations?: string;
 }
 
 async function querySupabaseForWorker(url: string, serviceKey: string, options: RequestInit = {}) {
@@ -77,10 +80,7 @@ async function fetchWithBraveSearch(query: string, braveApiKey: string): Promise
 
     const data = await response.json();
     const results = data.web?.results || [];
-    
-    return results.map((r: any) => 
-      `Title: ${r.title}\nDescription: ${r.description}\nURL: ${r.url}\n\n`
-    ).join('');
+    return results.map((r: any) => `Title: ${r.title}\nDescription: ${r.description}\nURL: ${r.url}\n\n`).join('');
   } catch (err) {
     console.error('Brave Search error:', err);
     return '';
@@ -185,7 +185,6 @@ Return ONLY JSON array, no markdown.`;
     console.log(`AI extracted for ${sourceName}:`, aiResponse.slice(0, 300));
 
     let alerts: any[] = [];
-    
     try {
       const cleaned = aiResponse.trim().replace(/^```json\s*/,'').replace(/\s*```$/,'');
       alerts = JSON.parse(cleaned);
@@ -390,1106 +389,89 @@ async function runScourWorker(config: ScourConfig): Promise<{
 }
 
 // ============================================================================
-// MAIN EDGE FUNCTION - ALL ENDPOINTS
+// GLOBAL CONFIG & HELPERS
 // ============================================================================
 
-Deno.serve(async (req) => {
-  console.log("Request:", req.method, req.url);
-  
-  if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "authorization, content-type, apikey",
-      }
-    });
+const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") || Deno.env.get("OPENAI_KEY");
+const WP_URL = Deno.env.get("WP_URL");
+const WP_USER = Deno.env.get("WP_USER");
+const WP_APP_PASSWORD = Deno.env.get("WP_APP_PASSWORD");
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "authorization, content-type, apikey",
+};
+
+function json(data: any, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" }
+  });
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+async function querySupabaseRest(endpoint: string, options: RequestInit = {}) {
+  const url = `${supabaseUrl}/rest/v1${endpoint}`;
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      "Authorization": `Bearer ${serviceKey}`,
+      "apikey": serviceKey,
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Supabase error ${response.status}: ${text}`);
   }
 
-  const url = new URL(req.url);
-  const path = url.pathname;
+  return response.json();
+}
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const wpUrl = Deno.env.get("WP_URL");
-  const wpUser = Deno.env.get("WP_USER");
-  const wpPassword = Deno.env.get("WP_APP_PASSWORD");
-
-  if (!supabaseUrl || !serviceKey) {
-    return new Response(
-      JSON.stringify({ ok: false, error: "Server configuration error" }),
-      {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-        }
-      }
-    );
-  }
-
-  async function querySupabase(endpoint: string, options: RequestInit = {}) {
-    const dbUrl = `${supabaseUrl}/rest/v1${endpoint}`;
-    const response = await fetch(dbUrl, {
-      ...options,
-      headers: {
-        "Authorization": `Bearer ${serviceKey}`,
-        "apikey": serviceKey,
-        "Content-Type": "application/json",
-        ...options.headers,
-      }
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Database error: ${response.status} - ${errorText}`);
-    }
-
-    return response.json();
-  }
-
-  async function safeQuerySupabase(endpoint: string, options: RequestInit = {}) {
-    try {
-      return await querySupabase(endpoint, options);
-    } catch (error: any) {
-      if (error.message.includes("PGRST205") || error.message.includes("404")) {
-        console.warn(`Table not found: ${endpoint}`);
-        return null;
-      }
-      throw error;
-    }
-  }
-
-  async function getKV(key: string) {
-    try {
-      const result = await querySupabase(`/app_kv?key=eq.${encodeURIComponent(key)}&select=value`);
-      return result[0]?.value ?? null;
-    } catch {
+async function safeQuerySupabaseRest(endpoint: string, options: RequestInit = {}) {
+  try {
+    return await querySupabaseRest(endpoint, options);
+  } catch (error: any) {
+    if (error.message.includes("PGRST205") || error.message.includes("404")) {
+      console.warn(`Table not found: ${endpoint}`);
       return null;
     }
+    throw error;
   }
+}
 
-  async function setKV(key: string, value: any) {
-    const data = {
-      key,
-      value,
-      updated_at: new Date().toISOString()
-    };
-    
-    try {
-      await querySupabase(`/app_kv?key=eq.${encodeURIComponent(key)}`, {
-        method: "PATCH",
-        body: JSON.stringify(data),
-        headers: { "Prefer": "return=representation" }
-      });
-    } catch {
-      await querySupabase("/app_kv", {
-        method: "POST",
-        body: JSON.stringify(data),
-        headers: { "Prefer": "return=representation" }
-      });
-    }
-  }
-
-  async function batchInsert(table: string, records: any[], chunkSize = 100) {
-    const results = [];
-    for (let i = 0; i < records.length; i += chunkSize) {
-      const chunk = records.slice(i, i + chunkSize);
-      const inserted = await querySupabase(`/${table}`, {
-        method: "POST",
-        body: JSON.stringify(chunk),
-        headers: { "Prefer": "return=representation" }
-      });
-      results.push(...inserted);
-    }
-    return results;
-  }
-
+async function getKV(key: string) {
   try {
-    // HEALTH
-    if (path === "/health" || path === "/clever-function/health") {
-      return new Response(
-        JSON.stringify({ 
-          ok: true, 
-          time: new Date().toISOString(),
-          message: "Health check passed",
-          env: {
-            AI_ENABLED: Deno.env.get("AI_ENABLED") === "true",
-            SCOUR_ENABLED: Deno.env.get("SCOUR_ENABLED") === "true",
-            AUTO_SCOUR_ENABLED: Deno.env.get("AUTO_SCOUR_ENABLED") === "true",
-            WP_CONFIGURED: !!(wpUrl && wpUser && wpPassword),
-          },
-        }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // LAST SCOURED
-    if ((path === "/last-scoured" || path === "/clever-function/last-scoured") && req.method === "GET") {
-      const lastScoured = await getKV("last_scoured_timestamp");
-      return new Response(
-        JSON.stringify({ ok: true, lastIso: lastScoured }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // ANALYTICS
-    if ((path === "/analytics/dashboard" || path === "/clever-function/analytics/dashboard") && req.method === "GET") {
-      const daysBack = parseInt(url.searchParams.get("days") || "30");
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - daysBack);
-      
-      const alerts = await querySupabase(`/alerts?created_at=gte.${cutoffDate.toISOString()}`);
-      const sources = await querySupabase("/sources");
-      
-      const byStatus = alerts.reduce((acc: any, alert: any) => {
-        acc[alert.status] = (acc[alert.status] || 0) + 1;
-        return acc;
-      }, {});
-      
-      const byCountry = alerts.reduce((acc: any, alert: any) => {
-        const country = alert.country || "Unknown";
-        acc[country] = (acc[country] || 0) + 1;
-        return acc;
-      }, {});
-      
-      const bySeverity = alerts.reduce((acc: any, alert: any) => {
-        const severity = alert.severity || "informative";
-        acc[severity] = (acc[severity] || 0) + 1;
-        return acc;
-      }, {});
-      
-      return new Response(
-        JSON.stringify({ 
-          ok: true, 
-          analytics: {
-            totalAlerts: alerts.length,
-            totalSources: sources.length,
-            byStatus,
-            byCountry,
-            bySeverity,
-            period: `Last ${daysBack} days`
-          }
-        }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // ALERTS - GET ALL
-    if ((path === "/alerts" || path === "/clever-function/alerts") && req.method === "GET") {
-      const status = url.searchParams.get("status");
-      const limit = url.searchParams.get("limit") || "1000";
-      let endpoint = `/alerts?order=created_at.desc&limit=${limit}`;
-      if (status) {
-        endpoint = `/alerts?status=eq.${status}&order=created_at.desc&limit=${limit}`;
-      }
-      
-      const alerts = await querySupabase(endpoint);
-      
-      return new Response(
-        JSON.stringify({ ok: true, alerts }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // ALERTS - REVIEW
-    if ((path === "/alerts/review" || path === "/clever-function/alerts/review") && req.method === "GET") {
-      const alerts = await querySupabase("/alerts?status=eq.draft&order=created_at.desc&limit=200");
-      
-      return new Response(
-        JSON.stringify({ ok: true, alerts }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // ALERTS - COMPILE
-    if ((path === "/alerts/compile" || path === "/clever-function/alerts/compile") && req.method === "POST") {
-      const body = await req.json();
-      const { alertIds } = body;
-      
-      if (!alertIds || !Array.isArray(alertIds) || alertIds.length === 0) {
-        return new Response(
-          JSON.stringify({ ok: false, error: "alertIds array required" }),
-          { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
-        );
-      }
-
-      const alerts = await querySupabase(`/alerts?id=in.(${alertIds.join(",")})`);
-      
-      const compiled = {
-        id: crypto.randomUUID(),
-        title: `Compiled Alert Briefing - ${new Date().toLocaleDateString()}`,
-        alerts: alerts,
-        created_at: new Date().toISOString(),
-        alert_count: alerts.length
-      };
-
-      return new Response(
-        JSON.stringify({ ok: true, compiled }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // ALERTS - CREATE
-    if ((path === "/alerts" || path === "/clever-function/alerts") && req.method === "POST") {
-      const body = await req.json();
-      
-      if (!body.title || !body.country || !body.location) {
-        return new Response(
-          JSON.stringify({ 
-            ok: false, 
-            error: "Missing required fields: title, country, location" 
-          }),
-          { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
-        );
-      }
-      
-      const now = new Date().toISOString();
-      
-      const newAlert = await querySupabase("/alerts", {
-        method: "POST",
-        body: JSON.stringify({
-          id: crypto.randomUUID(),
-          ...body,
-          status: body.status || "draft",
-          created_at: body.created_at || now,
-          updated_at: now,
-        }),
-        headers: {
-          "Prefer": "return=representation"
-        }
-      });
-      
-      return new Response(
-        JSON.stringify({ ok: true, alert: newAlert[0] }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // ALERTS - UPDATE
-    if ((path.startsWith("/alerts/") || path.startsWith("/clever-function/alerts/")) && req.method === "PATCH") {
-      const parts = path.split("/");
-      const id = parts[parts.length - 1];
-      
-      if (parts.includes("approve") || parts.includes("dismiss") || parts.includes("post-to-wp")) {
-        // Handled below
-      } else {
-        const body = await req.json();
-        
-        const updated = await querySupabase(`/alerts?id=eq.${id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ ...body, updated_at: new Date().toISOString() }),
-          headers: {
-            "Prefer": "return=representation"
-          }
-        });
-        
-        return new Response(
-          JSON.stringify({ ok: true, alert: updated[0] }),
-          {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-            }
-          }
-        );
-      }
-    }
-
-    // ALERTS - APPROVE
-    if ((path.includes("/approve") && req.method === "POST") || 
-        (path.includes("/alerts/") && path.includes("/approve"))) {
-      const parts = path.split("/");
-      const idIndex = parts.findIndex(p => p === "alerts") + 1;
-      const id = parts[idIndex];
-      
-      const updated = await querySupabase(`/alerts?id=eq.${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ 
-          status: "approved",
-          updated_at: new Date().toISOString() 
-        }),
-        headers: {
-          "Prefer": "return=representation"
-        }
-      });
-      
-      return new Response(
-        JSON.stringify({ ok: true, alert: updated[0] }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // ALERTS - DISMISS
-    if ((path.includes("/dismiss") && req.method === "POST") || 
-        (path.includes("/alerts/") && path.includes("/dismiss"))) {
-      const parts = path.split("/");
-      const idIndex = parts.findIndex(p => p === "alerts") + 1;
-      const id = parts[idIndex];
-      
-      const updated = await querySupabase(`/alerts?id=eq.${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ 
-          status: "dismissed",
-          updated_at: new Date().toISOString() 
-        }),
-        headers: {
-          "Prefer": "return=representation"
-        }
-      });
-      
-      return new Response(
-        JSON.stringify({ ok: true, alert: updated[0] }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // ALERTS - POST TO WORDPRESS
-    if ((path.includes("/post-to-wp") && req.method === "POST") || 
-        (path.includes("/alerts/") && path.includes("/post-to-wp"))) {
-      const parts = path.split("/");
-      const idIndex = parts.findIndex(p => p === "alerts") + 1;
-      const id = parts[idIndex];
-      
-      if (!wpUrl || !wpUser || !wpPassword) {
-        return new Response(
-          JSON.stringify({ 
-            ok: false, 
-            error: "WordPress credentials not configured" 
-          }),
-          {
-            status: 500,
-            headers: {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-            }
-          }
-        );
-      }
-
-      const alerts = await querySupabase(`/alerts?id=eq.${id}`);
-      const alert = alerts[0];
-
-      if (!alert) {
-        return new Response(
-          JSON.stringify({ ok: false, error: "Alert not found" }),
-          {
-            status: 404,
-            headers: {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-            }
-          }
-        );
-      }
-
-      const wpAuth = btoa(`${wpUser}:${wpPassword}`);
-      const wpResponse = await fetch(`${wpUrl}/wp-json/wp/v2/posts`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Basic ${wpAuth}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: alert.title || "Travel Alert",
-          content: alert.summary || "",
-          status: "publish",
-        })
-      });
-
-      if (!wpResponse.ok) {
-        const errorText = await wpResponse.text();
-        return new Response(
-          JSON.stringify({ 
-            ok: false, 
-            error: `WordPress error: ${wpResponse.status} - ${errorText}` 
-          }),
-          {
-            status: 500,
-            headers: {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-            }
-          }
-        );
-      }
-
-      const wpPost = await wpResponse.json();
-
-      const updated = await querySupabase(`/alerts?id=eq.${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ 
-          wordpress_post_id: wpPost.id,
-          wordpress_url: wpPost.link,
-          status: "published",
-          updated_at: new Date().toISOString() 
-        }),
-        headers: {
-          "Prefer": "return=representation"
-        }
-      });
-      
-      return new Response(
-        JSON.stringify({ 
-          ok: true, 
-          alert: updated[0],
-          wordpress_post_id: wpPost.id,
-          wordpress_url: wpPost.link
-        }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // ALERTS - DELETE
-    if ((path.startsWith("/alerts/") || path.startsWith("/clever-function/alerts/")) && req.method === "DELETE") {
-      const parts = path.split("/");
-      const id = parts[parts.length - 1];
-      
-      await querySupabase(`/alerts?id=eq.${id}`, {
-        method: "DELETE",
-      });
-      
-      return new Response(
-        JSON.stringify({ ok: true, deleted: id }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // AUTO SCOUR - STATUS
-    if ((path === "/auto-scour/status" || path === "/clever-function/auto-scour/status") && req.method === "GET") {
-      const enabled = await getKV("auto_scour_enabled");
-      const intervalMinutes = await getKV("auto_scour_interval_minutes") || 60;
-      const lastRun = await getKV("auto_scour_last_run");
-      
-      return new Response(
-        JSON.stringify({ 
-          ok: true, 
-          enabled: enabled === true || enabled === "true",
-          intervalMinutes: parseInt(intervalMinutes),
-          lastRun,
-          envEnabled: Deno.env.get("AUTO_SCOUR_ENABLED") === "true"
-        }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // AUTO SCOUR - TOGGLE
-    if ((path === "/auto-scour/toggle" || path === "/clever-function/auto-scour/toggle") && req.method === "POST") {
-      const body = await req.json();
-      const { enabled, intervalMinutes } = body;
-      
-      if (typeof enabled !== "boolean") {
-        return new Response(
-          JSON.stringify({ ok: false, error: "enabled must be a boolean" }),
-          { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
-        );
-      }
-
-      await setKV("auto_scour_enabled", enabled);
-      
-      if (intervalMinutes && typeof intervalMinutes === "number" && intervalMinutes >= 30) {
-        await setKV("auto_scour_interval_minutes", intervalMinutes);
-      }
-      
-      return new Response(
-        JSON.stringify({ 
-          ok: true, 
-          enabled,
-          intervalMinutes: intervalMinutes || 60,
-          message: enabled ? "Auto-scour enabled" : "Auto-scour disabled"
-        }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // AUTO SCOUR - RUN NOW
-    if ((path === "/auto-scour/run-now" || path === "/clever-function/auto-scour/run-now") && req.method === "POST") {
-      const sources = await querySupabase("/sources?enabled=eq.true&order=created_at.desc&limit=1000");
-      const sourceIds = sources.map((s: any) => s.id);
-      
-      if (sourceIds.length === 0) {
-        return new Response(
-          JSON.stringify({ ok: false, error: "No enabled sources to scour" }),
-          { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
-        );
-      }
-
-      const jobId = crypto.randomUUID();
-      const job = {
-        id: jobId,
-        status: "running",
-        sourceIds,
-        daysBack: 14,
-        processed: 0,
-        created: 0,
-        duplicatesSkipped: 0,
-        errorCount: 0,
-        errors: [],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        total: sourceIds.length,
-        autoScourTriggered: true,
-      };
-
-      await setKV(`scour_job:${jobId}`, job);
-      await setKV("auto_scour_last_run", new Date().toISOString());
-      
-      return new Response(
-        JSON.stringify({ 
-          ok: true, 
-          jobId,
-          status: "running",
-          total: job.total,
-          message: "Manual auto-scour started"
-        }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // SCOUR - START
-    if ((path === "/scour-sources" || path === "/clever-function/scour-sources") && req.method === "POST") {
-      const body = await req.json();
-      const jobId = body.jobId || crypto.randomUUID();
-      
-      const job = {
-        id: jobId,
-        status: "running",
-        sourceIds: body.sourceIds || [],
-        daysBack: body.daysBack || 14,
-        processed: 0,
-        created: 0,
-        duplicatesSkipped: 0,
-        errorCount: 0,
-        errors: [],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        total: body.sourceIds?.length || 0,
-      };
-
-      await setKV(`scour_job:${jobId}`, job);
-      await setKV("last_scoured_timestamp", new Date().toISOString());
-      
-      const openaiKey = Deno.env.get("OPENAI_API_KEY") || Deno.env.get("OPENAI_KEY");
-      const braveApiKey = Deno.env.get("BRAVE_SEARCH_API_KEY");
-
-      if (!openaiKey) {
-        return new Response(
-          JSON.stringify({ ok: false, error: "OPENAI_API_KEY not configured" }),
-          { status: 500, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
-        );
-      }
-
-      runScourWorker({
-        jobId,
-        sourceIds: body.sourceIds || [],
-        daysBack: body.daysBack || 14,
-        supabaseUrl: supabaseUrl!,
-        serviceKey: serviceKey!,
-        openaiKey,
-        braveApiKey,
-      }).then(async (stats) => {
-        const finalJob = {
-          ...job,
-          status: "done",
-          processed: stats.processed,
-          created: stats.created,
-          duplicatesSkipped: stats.duplicates,
-          errorCount: stats.errors.length,
-          errors: stats.errors,
-          updated_at: new Date().toISOString(),
-        });
-        await setKV(`scour_job:${jobId}`, finalJob);
-        console.log(`Scour ${jobId} done:`, stats);
-      }).catch(async (err) => {
-        console.error(`Scour ${jobId} failed:`, err);
-        const errorJob = {
-          ...job,
-          status: "error",
-          errorCount: 1,
-          errors: [err.message],
-          updated_at: new Date().toISOString(),
-        };
-        await setKV(`scour_job:${jobId}`, errorJob);
-      });
-      
-      return new Response(
-        JSON.stringify({ ok: true, jobId, status: "running", total: job.total }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // SCOUR - STATUS
-    if ((path === "/scour/status" || path === "/clever-function/scour/status") && req.method === "GET") {
-      const jobId = url.searchParams.get("jobId");
-      
-      if (!jobId) {
-        return new Response(
-          JSON.stringify({ ok: false, error: "jobId required" }),
-          { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
-        );
-      }
-
-      const job = await getKV(`scour_job:${jobId}`);
-      
-      return new Response(
-        JSON.stringify({ ok: true, job: job || { id: jobId, status: "done", total: 0, processed: 0, created: 0 } }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // SOURCES - GET ALL
-    if ((path === "/sources" || path === "/clever-function/sources") && req.method === "GET") {
-      const limit = url.searchParams.get("limit") || "1000";
-      const sources = await querySupabase(`/sources?order=created_at.desc&limit=${limit}`);
-      
-      return new Response(
-        JSON.stringify({ ok: true, sources }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // SOURCES - CREATE
-    if ((path === "/sources" || path === "/clever-function/sources") && req.method === "POST") {
-      const body = await req.json();
-      
-      const newSource = await querySupabase("/sources", {
-        method: "POST",
-        body: JSON.stringify({
-          id: crypto.randomUUID(),
-          ...body,
-          enabled: body.enabled ?? true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }),
-        headers: {
-          "Prefer": "return=representation"
-        }
-      });
-      
-      return new Response(
-        JSON.stringify({ ok: true, source: newSource[0] }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // SOURCES - BULK UPLOAD
-    if ((path === "/sources/bulk" || path === "/clever-function/sources/bulk") && req.method === "POST") {
-      const body = await req.json();
-      const sourcesData = Array.isArray(body) ? body : body.sources || [];
-
-      if (!Array.isArray(sourcesData) || sourcesData.length === 0) {
-        return new Response(
-          JSON.stringify({ ok: false, error: "No sources to import" }),
-          { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
-        );
-      }
-
-      const preparedSources = sourcesData.map(source => ({
-        id: crypto.randomUUID(),
-        name: source.name || source.Name || source.title || "Untitled Source",
-        url: source.url || source.URL || source.link || "",
-        country: source.country || source.Country || null,
-        enabled: source.enabled !== undefined ? source.enabled : true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }));
-
-      const inserted = await batchInsert("sources", preparedSources, 100);
-      
-      return new Response(
-        JSON.stringify({ 
-          ok: true, 
-          count: inserted.length,
-          sources: inserted 
-        }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // SOURCES - UPDATE
-    if ((path.startsWith("/sources/") || path.startsWith("/clever-function/sources/")) && req.method === "PATCH") {
-      const parts = path.split("/");
-      const id = parts[parts.length - 1];
-      const body = await req.json();
-      
-      const updated = await querySupabase(`/sources?id=eq.${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ ...body, updated_at: new Date().toISOString() }),
-        headers: {
-          "Prefer": "return=representation"
-        }
-      });
-      
-      return new Response(
-        JSON.stringify({ ok: true, source: updated[0] }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // SOURCES - DELETE
-    if ((path.startsWith("/sources/") || path.startsWith("/clever-function/sources/")) && req.method === "DELETE") {
-      const parts = path.split("/");
-      const id = parts[parts.length - 1];
-      
-      await querySupabase(`/sources?id=eq.${id}`, {
-        method: "DELETE",
-      });
-      
-      return new Response(
-        JSON.stringify({ ok: true, deleted: id }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // TRENDS - GET ALL
-    if ((path === "/trends" || path === "/clever-function/trends") && req.method === "GET") {
-      const status = url.searchParams.get("status");
-      const limit = url.searchParams.get("limit") || "1000";
-      
-      let endpoint = `/trends?order=created_at.desc&limit=${limit}`;
-      if (status) {
-        endpoint = `/trends?status=eq.${status}&order=created_at.desc&limit=${limit}`;
-      }
-      
-      const trends = await safeQuerySupabase(endpoint);
-      
-      return new Response(
-        JSON.stringify({ ok: true, trends: trends || [] }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // TRENDS - GET ONE
-    if ((path.startsWith("/trends/") || path.startsWith("/clever-function/trends/")) && req.method === "GET") {
-      const parts = path.split("/");
-      const id = parts[parts.length - 1];
-      
-      const trends = await safeQuerySupabase(`/trends?id=eq.${id}`);
-      
-      if (!trends || trends.length === 0) {
-        return new Response(
-          JSON.stringify({ ok: false, error: "Trend not found" }),
-          {
-            status: 404,
-            headers: {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-            }
-          }
-        );
-      }
-      
-      return new Response(
-        JSON.stringify({ ok: true, trend: trends[0] }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // TRENDS - CREATE
-    if ((path === "/trends" || path === "/clever-function/trends") && req.method === "POST") {
-      const body = await req.json();
-      
-      const newTrend = await safeQuerySupabase("/trends", {
-        method: "POST",
-        body: JSON.stringify({
-          id: crypto.randomUUID(),
-          ...body,
-          status: body.status || "open",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }),
-        headers: {
-          "Prefer": "return=representation"
-        }
-      });
-
-      if (!newTrend) {
-        return new Response(
-          JSON.stringify({ ok: false, error: "Trends table not available" }),
-          { status: 500, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
-        );
-      }
-      
-      return new Response(
-        JSON.stringify({ ok: true, trend: newTrend[0] }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // TRENDS - UPDATE
-    if ((path.startsWith("/trends/") || path.startsWith("/clever-function/trends/")) && req.method === "PATCH") {
-      const parts = path.split("/");
-      const id = parts[parts.length - 1];
-      const body = await req.json();
-      
-      const updated = await safeQuerySupabase(`/trends?id=eq.${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ ...body, updated_at: new Date().toISOString() }),
-        headers: {
-          "Prefer": "return=representation"
-        }
-      });
-      
-      return new Response(
-        JSON.stringify({ ok: true, trend: updated?.[0] }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // TRENDS - DELETE
-    if ((path.startsWith("/trends/") || path.startsWith("/clever-function/trends/")) && req.method === "DELETE") {
-      const parts = path.split("/");
-      const id = parts[parts.length - 1];
-      
-      await safeQuerySupabase(`/trends?id=eq.${id}`, {
-        method: "DELETE",
-      });
-      
-      return new Response(
-        JSON.stringify({ ok: true, deleted: id }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // 404
-    return new Response(
-      JSON.stringify({ ok: false, error: "Not found", path }),
-      {
-        status: 404,
-        headers: {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-        }
-      }
-    );
-
-  } catch (error: any) {
-    console.error("Exception:", error);
-    return new Response(
-      JSON.stringify({ ok: false, error: error.message, stack: error.stack }),
-      {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-        }
-      }
-    );
+    const result = await querySupabaseRest(`/app_kv?key=eq.${encodeURIComponent(key)}&select=value`);
+    return result[0]?.value ?? null;
+  } catch {
+    return null;
   }
-});
+}
 
-//
-// ============================================================================
-// SECTION 4 / 4 — SINGLE Deno.serve ROUTER (ALL ENDPOINTS)
-// Full router rebuild: alerts + sources + scour + trends + WP + auto-scour
-// ============================================================================
-//
-
-function normalizePath(pathname: string): string {
-  let p = pathname;
-
-  // Supabase Edge Functions path patterns
-  // /functions/v1/clever-function/...
-  // /clever-function/...
-  if (p.includes("/functions/v1/clever-function")) {
-    p = p.replace("/functions/v1/clever-function", "");
+async function setKV(key: string, value: any) {
+  const data = { key, value, updated_at: nowIso() };
+  try {
+    await querySupabaseRest(`/app_kv?key=eq.${encodeURIComponent(key)}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+      headers: { "Prefer": "return=representation" }
+    });
+  } catch {
+    await querySupabaseRest("/app_kv", {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers: { "Prefer": "return=representation" }
+    });
   }
-  if (p.startsWith("/clever-function")) {
-    p = p.replace("/clever-function", "");
-  }
-
-  // normalize trailing slash
-  if (p.endsWith("/") && p.length > 1) p = p.slice(0, -1);
-  if (!p.startsWith("/")) p = `/${p}`;
-  return p;
-}
-
-function parseIdFromPath(p: string): string | null {
-  const parts = p.split("/").filter(Boolean);
-  const idx = parts.indexOf("alerts");
-  if (idx === -1) return null;
-  return parts[idx + 1] ?? null;
-}
-
-async function respondNotFound(path: string) {
-  return json({ ok: false, error: "Not found", path }, 404);
-}
-
-function waitUntil(p: Promise<any>) {
-  const er = (globalThis as any).EdgeRuntime;
-  if (er?.waitUntil) er.waitUntil(p);
-}
-
-async function fetchAlertById(id: string): Promise<any | null> {
-  const rows = await querySupabaseRest(`/alerts?id=eq.${encodeURIComponent(id)}&select=*`);
-  return rows?.[0] ?? null;
-}
-
-async function patchAlertById(id: string, patch: Record<string, any>) {
-  const rows = await querySupabaseRest(`/alerts?id=eq.${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    headers: { Prefer: "return=representation" },
-    body: JSON.stringify({ ...patch, updated_at: nowIso() }),
-  });
-  return rows?.[0] ?? null;
 }
 
 async function batchInsert(table: string, records: any[], chunkSize = 100) {
@@ -1506,6 +488,106 @@ async function batchInsert(table: string, records: any[], chunkSize = 100) {
   return results;
 }
 
+function normalizePath(pathname: string): string {
+  let p = pathname;
+  if (p.includes("/functions/v1/clever-function")) {
+    p = p.replace("/functions/v1/clever-function", "");
+  }
+  if (p.startsWith("/clever-function")) {
+    p = p.replace("/clever-function", "");
+  }
+  if (p.endsWith("/") && p.length > 1) p = p.slice(0, -1);
+  if (!p.startsWith("/")) p = `/${p}`;
+  return p;
+}
+
+function parseIdFromPath(p: string): string | null {
+  const parts = p.split("/").filter(Boolean);
+  const idx = parts.indexOf("alerts");
+  if (idx === -1) return null;
+  return parts[idx + 1] ?? null;
+}
+
+async function fetchAlertById(id: string): Promise<any | null> {
+  const rows = await querySupabaseRest(`/alerts?id=eq.${encodeURIComponent(id)}&select=*`);
+  return rows?.[0] ?? null;
+}
+
+async function patchAlertById(id: string, patch: Record<string, any>) {
+  const rows = await querySupabaseRest(`/alerts?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...patch, updated_at: nowIso() }),
+  });
+  return rows?.[0] ?? null;
+}
+
+async function dismissAlert(id: string) {
+  return await patchAlertById(id, { status: "dismissed" });
+}
+
+async function approveOnly(id: string) {
+  return await patchAlertById(id, { status: "approved" });
+}
+
+async function approveAndPublishToWP(id: string) {
+  const alert = await fetchAlertById(id);
+  if (!alert) return { status: 404, body: { ok: false, error: "Alert not found" } };
+
+  if (!WP_URL || !WP_USER || !WP_APP_PASSWORD) {
+    return { status: 500, body: { ok: false, error: "WordPress credentials not configured" } };
+  }
+
+  const wpAuth = btoa(`${WP_USER}:${WP_APP_PASSWORD}`);
+  const wpResponse = await fetch(`${WP_URL}/wp-json/wp/v2/posts`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Basic ${wpAuth}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      title: alert.title || "Travel Alert",
+      content: alert.summary || "",
+      status: "publish",
+    })
+  });
+
+  if (!wpResponse.ok) {
+    const text = await wpResponse.text();
+    return { status: 500, body: { ok: false, error: `WordPress error: ${wpResponse.status} - ${text}` } };
+  }
+
+  const wpPost = await wpResponse.json();
+  const updated = await patchAlertById(id, {
+    status: "published",
+    wordpress_post_id: wpPost.id,
+    wordpress_url: wpPost.link,
+  });
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      alert: updated,
+      wordpress_post_id: wpPost.id,
+      wordpress_url: wpPost.link
+    }
+  };
+}
+
+function respondNotFound(path: string) {
+  return json({ ok: false, error: "Not found", path }, 404);
+}
+
+function waitUntil(p: Promise<any>) {
+  const er = (globalThis as any).EdgeRuntime;
+  if (er?.waitUntil) er.waitUntil(p);
+}
+
+// ============================================================================
+// MAIN ROUTER
+// ============================================================================
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
 
@@ -1515,9 +597,7 @@ Deno.serve(async (req) => {
   const path = normalizePath(rawPath);
 
   try {
-    // ------------------------------------------------------------------------
     // HEALTH
-    // ------------------------------------------------------------------------
     if (path === "/health" && method === "GET") {
       return json({
         ok: true,
@@ -1531,24 +611,64 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ------------------------------------------------------------------------
     // LAST SCOURED
-    // ------------------------------------------------------------------------
     if (path === "/last-scoured" && method === "GET") {
       const lastIso = await getKV("last_scoured_timestamp");
       return json({ ok: true, lastIso });
     }
 
-    // ------------------------------------------------------------------------
-    // ANALYTICS DASHBOARD
-    // ------------------------------------------------------------------------
+    // USERS — GET ALL
+    if (path === "/users" && method === "GET") {
+      const users = (await querySupabaseRest("/auth.users?select=id,email,user_metadata,created_at,last_sign_in_at")) || [];
+      return json({ ok: true, users: users || [] });
+    }
+
+    // USERS — CREATE
+    if (path === "/users" && method === "POST") {
+      const body = await req.json().catch(() => ({}));
+      if (!body.email) {
+        return json({ ok: false, error: "Email is required" }, 400);
+      }
+      try {
+        const created = await querySupabaseRest("/auth.users", {
+          method: "POST",
+          body: JSON.stringify({
+            email: body.email,
+            password: body.password || crypto.randomUUID(),
+            user_metadata: body.user_metadata || {},
+            email_confirm: body.email_confirm ?? true,
+          }),
+          headers: { Prefer: "return=representation" },
+        });
+        return json({ ok: true, user: created?.[0] });
+      } catch (err: any) {
+        return json({ ok: false, error: String(err?.message || err) }, 400);
+      }
+    }
+
+    // USERS — UPDATE
+    if (path.startsWith("/users/") && method === "PATCH") {
+      const id = path.split("/").pop()!;
+      const body = await req.json().catch(() => ({}));
+      try {
+        const updated = await querySupabaseRest(`/auth.users/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+          headers: { Prefer: "return=representation" },
+        });
+        return json({ ok: true, user: updated });
+      } catch (err: any) {
+        return json({ ok: false, error: String(err?.message || err) }, 400);
+      }
+    }
+
+    // ANALYTICS — DASHBOARD
     if (path === "/analytics/dashboard" && method === "GET") {
       const daysBack = parseInt(url.searchParams.get("days") || "30", 10);
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - daysBack);
 
-      const alerts =
-        (await querySupabaseRest(`/alerts?created_at=gte.${cutoff.toISOString()}`)) || [];
+      const alerts = (await querySupabaseRest(`/alerts?created_at=gte.${cutoff.toISOString()}`)) || [];
       const sources = (await querySupabaseRest(`/sources`)) || [];
 
       const byStatus = alerts.reduce((acc: any, a: any) => {
@@ -1579,9 +699,68 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ------------------------------------------------------------------------
+    // ANALYTICS — ALERTS (GET /analytics/alerts)
+    if (path === "/analytics/alerts" && method === "GET") {
+      const daysBack = parseInt(url.searchParams.get("days") || "30", 10);
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - daysBack);
+
+      const alerts = (await querySupabaseRest(`/alerts?created_at=gte.${cutoff.toISOString()}`)) || [];
+
+      const byStatus = alerts.reduce((acc: any, a: any) => {
+        acc[a.status] = (acc[a.status] || 0) + 1;
+        return acc;
+      }, {});
+      const byCountry = alerts.reduce((acc: any, a: any) => {
+        const c = a.country || "Unknown";
+        acc[c] = (acc[c] || 0) + 1;
+        return acc;
+      }, {});
+      const bySeverity = alerts.reduce((acc: any, a: any) => {
+        const s = a.severity || "informative";
+        acc[s] = (acc[s] || 0) + 1;
+        return acc;
+      }, {});
+
+      return json({
+        ok: true,
+        alerts: alerts,
+        stats: {
+          total: alerts.length,
+          byStatus,
+          byCountry,
+          bySeverity,
+          period: `Last ${daysBack} days`,
+        },
+      });
+    }
+
+    // ANALYTICS — SOURCES (GET /analytics/sources)
+    if (path === "/analytics/sources" && method === "GET") {
+      const sources = (await querySupabaseRest(`/sources?order=created_at.desc`)) || [];
+      const alerts = (await querySupabaseRest(`/alerts?order=created_at.desc&limit=1000`)) || [];
+
+      const sourceStats = sources.map((s: any) => {
+        const sourceAlerts = alerts.filter((a: any) => a.sources === s.name || a.sources?.includes(s.name));
+        return {
+          ...s,
+          alertCount: sourceAlerts.length,
+          lastAlertDate: sourceAlerts[0]?.created_at || null,
+        };
+      });
+
+      return json({
+        ok: true,
+        sources: sourceStats,
+        stats: {
+          total: sources.length,
+          enabled: sources.filter((s: any) => s.enabled).length,
+          totalAlertsFromSources: alerts.length,
+        },
+      });
+    }
+
     // ALERTS — GET ALL
-    // ------------------------------------------------------------------------
     if (path === "/alerts" && method === "GET") {
       const status = url.searchParams.get("status");
       const limit = url.searchParams.get("limit") || "1000";
@@ -1593,19 +772,13 @@ Deno.serve(async (req) => {
       return json({ ok: true, alerts: alerts || [] });
     }
 
-    // ------------------------------------------------------------------------
-    // ALERTS — REVIEW (DRAFT)  ✅ fixes your /alerts/review 404
-    // ------------------------------------------------------------------------
+    // ALERTS — REVIEW (DRAFT)
     if (path === "/alerts/review" && method === "GET") {
-      const alerts = await querySupabaseRest(
-        "/alerts?status=eq.draft&order=created_at.desc&limit=200"
-      );
+      const alerts = await querySupabaseRest("/alerts?status=eq.draft&order=created_at.desc&limit=200");
       return json({ ok: true, alerts: alerts || [] });
     }
 
-    // ------------------------------------------------------------------------
     // ALERTS — COMPILE
-    // ------------------------------------------------------------------------
     if (path === "/alerts/compile" && method === "POST") {
       const body = await req.json().catch(() => ({}));
       const alertIds: string[] = Array.isArray(body.alertIds) ? body.alertIds : [];
@@ -1624,9 +797,7 @@ Deno.serve(async (req) => {
       return json({ ok: true, compiled });
     }
 
-    // ------------------------------------------------------------------------
     // ALERTS — CREATE
-    // ------------------------------------------------------------------------
     if (path === "/alerts" && method === "POST") {
       const body = await req.json().catch(() => ({}));
       if (!body.title || !body.country || !body.location) {
@@ -1649,9 +820,7 @@ Deno.serve(async (req) => {
       return json({ ok: true, alert: created?.[0] });
     }
 
-    // ------------------------------------------------------------------------
     // ALERTS — UPDATE (PATCH /alerts/:id)
-    // ------------------------------------------------------------------------
     if (path.startsWith("/alerts/") && method === "PATCH") {
       const id = parseIdFromPath(path);
       if (!id) return respondNotFound(rawPath);
@@ -1671,9 +840,7 @@ Deno.serve(async (req) => {
       return json({ ok: true, alert: updated?.[0] });
     }
 
-    // ------------------------------------------------------------------------
     // ALERTS — DELETE (DELETE /alerts/:id)
-    // ------------------------------------------------------------------------
     if (path.startsWith("/alerts/") && method === "DELETE") {
       const id = parseIdFromPath(path);
       if (!id) return respondNotFound(rawPath);
@@ -1685,9 +852,7 @@ Deno.serve(async (req) => {
       return json({ ok: true, deleted: id });
     }
 
-    // ------------------------------------------------------------------------
     // ALERTS — DISMISS (POST /alerts/:id/dismiss)
-    // ------------------------------------------------------------------------
     if (path.endsWith("/dismiss") && method === "POST") {
       const id = parseIdFromPath(path);
       if (!id) return respondNotFound(rawPath);
@@ -1695,9 +860,7 @@ Deno.serve(async (req) => {
       return json({ ok: true, alert: updated });
     }
 
-    // ------------------------------------------------------------------------
     // ALERTS — APPROVE ONLY (POST /alerts/:id/approve-only)
-    // ------------------------------------------------------------------------
     if (path.endsWith("/approve-only") && method === "POST") {
       const id = parseIdFromPath(path);
       if (!id) return respondNotFound(rawPath);
@@ -1705,19 +868,15 @@ Deno.serve(async (req) => {
       return json({ ok: true, alert: updated });
     }
 
-    // ------------------------------------------------------------------------
-    // ALERTS — APPROVE + POST (POST /alerts/:id/approve)  ✅ canonical
-    // ------------------------------------------------------------------------
-    if (path.endsWith("/approve") && method === "POST") {
+    // ALERTS — APPROVE + POST (POST /alerts/:id/approve OR POST /alerts/:id/publish)
+    if ((path.endsWith("/approve") || path.endsWith("/publish")) && method === "POST") {
       const id = parseIdFromPath(path);
       if (!id) return respondNotFound(rawPath);
       const result = await approveAndPublishToWP(id);
       return json(result.body, result.status);
     }
 
-    // ------------------------------------------------------------------------
     // LEGACY: POST TO WP (POST /alerts/:id/post-to-wp)
-    // ------------------------------------------------------------------------
     if (path.endsWith("/post-to-wp") && method === "POST") {
       const id = parseIdFromPath(path);
       if (!id) return respondNotFound(rawPath);
@@ -1725,9 +884,7 @@ Deno.serve(async (req) => {
       return json(result.body, result.status);
     }
 
-    // ------------------------------------------------------------------------
     // ALERTS — GENERATE RECOMMENDATIONS (POST /alerts/:id/generate-recommendations)
-    // ------------------------------------------------------------------------
     if (path.endsWith("/generate-recommendations") && method === "POST") {
       const id = parseIdFromPath(path);
       if (!id) return respondNotFound(rawPath);
@@ -1773,16 +930,14 @@ Return plain text only.`;
       return json({ ok: true, recommendations, alert: updated });
     }
 
-    // ------------------------------------------------------------------------
     // SCOUR — START (POST /scour-sources)
-    // ------------------------------------------------------------------------
     if (path === "/scour-sources" && method === "POST") {
       const body = await req.json().catch(() => ({}));
       const jobId = body.jobId || crypto.randomUUID();
       const sourceIds: string[] = Array.isArray(body.sourceIds) ? body.sourceIds : [];
       const daysBack = typeof body.daysBack === "number" ? body.daysBack : 14;
 
-      const job: ScourJob = {
+      const job = {
         id: jobId,
         status: "running",
         sourceIds,
@@ -1801,17 +956,22 @@ Return plain text only.`;
       await setKV("last_scour_job_id", jobId);
       await setKV("last_scoured_timestamp", nowIso());
 
-      // fire-and-forget; status polled via /scour/status
       waitUntil(
-        runScourWorker(jobId, sourceIds, daysBack).catch(async (e: any) => {
+        runScourWorker({
+          jobId,
+          sourceIds,
+          daysBack,
+          supabaseUrl,
+          serviceKey,
+          openaiKey: OPENAI_API_KEY!,
+          braveApiKey: Deno.env.get("BRAVE_SEARCH_API_KEY"),
+        }).then(async (stats) => {
+          const finalJob = { ...job, status: "done", ...stats, updated_at: nowIso() };
+          await setKV(`scour_job:${jobId}`, finalJob);
+          console.log(`Scour ${jobId} done:`, stats);
+        }).catch(async (e: any) => {
           const err = String(e?.message || e);
-          const fail = {
-            ...job,
-            status: "error" as const,
-            errorCount: 1,
-            errors: [err],
-            updated_at: nowIso(),
-          };
+          const fail = { ...job, status: "error", errorCount: 1, errors: [err], updated_at: nowIso() };
           await setKV(`scour_job:${jobId}`, fail);
         })
       );
@@ -1819,10 +979,8 @@ Return plain text only.`;
       return json({ ok: true, jobId, status: "running", total: job.total });
     }
 
-    // ------------------------------------------------------------------------
-    // SCOUR — STATUS (GET /scour/status?jobId=...)
-    // ------------------------------------------------------------------------
-    if (path === "/scour/status" && method === "GET") {
+    // SCOUR — STATUS (GET /scour/status?jobId=... OR GET /scour-status?jobId=...)
+    if ((path === "/scour/status" || path === "/scour-status") && method === "GET") {
       let jobId = url.searchParams.get("jobId");
       if (!jobId) jobId = await getKV("last_scour_job_id");
 
@@ -1835,9 +993,7 @@ Return plain text only.`;
       });
     }
 
-    // ------------------------------------------------------------------------
-    // AUTO-SCOUR — STATUS (GET /auto-scour/status)
-    // ------------------------------------------------------------------------
+    // AUTO-SCOUR — STATUS
     if (path === "/auto-scour/status" && method === "GET") {
       const enabled = await getKV("auto_scour_enabled");
       const intervalMinutes = await getKV("auto_scour_interval_minutes") || 60;
@@ -1852,9 +1008,7 @@ Return plain text only.`;
       });
     }
 
-    // ------------------------------------------------------------------------
-    // AUTO-SCOUR — TOGGLE (POST /auto-scour/toggle)
-    // ------------------------------------------------------------------------
+    // AUTO-SCOUR — TOGGLE
     if (path === "/auto-scour/toggle" && method === "POST") {
       const body = await req.json().catch(() => ({}));
       const enabled = body.enabled;
@@ -1877,18 +1031,15 @@ Return plain text only.`;
       });
     }
 
-    // ------------------------------------------------------------------------
-    // AUTO-SCOUR — RUN NOW (POST /auto-scour/run-now)
-    // ------------------------------------------------------------------------
+    // AUTO-SCOUR — RUN NOW
     if (path === "/auto-scour/run-now" && method === "POST") {
-      const sources =
-        (await querySupabaseRest("/sources?enabled=eq.true&order=created_at.desc&limit=1000")) || [];
+      const sources = (await querySupabaseRest("/sources?enabled=eq.true&order=created_at.desc&limit=1000")) || [];
       const sourceIds = sources.map((s: any) => s.id).filter(Boolean);
 
       if (!sourceIds.length) return json({ ok: false, error: "No enabled sources to scour" }, 400);
 
       const jobId = crypto.randomUUID();
-      const job: ScourJob = {
+      const job = {
         id: jobId,
         status: "running",
         sourceIds,
@@ -1909,9 +1060,20 @@ Return plain text only.`;
       await setKV("auto_scour_last_run", nowIso());
 
       waitUntil(
-        runScourWorker(jobId, sourceIds, 14).catch(async (e: any) => {
+        runScourWorker({
+          jobId,
+          sourceIds,
+          daysBack: 14,
+          supabaseUrl,
+          serviceKey,
+          openaiKey: OPENAI_API_KEY!,
+          braveApiKey: Deno.env.get("BRAVE_SEARCH_API_KEY"),
+        }).then(async (stats) => {
+          const finalJob = { ...job, status: "done", ...stats, updated_at: nowIso() };
+          await setKV(`scour_job:${jobId}`, finalJob);
+        }).catch(async (e: any) => {
           const err = String(e?.message || e);
-          const fail = { ...job, status: "error" as const, errorCount: 1, errors: [err], updated_at: nowIso() };
+          const fail = { ...job, status: "error", errorCount: 1, errors: [err], updated_at: nowIso() };
           await setKV(`scour_job:${jobId}`, fail);
         })
       );
@@ -1919,18 +1081,14 @@ Return plain text only.`;
       return json({ ok: true, jobId, status: "running", total: job.total, message: "Auto-scour started" });
     }
 
-    // ------------------------------------------------------------------------
     // SOURCES — GET ALL
-    // ------------------------------------------------------------------------
     if (path === "/sources" && method === "GET") {
       const limit = url.searchParams.get("limit") || "1000";
       const sources = await querySupabaseRest(`/sources?order=created_at.desc&limit=${limit}`);
       return json({ ok: true, sources: sources || [] });
     }
 
-    // ------------------------------------------------------------------------
     // SOURCES — CREATE
-    // ------------------------------------------------------------------------
     if (path === "/sources" && method === "POST") {
       const body = await req.json().catch(() => ({}));
       const created = await querySupabaseRest(`/sources`, {
@@ -1948,9 +1106,7 @@ Return plain text only.`;
       return json({ ok: true, source: created?.[0] });
     }
 
-    // ------------------------------------------------------------------------
     // SOURCES — BULK UPLOAD
-    // ------------------------------------------------------------------------
     if (path === "/sources/bulk" && method === "POST") {
       const body = await req.json().catch(() => ({}));
       const sourcesData = Array.isArray(body) ? body : body.sources || [];
@@ -1979,9 +1135,7 @@ Return plain text only.`;
       return json({ ok: true, count: inserted.length, sources: inserted });
     }
 
-    // ------------------------------------------------------------------------
-    // SOURCES — UPDATE (PATCH /sources/:id)
-    // ------------------------------------------------------------------------
+    // SOURCES — UPDATE
     if (path.startsWith("/sources/") && method === "PATCH") {
       const id = path.split("/").pop()!;
       const body = await req.json().catch(() => ({}));
@@ -1995,19 +1149,14 @@ Return plain text only.`;
       return json({ ok: true, source: updated?.[0] });
     }
 
-    // ------------------------------------------------------------------------
-    // SOURCES — DELETE (DELETE /sources/:id)
-    // ------------------------------------------------------------------------
+    // SOURCES — DELETE
     if (path.startsWith("/sources/") && method === "DELETE") {
       const id = path.split("/").pop()!;
       await querySupabaseRest(`/sources?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
       return json({ ok: true, deleted: id });
     }
 
-    // ------------------------------------------------------------------------
-    // TRENDS — REBUILD (POST /trends/rebuild)
-    // Groups by country + event_type over the last 14 days; needs >=3 to qualify.
-    // ------------------------------------------------------------------------
+    // TRENDS — REBUILD
     if (path === "/trends/rebuild" && method === "POST") {
       const DAYS_BACK = 14;
       const MIN_ALERTS = 3;
@@ -2052,7 +1201,7 @@ Return plain text only.`;
         trends.push({
           id: crypto.randomUUID(),
           country,
-          category: event_type,            // frontend expects category
+          category: event_type,
           count: items.length,
           highest_severity: highest.severity,
           alert_ids: items.map((i) => i.id),
@@ -2069,9 +1218,7 @@ Return plain text only.`;
       return json({ ok: true, created: trends.length, windowDays: DAYS_BACK, minAlerts: MIN_ALERTS });
     }
 
-    // ------------------------------------------------------------------------
     // TRENDS — GET ALL
-    // ------------------------------------------------------------------------
     if (path === "/trends" && method === "GET") {
       const status = url.searchParams.get("status");
       const limit = url.searchParams.get("limit") || "1000";
@@ -2081,9 +1228,7 @@ Return plain text only.`;
       return json({ ok: true, trends: trends || [] });
     }
 
-    // ------------------------------------------------------------------------
     // TRENDS — GET ONE
-    // ------------------------------------------------------------------------
     if (path.startsWith("/trends/") && method === "GET") {
       const id = path.split("/").pop()!;
       const trends = await safeQuerySupabaseRest(`/trends?id=eq.${encodeURIComponent(id)}`);
@@ -2091,9 +1236,7 @@ Return plain text only.`;
       return json({ ok: true, trend: trends[0] });
     }
 
-    // ------------------------------------------------------------------------
-    // TRENDS — CREATE / UPDATE / DELETE (optional, keeps prior wiring alive)
-    // ------------------------------------------------------------------------
+    // TRENDS — CREATE
     if (path === "/trends" && method === "POST") {
       const body = await req.json().catch(() => ({}));
       const created = await safeQuerySupabaseRest(`/trends`, {
@@ -2128,24 +1271,9 @@ Return plain text only.`;
       return json({ ok: true, deleted: id });
     }
 
-    // ------------------------------------------------------------------------
-    // ADMIN — USERS (keep old UserManagementInline wiring alive)
-    // If you already had separate logic earlier, keep it above; otherwise return 404 cleanly.
-    // ------------------------------------------------------------------------
-    if (path === "/admin/users" && method === "GET") {
-      // If your older implementation exists elsewhere, remove this block.
-      return json({ ok: false, error: "admin/users not implemented in router (restore previous block here)" }, 404);
-    }
-
-    return await respondNotFound(rawPath);
+    return respondNotFound(rawPath);
   } catch (e: any) {
     return json({ ok: false, error: String(e?.message || e) }, 500);
   }
 });
-
-//
-// ============================================================================
-// END SECTION 4 / 4
-// ============================================================================
-//
 

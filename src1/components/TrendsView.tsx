@@ -49,128 +49,106 @@ export default function TrendsView({
   /* =========================
      Load Trends
   ========================= */
-
 const loadTrends = async () => {
+  if (!accessToken) return;
+
   try {
     setLoading(true);
     setError(null);
 
-    const res = await apiFetchJson<{
-      ok: boolean;
-      trends?: Trend[];
-    }>("/trends");
+    const res = await apiFetchJson<{ ok: boolean; trends?: Trend[] }>(
+      "/trends",
+      accessToken
+    );
 
-    if (!res?.ok) {
-      throw new Error("Failed to fetch trends");
-    }
+    if (!res?.ok) throw new Error("Failed to fetch trends");
 
     const sorted =
-      res.trends?.slice().sort(
-        (a, b) =>
-          (SEVERITY_ORDER[b.highest_severity] ?? 0) -
-          (SEVERITY_ORDER[a.highest_severity] ?? 0)
-      ) ?? [];
+      (res.trends ?? [])
+        .slice()
+        .sort(
+          (a, b) =>
+            (SEVERITY_ORDER[b.highest_severity] ?? 0) -
+            (SEVERITY_ORDER[a.highest_severity] ?? 0)
+        );
 
     setTrends(sorted);
   } catch (e: any) {
-    setError(e.message || "Failed to load trends");
+    setError(e?.message || "Failed to load trends");
+    setTrends([]);
   } finally {
     setLoading(false);
   }
 };
 
-useEffect(() => {
-  loadTrends();
-}, []);
 
   /* =========================
      Rebuild Trends
   ========================= */
 
-  const rebuildTrends = async () => {
-    if (!accessToken) return;
+const rebuildTrends = async () => {
+  if (!accessToken) return;
 
-    try {
-      setRebuilding(true);
-      setError(null);
+  try {
+    setLoading(true);
+    setError(null);
 
-     await apiPostJson("/trends/rebuild", {});
+    await apiFetchJson("/trends/rebuild", accessToken, {
+      method: "POST",
+    });
 
+    await loadTrends();
+  } catch (e: any) {
+    setError(e?.message || "Failed to rebuild trends");
+  } finally {
+    setLoading(false);
+  }
+};
 
-      await loadTrends();
-    } catch (e: any) {
-      setError(e.message || "Failed to rebuild trends");
-    } finally {
-      setRebuilding(false);
-    }
-  };
 
   /* =========================
      Render
   ========================= */
 
-  if (loading) {
-    return <div className="p-4 text-sm">Loading trends…</div>;
-  }
+ if (loading) return <div className="p-4">Loading trends…</div>;
 
-  return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Trends</h2>
+return (
+  <div className="space-y-4">
+    <div className="flex items-center justify-between">
+      <h2 className="text-lg font-semibold">Trends</h2>
 
-        <button
-          onClick={rebuildTrends}
-          disabled={rebuilding}
-          className="px-3 py-1 rounded bg-indigo-600 text-white text-sm disabled:opacity-50"
-        >
-          {rebuilding ? "Rebuilding…" : "Rebuild Trends"}
-        </button>
-      </div>
-
-      {error && <div className="text-red-600 text-sm">{error}</div>}
-
-      {!trends.length && (
-        <div className="p-6 text-gray-500 text-sm">
-          No trends detected.
-          <br />
-          <span className="text-xs">
-            (Requires ≥ 3 related alerts in the last 7 days)
-          </span>
-        </div>
-      )}
-
-      {/* Trend Cards */}
-      <div className="space-y-3">
-        {trends.map((t) => (
-          <div
-            key={t.id}
-            className="border rounded p-4 bg-white shadow-sm space-y-1"
-          >
-            <div className="flex items-center justify-between">
-              <div className="font-semibold">
-                {t.country} — {t.category}
-              </div>
-
-              <span
-                className={`text-xs text-white px-2 py-1 rounded ${
-                  SEVERITY_COLOR[t.highest_severity] || "bg-gray-400"
-                }`}
-              >
-                {t.highest_severity.toUpperCase()}
-              </span>
-            </div>
-
-            <div className="text-sm text-gray-600">
-              {t.count} related alerts
-            </div>
-
-            <div className="text-xs text-gray-400">
-              Last seen: {new Date(t.last_seen_at).toLocaleString()}
-            </div>
-          </div>
-        ))}
-      </div>
+      <button
+        onClick={rebuildTrends}
+        className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700"
+      >
+        Rebuild Trends
+      </button>
     </div>
-  );
-}
+
+    {error && <div className="text-red-600 text-sm">{error}</div>}
+
+    {!trends.length && (
+      <div className="p-4 text-gray-500">
+        No trends detected (≥ 3 alerts in last 14 days)
+      </div>
+    )}
+
+    {trends.map((t) => (
+      <div
+        key={t.id}
+        className="border rounded p-4 bg-white shadow-sm"
+      >
+        <div className="font-semibold">
+          {t.country} — {t.category}
+        </div>
+        <div className="text-sm text-gray-600">
+          {t.count} alerts · highest severity {t.highest_severity}
+        </div>
+        <div className="text-xs text-gray-400">
+          Last seen: {new Date(t.last_seen_at).toLocaleString()}
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
