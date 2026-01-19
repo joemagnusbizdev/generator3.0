@@ -903,6 +903,20 @@ async function runScourWorker(config: ScourConfig): Promise<{
 
         console.log(`\n🔍 [${stats.processed + 1}/${config.sourceIds.length}] Processing: ${source.name}`);
 
+        // Update status: Starting source
+        await setKV(`scour_job:${config.jobId}`, {
+          id: config.jobId,
+          status: 'running',
+          total: config.sourceIds.length,
+          processed: stats.processed,
+          created: stats.created,
+          duplicatesSkipped: stats.duplicates,
+          errorCount: stats.errors.length,
+          currentSource: source.name,
+          currentActivity: 'Fetching content',
+          updated_at: new Date().toISOString(),
+        }).catch(() => {});
+
         let content = '';
         let articleUrl: string | null = null;
         
@@ -910,6 +924,18 @@ async function runScourWorker(config: ScourConfig): Promise<{
         
         // Try Brave Search first if configured
         if (config.braveApiKey && source.query) {
+          await setKV(`scour_job:${config.jobId}`, {
+            id: config.jobId,
+            status: 'running',
+            total: config.sourceIds.length,
+            processed: stats.processed,
+            created: stats.created,
+            duplicatesSkipped: stats.duplicates,
+            errorCount: stats.errors.length,
+            currentSource: source.name,
+            currentActivity: '🔎 Brave Search',
+            updated_at: new Date().toISOString(),
+          }).catch(() => {});
           console.log(`  🔎 Brave Search → "${source.query}"`);
           const br = await fetchWithBraveSearch(source.query, config.braveApiKey);
           content = br.content;
@@ -922,6 +948,18 @@ async function runScourWorker(config: ScourConfig): Promise<{
         
         // Fall back to scraping if Brave didn't provide enough content
         if (!content || content.length < 100) {
+          await setKV(`scour_job:${config.jobId}`, {
+            id: config.jobId,
+            status: 'running',
+            total: config.sourceIds.length,
+            processed: stats.processed,
+            created: stats.created,
+            duplicatesSkipped: stats.duplicates,
+            errorCount: stats.errors.length,
+            currentSource: source.name,
+            currentActivity: '🌐 Web scraping',
+            updated_at: new Date().toISOString(),
+          }).catch(() => {});
           console.log(`  🌐 Scraping source: ${source.url}`);
           const scraped = await scrapeUrl(source.url);
           if (scraped && scraped.length >= 100) {
@@ -959,6 +997,18 @@ async function runScourWorker(config: ScourConfig): Promise<{
           continue;
         }
 
+        await setKV(`scour_job:${config.jobId}`, {
+          id: config.jobId,
+          status: 'running',
+          total: config.sourceIds.length,
+          processed: stats.processed,
+          created: stats.created,
+          duplicatesSkipped: stats.duplicates,
+          errorCount: stats.errors.length,
+          currentSource: source.name,
+          currentActivity: '🤖 AI analyzing content',
+          updated_at: new Date().toISOString(),
+        }).catch(() => {});
         console.log(`  🤖 OpenAI Analysis → Extracting alerts (${config.openaiKey ? 'API ready' : 'NO API KEY'})...`);
         const extractedAlerts = await extractAlertsWithAI(
           content,
@@ -975,6 +1025,19 @@ async function runScourWorker(config: ScourConfig): Promise<{
 
         for (const alert of extractedAlerts) {
           let isDuplicate = false;
+
+          await setKV(`scour_job:${config.jobId}`, {
+            id: config.jobId,
+            status: 'running',
+            total: config.sourceIds.length,
+            processed: stats.processed,
+            created: stats.created,
+            duplicatesSkipped: stats.duplicates,
+            errorCount: stats.errors.length,
+            currentSource: source.name,
+            currentActivity: `🔄 Deduping: ${alert.title.slice(0, 40)}...`,
+            updated_at: new Date().toISOString(),
+          }).catch(() => {});
 
           console.log(`    🔍 Checking: "${alert.title}" (${alert.location}, ${alert.country})`);
 

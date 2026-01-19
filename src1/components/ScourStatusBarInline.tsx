@@ -42,6 +42,16 @@ export default function ScourStatusBarInline() {
                   ({Math.round((scourJob.processed / scourJob.total) * 100)}%)
                 </span>
               )}
+              {scourJob.currentSource && (
+                <div style={{ marginTop: '4px', fontSize: '0.9em', color: MAGNUS_COLORS.secondaryText }}>
+                  Source: {scourJob.currentSource}
+                </div>
+              )}
+              {scourJob.currentActivity && (
+                <div style={{ marginTop: '2px', fontSize: '0.9em', fontWeight: '500', color: MAGNUS_COLORS.deepGreen }}>
+                  {scourJob.currentActivity}
+                </div>
+              )}
             </>
           )}
         </div>

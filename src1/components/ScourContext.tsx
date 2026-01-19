@@ -18,6 +18,8 @@ export interface ScourJob {
   updated_at?: string;
   created_at?: string;
   ai_engaged?: boolean;
+  currentSource?: string;
+  currentActivity?: string;
 }
 
 export interface ScourStartOpts {
