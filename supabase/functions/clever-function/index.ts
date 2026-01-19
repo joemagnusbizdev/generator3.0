@@ -1023,86 +1023,89 @@ async function approveAndPublishToWP(id: string) {
   try {
     // Build comprehensive WordPress post content with all alert fields
     const buildContent = (): string => {
+      // MAGNUS Brand Colors
+      const darkGreen = '#144334';
+      const deepGreen = '#1A6B51';
+      const orange = '#F88A35';
+      const primaryText = '#192622';
+      const secondaryText = '#17221E';
+
       let html = '';
       
-      // Title & Severity
-      html += `<div style="padding: 20px; background: #f5f5f5; border-left: 4px solid #ff6b6b; margin-bottom: 20px;">`;
-      html += `<h1>${alert.title || "Travel Alert"}</h1>`;
-      html += `<p><strong>Severity:</strong> <span style="color: ${
-        alert.severity === 'critical' ? '#ff6b6b' : 
-        alert.severity === 'warning' ? '#ffa94d' : 
-        alert.severity === 'caution' ? '#ffd43b' : '#4c6ef5'
-      }; font-weight: bold;">${alert.severity?.toUpperCase() || 'INFO'}</span></p>`;
+      // Title & Severity Header
+      html += `<div style="padding: 25px; background: ${darkGreen}; color: white; border-left: 4px solid ${orange}; margin-bottom: 25px; border-radius: 4px;">`;
+      html += `<h2 style="color: white; margin: 0 0 10px 0; font-size: 1.6em;">${alert.title || "Travel Alert"}</h2>`;
+      html += `<p style="margin: 0; font-weight: 600; font-size: 1.05em;"><strong>Severity:</strong> <span style="color: ${orange};">${alert.severity?.toUpperCase() || 'INFO'}</span></p>`;
       html += `</div>`;
 
       // Location & Geography
-      html += `<h2>Location & Geography</h2>`;
-      html += `<ul>`;
-      html += `<li><strong>Country:</strong> ${alert.countryFlag || '🌍'} ${alert.country}</li>`;
-      if (alert.location) html += `<li><strong>City/Location:</strong> ${alert.location}</li>`;
-      if (alert.region) html += `<li><strong>Region:</strong> ${alert.region}</li>`;
+      html += `<h2 style="color: ${darkGreen}; border-bottom: 3px solid ${orange}; padding-bottom: 8px; margin: 25px 0 15px 0; font-size: 1.3em;">Location & Geography</h2>`;
+      html += `<ul style="margin-left: 20px; margin-bottom: 15px;">`;
+      html += `<li style="margin-bottom: 8px; color: ${secondaryText};"><strong>Country:</strong> ${alert.countryFlag || '🌍'} ${alert.country}</li>`;
+      if (alert.location) html += `<li style="margin-bottom: 8px; color: ${secondaryText};"><strong>City/Location:</strong> ${alert.location}</li>`;
+      if (alert.region) html += `<li style="margin-bottom: 8px; color: ${secondaryText};"><strong>Region:</strong> ${alert.region}</li>`;
       if (alert.latitude && alert.longitude) {
-        html += `<li><strong>Coordinates:</strong> ${alert.latitude.toFixed(4)}, ${alert.longitude.toFixed(4)}</li>`;
+        html += `<li style="margin-bottom: 8px; color: ${secondaryText};"><strong>Coordinates:</strong> ${alert.latitude.toFixed(4)}, ${alert.longitude.toFixed(4)}</li>`;
       }
-      if (alert.geoScope) html += `<li><strong>Geographic Scope:</strong> ${alert.geoScope}</li>`;
-      if (alert.radiusKm) html += `<li><strong>Affected Radius:</strong> ~${Math.round(alert.radiusKm)} km</li>`;
+      if (alert.geoScope) html += `<li style="margin-bottom: 8px; color: ${secondaryText};"><strong>Geographic Scope:</strong> ${alert.geoScope}</li>`;
+      if (alert.radiusKm) html += `<li style="margin-bottom: 8px; color: ${secondaryText};"><strong>Affected Radius:</strong> ~${Math.round(alert.radiusKm)} km</li>`;
       html += `</ul>`;
 
       // Event Details
-      html += `<h2>Event Details</h2>`;
-      if (alert.eventType) html += `<p><strong>Event Type:</strong> ${alert.eventType}</p>`;
-      if (alert.alertType) html += `<p><strong>Alert Type:</strong> ${alert.alertType}</p>`;
-      if (alert.escalationLikelihood) html += `<p><strong>Escalation Likelihood:</strong> ${alert.escalationLikelihood}</p>`;
+      html += `<h2 style="color: ${darkGreen}; border-bottom: 3px solid ${orange}; padding-bottom: 8px; margin: 25px 0 15px 0; font-size: 1.3em;">Event Details</h2>`;
+      if (alert.eventType) html += `<p style="margin-bottom: 8px; color: ${secondaryText};"><strong>Event Type:</strong> ${alert.eventType}</p>`;
+      if (alert.alertType) html += `<p style="margin-bottom: 8px; color: ${secondaryText};"><strong>Alert Type:</strong> ${alert.alertType}</p>`;
+      if (alert.escalationLikelihood) html += `<p style="margin-bottom: 8px; color: ${secondaryText};"><strong>Escalation Likelihood:</strong> ${alert.escalationLikelihood}</p>`;
 
       // Summary
-      html += `<h2>Summary</h2>`;
-      html += `<p>${alert.summary || alert.eventSummary || 'No summary available'}</p>`;
+      html += `<h2 style="color: ${darkGreen}; border-bottom: 3px solid ${orange}; padding-bottom: 8px; margin: 25px 0 15px 0; font-size: 1.3em;">Summary</h2>`;
+      html += `<p style="color: ${secondaryText}; margin-bottom: 15px;">${alert.summary || alert.eventSummary || 'No summary available'}</p>`;
 
       // Timeline
       if (alert.eventStartDate || alert.eventEndDate) {
-        html += `<h2>Timeline</h2>`;
-        html += `<ul>`;
+        html += `<h2 style="color: ${darkGreen}; border-bottom: 3px solid ${orange}; padding-bottom: 8px; margin: 25px 0 15px 0; font-size: 1.3em;">Timeline</h2>`;
+        html += `<ul style="margin-left: 20px; margin-bottom: 15px;">`;
         if (alert.eventStartDate) {
-          html += `<li><strong>Start:</strong> ${new Date(alert.eventStartDate).toLocaleString()}</li>`;
+          html += `<li style="margin-bottom: 8px; color: ${secondaryText};"><strong>Start:</strong> ${new Date(alert.eventStartDate).toLocaleString()}</li>`;
         }
         if (alert.eventEndDate) {
-          html += `<li><strong>End/Expiration:</strong> ${new Date(alert.eventEndDate).toLocaleString()}</li>`;
+          html += `<li style="margin-bottom: 8px; color: ${secondaryText};"><strong>End/Expiration:</strong> ${new Date(alert.eventEndDate).toLocaleString()}</li>`;
         }
         html += `</ul>`;
       }
 
       // Topics & Regions
       if (alert.topics && alert.topics.length > 0) {
-        html += `<h3>Topics</h3>`;
-        html += `<p>${alert.topics.join(', ')}</p>`;
+        html += `<h3 style="color: ${deepGreen}; font-size: 1.1em; margin: 15px 0 10px 0; font-weight: 600;">Topics</h3>`;
+        html += `<p style="color: ${secondaryText}; margin-bottom: 15px;">${alert.topics.join(', ')}</p>`;
       }
 
       // Recommendations & Mitigation
       if (alert.recommendedActions && alert.recommendedActions.length > 0) {
-        html += `<h2>Recommended Actions</h2>`;
-        html += `<ol>`;
+        html += `<h2 style="color: ${darkGreen}; border-bottom: 3px solid ${orange}; padding-bottom: 8px; margin: 25px 0 15px 0; font-size: 1.3em;">Recommended Actions</h2>`;
+        html += `<ol style="margin-left: 20px; margin-bottom: 15px;">`;
         alert.recommendedActions.forEach((action) => {
-          html += `<li>${action}</li>`;
+          html += `<li style="margin-bottom: 8px; color: ${secondaryText};">${action}</li>`;
         });
         html += `</ol>`;
       }
 
       if (alert.mitigation) {
-        html += `<h2>Safety Precautions</h2>`;
-        html += `<p>${alert.mitigation}</p>`;
+        html += `<h2 style="color: ${darkGreen}; border-bottom: 3px solid ${orange}; padding-bottom: 8px; margin: 25px 0 15px 0; font-size: 1.3em;">Safety Precautions</h2>`;
+        html += `<p style="color: ${secondaryText}; margin-bottom: 15px;">${alert.mitigation}</p>`;
       }
 
       if (alert.recommendations) {
-        html += `<h2>Additional Recommendations</h2>`;
-        html += `<p>${alert.recommendations}</p>`;
+        html += `<h2 style="color: ${darkGreen}; border-bottom: 3px solid ${orange}; padding-bottom: 8px; margin: 25px 0 15px 0; font-size: 1.3em;">Additional Recommendations</h2>`;
+        html += `<p style="color: ${secondaryText}; margin-bottom: 15px;">${alert.recommendations}</p>`;
       }
 
       // Secondary Impacts
       if (alert.secondaryImpacts && alert.secondaryImpacts.length > 0) {
-        html += `<h2>Predicted Secondary Impacts</h2>`;
-        html += `<ul>`;
+        html += `<h2 style="color: ${darkGreen}; border-bottom: 3px solid ${orange}; padding-bottom: 8px; margin: 25px 0 15px 0; font-size: 1.3em;">Predicted Secondary Impacts</h2>`;
+        html += `<ul style="margin-left: 20px; margin-bottom: 15px;">`;
         alert.secondaryImpacts.forEach((impact) => {
-          html += `<li>${impact}</li>`;
+          html += `<li style="margin-bottom: 8px; color: ${secondaryText};">${impact}</li>`;
         });
         html += `</ul>`;
       }

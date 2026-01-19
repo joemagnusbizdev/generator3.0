@@ -9,13 +9,13 @@ export default {
       colors: {
         // MAGNUS Brand Colors
         magnus: {
-          'dark-green': '#1A4234',
-          'green': '#2D5A47',
-          'light-green': '#4A7A64',
-          'accent-green': '#065831',
-          'orange': '#E67E22',
-          'orange-light': '#F39C12',
-          'light-bg': '#F8FAF9',
+          'dark-green': '#144334',      // Primary core
+          'deep-green': '#1A6B51',      // Secondary
+          'orange': '#F88A35',          // Accent/Action
+          'off-white': '#F9F8F6',       // Background
+          'text-primary': '#192622',    // Primary text
+          'text-secondary': '#17221E',  // Secondary text
+          'text-tertiary': '#1C332A',   // Tertiary text
         },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
