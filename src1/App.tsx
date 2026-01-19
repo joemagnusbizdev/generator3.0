@@ -238,6 +238,7 @@ export default function App(): JSX.Element {
 
         {tab === "admin" && (
           <UserManagementInline
+            accessToken={accessToken || undefined}
             currentUserRole={role}
             permissions={{ canManageUsers: permissions.canManageUsers }}
           />
