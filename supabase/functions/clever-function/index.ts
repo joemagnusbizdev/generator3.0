@@ -1248,17 +1248,27 @@ async function getKV(key: string) {
 async function setKV(key: string, value: any) {
   const data = { key, value, updated_at: nowIso() };
   try {
-    await querySupabaseRest(`/app_kv?key=eq.${encodeURIComponent(key)}`, {
+    const patchRes = await querySupabaseRest(`/app_kv?key=eq.${encodeURIComponent(key)}`, {
       method: "PATCH",
       body: JSON.stringify(data),
       headers: { "Prefer": "return=representation" }
     });
-  } catch {
-    await querySupabaseRest("/app_kv", {
-      method: "POST",
-      body: JSON.stringify(data),
-      headers: { "Prefer": "return=representation" }
-    });
+    console.log(`✓ KV PATCH: ${key}`);
+    return patchRes;
+  } catch (e: any) {
+    console.log(`  KV PATCH failed, trying POST: ${key}`, e?.message);
+    try {
+      const postRes = await querySupabaseRest("/app_kv", {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: { "Prefer": "return=representation" }
+      });
+      console.log(`✓ KV POST: ${key}`);
+      return postRes;
+    } catch (e2: any) {
+      console.error(`❌ KV SAVE FAILED: ${key}`, e2?.message);
+      throw e2;
+    }
   }
 }
 
@@ -2407,6 +2417,14 @@ Return recommendations in plain text format, organized by category if helpful.`;
       if (!jobId) return json({ ok: true, job: null });
 
       const job = await getKV(`scour_job:${jobId}`);
+      
+      if (!job) {
+        console.warn(`⚠️ JOB NOT FOUND in KV store: ${jobId}`);
+        console.warn(`   Attempted to fetch: scour_job:${jobId}`);
+      } else {
+        console.log(`✓ Job found: ${jobId}, total=${job.total}, processed=${job.processed}, status=${job.status}`);
+      }
+      
       return json({
         ok: true,
         job: job || { id: jobId, status: "running", total: 0, processed: 0, created: 0, duplicatesSkipped: 0, errorCount: 0, errors: [] },
