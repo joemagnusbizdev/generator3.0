@@ -1157,9 +1157,34 @@ async function approveAndPublishToWP(id: string) {
       if (alert.alertType) html += `<p style="margin-bottom: 8px; color: ${secondaryText};"><strong>Alert Type:</strong> ${alert.alertType}</p>`;
       if (alert.escalationLikelihood) html += `<p style="margin-bottom: 8px; color: ${secondaryText};"><strong>Escalation Likelihood:</strong> ${alert.escalationLikelihood}</p>`;
 
-      // Summary
+      // Summary & Recommendations
       html += `<h2 style="color: ${darkGreen}; border-bottom: 3px solid ${orange}; padding-bottom: 8px; margin: 25px 0 15px 0; font-size: 1.3em;">Summary</h2>`;
-      html += `<p style="color: ${secondaryText}; margin-bottom: 15px;">${alert.summary || alert.eventSummary || 'No summary available'}</p>`;
+      
+      // Check if recommendations are in summary (they'll be marked with **Traveler Recommendations:**)
+      const summaryText = alert.summary || alert.eventSummary || 'No summary available';
+      const hasRecommendationsInSummary = summaryText.includes('**Traveler Recommendations:**');
+      
+      if (hasRecommendationsInSummary) {
+        // Split summary and recommendations
+        const parts = summaryText.split('**Traveler Recommendations:**');
+        html += `<p style="color: ${secondaryText}; margin-bottom: 15px;">${parts[0].trim()}</p>`;
+        
+        // Add recommendations section
+        if (parts[1]) {
+          html += `<h2 style="color: ${darkGreen}; border-bottom: 3px solid ${orange}; padding-bottom: 8px; margin: 25px 0 15px 0; font-size: 1.3em;">Traveler Recommendations</h2>`;
+          const recLines = parts[1].trim().split('\n').filter((line: string) => line.trim());
+          html += `<ol style="margin-left: 20px; margin-bottom: 15px;">`;
+          recLines.forEach((line: string) => {
+            const cleanLine = line.replace(/^\d+\.\s*/, '').trim();
+            if (cleanLine) {
+              html += `<li style="margin-bottom: 8px; color: ${secondaryText};">${cleanLine}</li>`;
+            }
+          });
+          html += `</ol>`;
+        }
+      } else {
+        html += `<p style="color: ${secondaryText}; margin-bottom: 15px;">${summaryText}</p>`;
+      }
 
       // Timeline
       if (alert.event_start_date || alert.event_end_date) {
@@ -1193,11 +1218,6 @@ async function approveAndPublishToWP(id: string) {
       if (alert.mitigation) {
         html += `<h2 style="color: ${darkGreen}; border-bottom: 3px solid ${orange}; padding-bottom: 8px; margin: 25px 0 15px 0; font-size: 1.3em;">Safety Precautions</h2>`;
         html += `<p style="color: ${secondaryText}; margin-bottom: 15px;">${alert.mitigation}</p>`;
-      }
-
-      if (alert.recommendations) {
-        html += `<h2 style="color: ${darkGreen}; border-bottom: 3px solid ${orange}; padding-bottom: 8px; margin: 25px 0 15px 0; font-size: 1.3em;">Additional Recommendations</h2>`;
-        html += `<p style="color: ${secondaryText}; margin-bottom: 15px;">${alert.recommendations}</p>`;
       }
 
       // Secondary Impacts

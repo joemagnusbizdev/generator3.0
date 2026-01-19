@@ -307,14 +307,21 @@ export default function AlertCreateInline({
 
     try {
       // Build the alert payload - ONLY include fields in database schema
+      const recommendationsText = formData.recommendations
+        .filter(a => a.trim())
+        .map((a, i) => `${i + 1}. ${a.trim()}`)
+        .join('\n');
+
       const payload: Record<string, any> = {
         status: 'draft',
         title: formData.title.trim(),
         country: formData.country,
         region: formData.region.trim() || null,
         location: formData.location.trim(),
-        summary: formData.summary.trim(),
-        // Note: recommendations, polygon, geo_scope, latitude, longitude, radius_km are WordPress-only fields
+        summary: recommendationsText 
+          ? `${formData.summary.trim()}\n\n**Traveler Recommendations:**\n${recommendationsText}`
+          : formData.summary.trim(),
+        // Note: polygon, geo_scope, latitude, longitude, radius_km are WordPress-only fields
         // They are NOT stored in the Supabase alerts table
         sources: formData.sources
           .filter(s => s.url.trim())
@@ -367,17 +374,20 @@ export default function AlertCreateInline({
 
     try {
       // First create as draft
+      const recommendationsText = formData.recommendations
+        .filter(a => a.trim())
+        .map((a, i) => `${i + 1}. ${a.trim()}`)
+        .join('\n');
+
       const payload: Record<string, any> = {
         status: 'draft',
         title: formData.title.trim(),
         country: formData.country,
         region: formData.region.trim() || null,
         location: formData.location.trim(),
-        summary: formData.summary.trim(),
-        recommendations: formData.recommendations
-          .filter(a => a.trim())
-          .map(a => a.trim())
-          .join('\n'),
+        summary: recommendationsText 
+          ? `${formData.summary.trim()}\n\n**Traveler Recommendations:**\n${recommendationsText}`
+          : formData.summary.trim(),
         sources: formData.sources
           .filter(s => s.url.trim())
           .map(s => ({
