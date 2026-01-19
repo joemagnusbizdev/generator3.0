@@ -555,6 +555,78 @@ async function scrapeUrl(url: string): Promise<string> {
   }
 }
 
+// Early signal queries for proactive detection via Brave Search
+const EARLY_SIGNAL_QUERIES: string[] = [
+  // NATURAL DISASTERS & ENVIRONMENTAL EVENTS
+  'earthquake reported residents say shaking',
+  'aftershock felt this morning',
+  'landslide blocked road',
+  'flash flooding reported',
+  'river overflowed homes evacuated',
+  'wildfire spreading toward town',
+  'smoke visible kilometers away',
+  'volcanic ash advisory issued',
+  'tsunami warning issued locally',
+  'dam overflow emergency evacuation',
+  // TRAVEL & AVIATION DISRUPTIONS
+  'airport closed due to weather',
+  'runway closed after incident',
+  'flights cancelled without notice',
+  'airspace closed temporarily',
+  'ground stop issued airport',
+  'aircraft diverted after emergency',
+  'airport power outage',
+  'radar failure airport delays',
+  'strike affects flights today',
+  'airport evacuation reported',
+  // BORDER, IMMIGRATION & CROSSING ISSUES
+  'border closed without warning',
+  'border crossing delays hours',
+  'entry denied travelers today',
+  'immigration system outage',
+  'customs strike reported',
+  'passport control backlog',
+  'visa suspension announced',
+  'foreign nationals stranded border',
+  'crossing temporarily suspended',
+  'travelers stuck overnight border',
+  // POLITICAL INSTABILITY & CIVIL UNREST
+  'protests erupted overnight',
+  'demonstrators blocked main roads',
+  'riot police deployed downtown',
+  'state of emergency declared',
+  'curfew announced tonight',
+  'government buildings evacuated',
+  'internet shutdown reported',
+  'mobile networks disrupted protests',
+  'military deployed to streets',
+  'clashes reported between protesters police',
+  // SAFETY, SECURITY & INCIDENTS AFFECTING MOVEMENT
+  'explosion reported near transit',
+  'gunfire reported near station',
+  'suspicious package airport',
+  'security incident public transport',
+  'train service suspended incident',
+  'metro shut down emergency',
+  'ferry service cancelled weather',
+  'bridge closed structural issue',
+  'tunnel closed after accident',
+  'major highway closed indefinitely',
+];
+
+function buildRegionalQueries(base: string[], countries: string[], cities: string[]): string[] {
+  const queries: string[] = [];
+  const uniq = new Set<string>();
+  const add = (q: string) => { const k = q.toLowerCase(); if (!uniq.has(k)) { uniq.add(k); queries.push(q); } };
+
+  for (const q of base) {
+    add(q);
+    for (const country of countries) add(`${q} ${country}`);
+    for (const city of cities) add(`${q} ${city}`);
+  }
+  return queries.slice(0, 500); // cap to avoid excessive calls
+}
+
 function generateDefaultRecommendations(severity: string, eventType: string, location: string): string {
   const severityRecommendations: Record<string, string> = {
     critical: `Travel to ${location} is not recommended at this time. Avoid all non-essential travel and monitor official government advisories closely. If currently in the area, follow local authority guidance and evacuation orders.`,
@@ -896,21 +968,30 @@ async function runScourWorker(config: ScourConfig): Promise<{
           config
         );
 
-        console.log(`  ✓ AI extracted ${extractedAlerts.length} alerts (${stats.created + extractedAlerts.length} total)`);
+        console.log(`  ✓ AI extracted ${extractedAlerts.length} alerts`);
+        if (extractedAlerts.length === 0) {
+          console.log(`  ⚠️  No alerts found in content - AI may have rejected or found no travel-relevant events`);
+        }
 
         for (const alert of extractedAlerts) {
           let isDuplicate = false;
+
+          console.log(`    🔍 Checking: "${alert.title}" (${alert.location}, ${alert.country})`);
 
           for (const existing of existingAlerts) {
             const titleMatch = existing.title.toLowerCase().includes(alert.title.toLowerCase().slice(0, 30));
             const locationMatch = existing.location === alert.location && existing.country === alert.country;
 
             if (titleMatch || locationMatch) {
+              console.log(`      🔎 Potential duplicate found: "${existing.title}"`);
               const duplicate = await checkDuplicate(alert, existing, config.openaiKey);
               if (duplicate) {
                 isDuplicate = true;
                 stats.duplicates++;
+                console.log(`      ⊘ Confirmed duplicate by AI`);
                 break;
+              } else {
+                console.log(`      ✓ AI says not duplicate - continuing`);
               }
             }
           }
@@ -964,6 +1045,23 @@ async function runScourWorker(config: ScourConfig): Promise<{
         stats.errors.push(`Source error: ${sourceErr.message}`);
       }
     }
+
+    // Run proactive Brave Search signals each cycle (early detection)
+    // Runs asynchronously and doesn't block scour completion
+    if (config.braveApiKey) {
+      console.log(`\n🛰️ Triggering early-signal queries (async, non-blocking)`);
+      // Fire and forget - don't await, don't block completion
+      fetch(`${config.supabaseUrl}/functions/v1/clever-function/scour/early-signals`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.serviceKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ jobId: config.jobId }),
+      }).catch(e => console.warn('Early signals trigger failed:', e));
+    }
+    
+    console.log(`✅ SCOUR WORKER COMPLETE: processed=${stats.processed}, created=${stats.created}, duplicates=${stats.duplicates}, errors=${stats.errors.length}`);
 
     return stats;
 
@@ -2107,6 +2205,100 @@ Return recommendations in plain text format, organized by category if helpful.`;
       );
 
       return json({ ok: true, jobId, total: sourceIds.length, message: `Scour job started with ${sourceIds.length} sources` });
+    }
+
+    // SCOUR — EARLY SIGNALS (POST /scour/early-signals)
+    // Runs independently, triggered by scour completion or manually
+    if (path === "/scour/early-signals" && method === "POST") {
+      const body = await req.json().catch(() => ({}));
+      const jobId = body.jobId || crypto.randomUUID();
+      const braveApiKey = Deno.env.get("BRAVE_SEARCH_API_KEY");
+      
+      if (!braveApiKey) {
+        return json({ ok: false, error: "Brave API key not configured" }, 500);
+      }
+
+      console.log(`\n🛰️ [${jobId}] Starting early-signal Brave queries`);
+
+      // Run asynchronously with waitUntil
+      waitUntil(
+        (async () => {
+          try {
+            const existingAlerts: Alert[] = await querySupabaseRest(`/alerts?select=id,title,location,country,status,summary&limit=500&order=created_at.desc`) || [];
+            
+            const countries = Array.from(new Set(existingAlerts.map(a => a.country).filter(Boolean))).slice(0, 30);
+            const cities = Array.from(new Set(existingAlerts.map(a => a.location).filter(Boolean))).slice(0, 40);
+            const queries = buildRegionalQueries(EARLY_SIGNAL_QUERIES, countries, cities);
+            
+            console.log(`🔎 Built ${queries.length} early-signal queries (countries=${countries.length}, cities=${cities.length})`);
+
+            let created = 0;
+            let duplicates = 0;
+            
+            // Process in smaller batches to avoid timeout
+            const batchSize = 10;
+            const batches = Math.ceil(Math.min(queries.length, 30) / batchSize);
+            
+            for (let b = 0; b < batches; b++) {
+              const batch = queries.slice(b * batchSize, (b + 1) * batchSize);
+              console.log(`  📦 Batch ${b + 1}/${batches}: ${batch.length} queries`);
+              
+              for (const q of batch) {
+                try {
+                  const { content, primaryUrl } = await fetchWithBraveSearch(q, braveApiKey);
+                  if (!content || content.length < 100) continue;
+
+                  const extractedAlerts = await extractAlertsWithAI(
+                    content,
+                    primaryUrl || 'https://api.search.brave.com',
+                    'Early Signal',
+                    existingAlerts,
+                    { 
+                      supabaseUrl, 
+                      serviceKey, 
+                      openaiKey: OPENAI_API_KEY!, 
+                      jobId, 
+                      sourceIds: [], 
+                      daysBack: 7 
+                    }
+                  );
+
+                  for (const alert of extractedAlerts) {
+                    let isDuplicate = false;
+                    for (const existing of existingAlerts) {
+                      const titleMatch = existing.title.toLowerCase().includes(alert.title.toLowerCase().slice(0, 30));
+                      const locationMatch = existing.location === alert.location && existing.country === alert.country;
+                      if (titleMatch || locationMatch) {
+                        const duplicate = await checkDuplicate(alert, existing, OPENAI_API_KEY!);
+                        if (duplicate) { isDuplicate = true; duplicates++; break; }
+                      }
+                    }
+
+                    if (!isDuplicate) {
+                      await querySupabaseRest(`/alerts`, {
+                        method: 'POST',
+                        body: JSON.stringify(alert),
+                        headers: { 'Prefer': 'return=representation' },
+                      });
+                      existingAlerts.push(alert);
+                      created++;
+                      console.log(`    ✓ Created (Early): "${alert.title}" (${alert.location}, ${alert.country})`);
+                    }
+                  }
+                } catch (e: any) {
+                  console.warn(`  ⚠️  Query failed: "${q}" → ${String(e?.message || e)}`);
+                }
+              }
+            }
+            
+            console.log(`✅ Early signals complete: ${created} created, ${duplicates} duplicates`);
+          } catch (err: any) {
+            console.error(`❌ Early signals error:`, err);
+          }
+        })()
+      );
+
+      return json({ ok: true, message: "Early-signal queries started in background" });
     }
 
     // SCOUR — STATUS (GET /scour/status?jobId=... OR GET /scour-status?jobId=...)

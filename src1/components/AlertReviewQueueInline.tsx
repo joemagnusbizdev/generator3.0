@@ -97,8 +97,8 @@ function whatsappTemplate(a: Alert) {
 
   return `🚨 *TRAVEL ALERT* 🚨
 
-*Severity:* ${s.label}
 *Location:* ${a.location}, ${a.country}
+*Severity:* ${s.label}
 ${a.region ? `*Region:* ${a.region}\n` : ''}*Event Type:* ${topic}
 *Timeline:* ${formatDateRange(a)}
 

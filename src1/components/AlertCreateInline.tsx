@@ -465,11 +465,10 @@ export default function AlertCreateInline({
         .map((r, i) => `${i + 1}. ${r.trim()}`)
         .join('\n');
 
-      const whatsappText = `*${formData.title.trim()}*\n\n` +
-        `📍 *Location:* ${formData.location.trim()}${dateRange ? `\n📅 *Date:* ${dateRange}` : ''}\n\n` +
+      const whatsappText = `📍 *Location:* ${formData.location.trim()}, ${formData.country.trim()}${dateRange ? `\n📅 *Date:* ${dateRange}` : ''}\n\n` +
+        `*${formData.title.trim()}*\n\n` +
         `${formData.summary.trim()}\n\n` +
-        (recText ? `*Traveler Recommendations:*\n${recText}\n\n` : '') +
-        `_${formData.country}_`;
+        (recText ? `*Traveler Recommendations:*\n${recText}\n\n` : '');
 
       await navigator.clipboard.writeText(whatsappText);
       setSuccess('Copied to clipboard in WhatsApp format!');
