@@ -1200,7 +1200,7 @@ async function approveAndPublishToWP(id: string) {
 }
 
 function respondNotFound(path: string) {
-  return json({ ok: false, error: "Not found", path }, 404);
+  return json({ ok: false, error: "Not found", path, normalized: normalizePath(path) }, 404);
 }
 
 function waitUntil(p: Promise<any>) {
@@ -1219,6 +1219,7 @@ Deno.serve(async (req) => {
   const method = req.method.toUpperCase();
   const rawPath = url.pathname;
   const path = normalizePath(rawPath);
+  console.log("[Router]", { method, rawPath, path });
 
   try {
     // HEALTH
@@ -1242,7 +1243,7 @@ Deno.serve(async (req) => {
     }
 
     // WORDPRESS — STATUS DIAGNOSTICS
-    if (path === "/wp/status" && method === "GET") {
+    if (path.endsWith("/wp/status") && method === "GET") {
       const configured = !!(WP_URL && WP_USER && WP_APP_PASSWORD);
       const postType = WP_POST_TYPE;
       const endpoints = {
