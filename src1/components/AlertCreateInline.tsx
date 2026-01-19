@@ -306,7 +306,7 @@ export default function AlertCreateInline({
     setSuccess(null);
 
     try {
-      // Build the alert payload
+      // Build the alert payload - ONLY include fields in database schema
       const payload: Record<string, any> = {
         status: 'draft',
         title: formData.title.trim(),
@@ -314,10 +314,8 @@ export default function AlertCreateInline({
         region: formData.region.trim() || null,
         location: formData.location.trim(),
         summary: formData.summary.trim(),
-        recommendations: formData.recommendations
-          .filter(a => a.trim())
-          .map(a => a.trim())
-          .join('\n'),
+        // Note: recommendations, polygon, geo_scope, latitude, longitude, radius_km are WordPress-only fields
+        // They are NOT stored in the Supabase alerts table
         sources: formData.sources
           .filter(s => s.url.trim())
           .map(s => ({
@@ -326,23 +324,7 @@ export default function AlertCreateInline({
           })),
         severity: formData.severity,
         event_type: formData.event_type || null,
-        geo_scope: formData.geo_scope || null,
-        polygon: JSON.parse(formData.geoJSON),
       };
-
-      // Add geo fields if provided
-      if (formData.latitude && formData.longitude) {
-        payload.latitude = parseFloat(formData.latitude);
-        payload.longitude = parseFloat(formData.longitude);
-        payload.radius_km = parseFloat(formData.radius_km) || 25;
-
-        // Generate polygon (GeoJSON circle) for WordPress field group
-        payload.polygon = generateCircleGeoJSON(
-          payload.latitude,
-          payload.longitude,
-          payload.radius_km
-        );
-      }
 
       // Add dates if provided (store as ISO date strings, database converts to DATE type)
       if (formData.event_start_date) {
@@ -404,23 +386,9 @@ export default function AlertCreateInline({
           })),
         severity: formData.severity,
         event_type: formData.event_type || null,
-        geo_scope: formData.geo_scope || null,
-        polygon: JSON.parse(formData.geoJSON),
       };
 
-      if (formData.latitude && formData.longitude) {
-        payload.latitude = parseFloat(formData.latitude);
-        payload.longitude = parseFloat(formData.longitude);
-        payload.radius_km = parseFloat(formData.radius_km) || 25;
-
-        // Generate polygon (GeoJSON circle) for WordPress field group
-        payload.polygon = generateCircleGeoJSON(
-          payload.latitude,
-          payload.longitude,
-          payload.radius_km
-        );
-      }
-
+      // Add dates if provided
       if (formData.event_start_date) {
         payload.event_start_date = new Date(formData.event_start_date).toISOString().split('T')[0];
       }

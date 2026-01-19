@@ -600,6 +600,13 @@ COORDINATES:
 Return ONLY JSON array, no markdown.`;
 
   try {
+    console.log(`🔗 OpenAI API → Calling gpt-4o-mini (API key: ${config.openaiKey ? config.openaiKey.slice(0, 8) + '...' : 'MISSING'})`);
+    
+    if (!config.openaiKey) {
+      console.error('❌ OpenAI API key is missing - cannot extract alerts');
+      return [];
+    }
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -619,13 +626,16 @@ Return ONLY JSON array, no markdown.`;
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI failed: ${response.status}`);
+      const errorText = await response.text().catch(() => 'unknown error');
+      console.error(`❌ OpenAI failed: ${response.status} - ${errorText}`);
+      throw new Error(`OpenAI failed: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
     const aiResponse = data.choices[0]?.message?.content || '[]';
     
-    console.log(`AI extracted for ${sourceName}:`, aiResponse.slice(0, 300));
+    console.log(`✅ OpenAI returned response (${aiResponse.length} chars)`);
+    console.log(`   Preview: ${aiResponse.slice(0, 200)}`);
 
     let alerts: any[] = [];
     try {
@@ -638,12 +648,13 @@ Return ONLY JSON array, no markdown.`;
           alerts = JSON.parse(match[0]);
         }
       } catch (e) {
-        console.error('Parse failed:', e);
+        console.error('❌ Failed to parse AI response:', e);
         return [];
       }
     }
 
     if (!Array.isArray(alerts)) {
+      console.warn(`⚠ AI response is not an array, got: ${typeof alerts}`);
       return [];
     }
 
@@ -762,7 +773,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
     errors: [] as string[],
   };
 
-  console.log(`Starting scour ${config.jobId} with ${config.sourceIds.length} sources`);
+  console.log(`\n🚀 Starting scour ${config.jobId} with ${config.sourceIds.length} sources`);
+  console.log(`📋 Config: daysBack=${config.daysBack}, OpenAI=${config.openaiKey ? '✓' : '✗'}, Brave=${config.braveApiKey ? '✓' : '✗'}`);
 
   try {
     const existingAlerts: Alert[] = await querySupabaseForWorker(
@@ -770,7 +782,7 @@ async function runScourWorker(config: ScourConfig): Promise<{
       config.serviceKey
     );
 
-    console.log(`Found ${existingAlerts.length} existing alerts`);
+    console.log(`📊 Found ${existingAlerts.length} existing alerts for deduplication`);
 
     for (const sourceId of config.sourceIds) {
       try {
@@ -792,30 +804,47 @@ async function runScourWorker(config: ScourConfig): Promise<{
         
         console.log(`  Config - Query: "${source.query || 'NONE'}", BraveAPI: ${config.braveApiKey ? '✓' : '✗'}`);
         
+        // Try Brave Search first if configured
         if (config.braveApiKey && source.query) {
           console.log(`  🔎 Brave Search → "${source.query}"`);
           const br = await fetchWithBraveSearch(source.query, config.braveApiKey);
           content = br.content;
           articleUrl = br.primaryUrl;
-          console.log(`  ✓ Search: ${content.length} chars, URL: ${articleUrl ? '✓' : '✗'}`);
+          console.log(`  ✓ Brave: ${content.length} chars, URL: ${articleUrl ? '✓' : '✗'}`);
         } else {
-          if (!config.braveApiKey) console.warn(`  ⚠ No Brave API key`);
-          if (!source.query) console.warn(`  ⚠ No search query`);
+          if (!config.braveApiKey) console.warn(`  ⚠ No Brave API key - cannot search`);
+          if (!source.query) console.warn(`  ⚠ No search query configured`);
         }
         
+        // Fall back to scraping if Brave didn't provide enough content
         if (!content || content.length < 100) {
-          console.log(`  🌐 Falling back to scrape: ${source.url}`);
-          content = await scrapeUrl(source.url);
-          articleUrl = articleUrl || source.url;
+          console.log(`  🌐 Scraping source: ${source.url}`);
+          const scraped = await scrapeUrl(source.url);
+          if (scraped) {
+            content = scraped;
+            articleUrl = articleUrl || source.url;
+            console.log(`  ✓ Scraped: ${content.length} chars`);
+          } else {
+            console.warn(`  ❌ Scrape failed - trying Brave again as final fallback`);
+            // Last resort: try Brave Search without requiring query
+            if (config.braveApiKey) {
+              const br = await fetchWithBraveSearch(source.name || source.url, config.braveApiKey);
+              if (br.content) {
+                content = br.content;
+                articleUrl = br.primaryUrl;
+                console.log(`  ✓ Brave (fallback): ${content.length} chars`);
+              }
+            }
+          }
         }
-
+        
         if (!content || content.length < 50) {
           stats.errors.push(`No content from ${source.name}`);
-          console.log(`  ❌ No content extracted`);
+          console.log(`  ❌ No content extracted from any source`);
           continue;
         }
 
-        console.log(`  🤖 AI Analysis → Extracting alerts...`);
+        console.log(`  🤖 OpenAI Analysis → Extracting alerts (${config.openaiKey ? 'API ready' : 'NO API KEY'})...`);
         const extractedAlerts = await extractAlertsWithAI(
           content,
           articleUrl || source.url,
