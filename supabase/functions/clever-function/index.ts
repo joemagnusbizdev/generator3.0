@@ -2247,11 +2247,19 @@ Format the response as plain text with clear section headers. Include specific, 
 
         // Build HTML version of the report
         const buildReportHTML = (): string => {
+          // MAGNUS Brand Colors
+          const darkGreen = '#144334';     // Primary
+          const deepGreen = '#1A6B51';     // Supporting
+          const orange = '#F88A35';        // Accent
+          const offWhite = '#F9F8F6';      // Background
+          const primaryText = '#192622';   // Primary Text
+          const secondaryText = '#17221E'; // Secondary Text
+
           const timestamp = new Date().toLocaleString();
           const severityColor = 
-            highestSeverity === 'critical' ? '#dc2626' :
-            highestSeverity === 'warning' ? '#ea580c' :
-            highestSeverity === 'caution' ? '#facc15' : '#3b82f6';
+            highestSeverity === 'critical' ? orange :
+            highestSeverity === 'warning' ? orange :
+            highestSeverity === 'caution' ? orange : orange;
 
           let html = `<!DOCTYPE html>
 <html lang="en">
@@ -2264,19 +2272,20 @@ Format the response as plain text with clear section headers. Include specific, 
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       line-height: 1.6;
-      color: #333;
-      background: #f9fafb;
+      color: ${primaryText};
+      background: ${offWhite};
     }
     .container {
       max-width: 900px;
       margin: 0 auto;
       background: white;
-      padding: 60px 40px;
+      padding: 0;
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
     header {
-      border-bottom: 3px solid ${severityColor};
-      padding-bottom: 30px;
+      background: ${darkGreen};
+      color: white;
+      padding: 40px;
       margin-bottom: 40px;
     }
     .header-content {
@@ -2288,20 +2297,21 @@ Format the response as plain text with clear section headers. Include specific, 
     .header-left h1 {
       font-size: 2em;
       margin-bottom: 10px;
-      color: #1f2937;
+      color: white;
     }
     .meta-info {
       display: flex;
       gap: 30px;
       margin-top: 15px;
       font-size: 0.95em;
+      color: rgba(255,255,255,0.9);
     }
     .meta-item strong {
-      color: #6b7280;
+      color: white;
       margin-right: 5px;
     }
     .severity-badge {
-      background: ${severityColor};
+      background: ${orange};
       color: white;
       padding: 8px 16px;
       border-radius: 6px;
@@ -2316,22 +2326,23 @@ Format the response as plain text with clear section headers. Include specific, 
       word-wrap: break-word;
       font-size: 0.95em;
       line-height: 1.8;
-      margin: 40px 0;
+      margin: 40px;
+      color: ${primaryText};
     }
     .content section {
       margin-bottom: 30px;
     }
     .content h2 {
       font-size: 1.3em;
-      color: ${severityColor};
+      color: ${darkGreen};
       margin-bottom: 12px;
       margin-top: 25px;
       padding-bottom: 8px;
-      border-bottom: 2px solid #e5e7eb;
+      border-bottom: 2px solid ${orange};
     }
     .content h3 {
       font-size: 1.1em;
-      color: #1f2937;
+      color: ${deepGreen};
       margin: 15px 0 8px 0;
     }
     .content ul, .content ol {
@@ -2342,11 +2353,11 @@ Format the response as plain text with clear section headers. Include specific, 
       margin-bottom: 6px;
     }
     footer {
-      border-top: 1px solid #e5e7eb;
-      padding-top: 20px;
+      background: ${deepGreen};
+      color: white;
+      padding: 20px 40px;
       margin-top: 50px;
       font-size: 0.85em;
-      color: #6b7280;
       text-align: center;
     }
     .footer-content {
@@ -2355,15 +2366,17 @@ Format the response as plain text with clear section headers. Include specific, 
       align-items: center;
       flex-wrap: wrap;
       gap: 20px;
+      color: white;
     }
     .logo {
       font-weight: 600;
-      color: #1f2937;
+      color: white;
       font-size: 1.1em;
     }
     @media print {
       body { background: white; }
-      .container { box-shadow: none; padding: 20px; }
+      .container { box-shadow: none; }
+      header, footer { page-break-after: avoid; page-break-before: avoid; }
     }
   </style>
 </head>
