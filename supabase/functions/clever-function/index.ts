@@ -514,6 +514,17 @@ async function scrapeUrl(url: string): Promise<string> {
   }
 }
 
+function generateDefaultRecommendations(severity: string, eventType: string, location: string): string {
+  const severityRecommendations: Record<string, string> = {
+    critical: `Travel to ${location} is not recommended at this time. Avoid all non-essential travel and monitor official government advisories closely. If currently in the area, follow local authority guidance and evacuation orders.`,
+    warning: `Exercise increased caution when traveling to ${location}. Monitor the situation regularly, maintain travel insurance, keep emergency contacts accessible, and follow official guidance from your embassy or consulate.`,
+    caution: `Exercise normal precautions when traveling to ${location}. Stay aware of your surroundings, register with your embassy, and maintain communication with reliable sources for updates on the situation.`,
+    informative: `Standard travel precautions apply when visiting ${location}. Review current conditions before travel and maintain awareness of local developments that may affect tourism or movement.`,
+  };
+
+  return severityRecommendations[severity] || severityRecommendations.informative;
+}
+
 async function extractAlertsWithAI(
   content: string,
   source_url: string,
@@ -635,6 +646,9 @@ Return ONLY JSON array, no markdown.`;
       const geoScope = alert.geoScope || determineGeoScope(severity, alert.country, alert.region);
       const radiusKm = alert.radiusKm || getRadiusFromSeverity(severity, geoScope);
       const geoJSON = lat && lon ? generateCircleGeoJSON(lat, lon, radiusKm) : generatePointGeoJSON(lat, lon);
+      
+      // Generate default recommendations if missing
+      const recommendations = alert.recommendations?.trim() || generateDefaultRecommendations(severity, alert.eventType, alert.location);
 
       return {
         id: crypto.randomUUID(),
@@ -666,7 +680,7 @@ Return ONLY JSON array, no markdown.`;
         ai_generated: true,
         ai_model: 'gpt-4o-mini',
         ai_confidence: 0.85,
-        recommendations: alert.recommendations,
+        recommendations,
         mitigation: alert.mitigation,
         recommendedActions: alert.recommendedActions || [],
         topics: alert.topics || [],
