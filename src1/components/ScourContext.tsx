@@ -139,7 +139,7 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
         // If none provided, fetch enabled sources
         if (sourceIds.length === 0) {
           const sourcesRes = await apiFetchJson<{ ok: boolean; sources?: Array<{ id: string; enabled: boolean }> }>(
-            "/sources",
+            "/sources?pageSize=1000",
             token
           );
 

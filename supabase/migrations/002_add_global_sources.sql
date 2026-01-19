@@ -1,5 +1,5 @@
 -- Add comprehensive global news sources for travel safety monitoring
--- Run this in Supabase SQL Editor: https://supabase.com/dashboard/project/khykebtmplynzwmhywcb/editor
+-- Run this in Supabase SQL Editor: https://supabase.com/dashboard/project/gnobnyzezkuyptuakztf/editor
 
 INSERT INTO sources (name, url, enabled, category, type) VALUES
 -- Global/International
