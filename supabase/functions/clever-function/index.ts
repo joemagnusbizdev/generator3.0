@@ -1856,6 +1856,13 @@ Return recommendations in plain text format, organized by category if helpful.`;
     }
 
     // SCOUR — START (POST /scour-sources)
+    // NOTE: Scour runs ASYNCHRONOUSLY on Supabase Edge Function server using waitUntil()
+    // This means the scour job continues running even if:
+    // - Browser tab is closed
+    // - User navigates away
+    // - User logs out
+    // - Internet connection drops
+    // Frontend polls /scour/status to track progress, but the actual work happens server-side
     if (path === "/scour-sources" && method === "POST") {
       const body = await req.json().catch(() => ({}));
       const jobId = body.jobId || crypto.randomUUID();
@@ -1881,6 +1888,9 @@ Return recommendations in plain text format, organized by category if helpful.`;
       await setKV("last_scour_job_id", jobId);
       await setKV("last_scoured_timestamp", nowIso());
 
+      // Run scour asynchronously on server - continues even if browser closes or navigates
+      // waitUntil() ensures the background task completes before edge function is terminated
+      console.log(`🚀 SCOUR STARTED (Server-side - runs independent of browser): ${jobId}`);
       waitUntil(
         runScourWorker({
           jobId,
@@ -1893,11 +1903,12 @@ Return recommendations in plain text format, organized by category if helpful.`;
         }).then(async (stats) => {
           const finalJob = { ...job, status: "done", ...stats, updated_at: nowIso() };
           await setKV(`scour_job:${jobId}`, finalJob);
-          console.log(`Scour ${jobId} done:`, stats);
+          console.log(`✅ SCOUR COMPLETED (Server-side): ${jobId}`, stats);
         }).catch(async (e: any) => {
           const err = String(e?.message || e);
           const fail = { ...job, status: "error", errorCount: 1, errors: [err], updated_at: nowIso() };
           await setKV(`scour_job:${jobId}`, fail);
+          console.log(`❌ SCOUR FAILED (Server-side): ${jobId}`, err);
         })
       );
 
@@ -1984,6 +1995,9 @@ Return recommendations in plain text format, organized by category if helpful.`;
       await setKV("last_scour_job_id", jobId);
       await setKV("auto_scour_last_run", nowIso());
 
+      // Run auto-scour asynchronously on server - continues even if browser closes or navigates
+      // waitUntil() ensures the background task completes before edge function is terminated
+      console.log(`🚀 AUTO-SCOUR STARTED (Server-side - runs independent of browser): ${jobId}`);
       waitUntil(
         runScourWorker({
           jobId,
@@ -1996,10 +2010,12 @@ Return recommendations in plain text format, organized by category if helpful.`;
         }).then(async (stats) => {
           const finalJob = { ...job, status: "done", ...stats, updated_at: nowIso() };
           await setKV(`scour_job:${jobId}`, finalJob);
+          console.log(`✅ AUTO-SCOUR COMPLETED (Server-side): ${jobId}`, stats);
         }).catch(async (e: any) => {
           const err = String(e?.message || e);
           const fail = { ...job, status: "error", errorCount: 1, errors: [err], updated_at: nowIso() };
           await setKV(`scour_job:${jobId}`, fail);
+          console.log(`❌ AUTO-SCOUR FAILED (Server-side): ${jobId}`, err);
         })
       );
 
