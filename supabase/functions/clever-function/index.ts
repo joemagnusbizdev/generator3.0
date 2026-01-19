@@ -2245,15 +2245,189 @@ Format the response as plain text with clear section headers. Include specific, 
           return json({ ok: false, error: "Failed to generate report content" }, 500);
         }
 
+        // Build HTML version of the report
+        const buildReportHTML = (): string => {
+          const timestamp = new Date().toLocaleString();
+          const severityColor = 
+            highestSeverity === 'critical' ? '#dc2626' :
+            highestSeverity === 'warning' ? '#ea580c' :
+            highestSeverity === 'caution' ? '#facc15' : '#3b82f6';
+
+          let html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${trend.title} - Situational Report</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: #f9fafb;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      padding: 60px 40px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    header {
+      border-bottom: 3px solid ${severityColor};
+      padding-bottom: 30px;
+      margin-bottom: 40px;
+    }
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 20px;
+    }
+    .header-left h1 {
+      font-size: 2em;
+      margin-bottom: 10px;
+      color: #1f2937;
+    }
+    .meta-info {
+      display: flex;
+      gap: 30px;
+      margin-top: 15px;
+      font-size: 0.95em;
+    }
+    .meta-item strong {
+      color: #6b7280;
+      margin-right: 5px;
+    }
+    .severity-badge {
+      background: ${severityColor};
+      color: white;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.9em;
+      text-transform: uppercase;
+      height: fit-content;
+      white-space: nowrap;
+    }
+    .content {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      font-size: 0.95em;
+      line-height: 1.8;
+      margin: 40px 0;
+    }
+    .content section {
+      margin-bottom: 30px;
+    }
+    .content h2 {
+      font-size: 1.3em;
+      color: ${severityColor};
+      margin-bottom: 12px;
+      margin-top: 25px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #e5e7eb;
+    }
+    .content h3 {
+      font-size: 1.1em;
+      color: #1f2937;
+      margin: 15px 0 8px 0;
+    }
+    .content ul, .content ol {
+      margin-left: 20px;
+      margin-bottom: 12px;
+    }
+    .content li {
+      margin-bottom: 6px;
+    }
+    footer {
+      border-top: 1px solid #e5e7eb;
+      padding-top: 20px;
+      margin-top: 50px;
+      font-size: 0.85em;
+      color: #6b7280;
+      text-align: center;
+    }
+    .footer-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+    .logo {
+      font-weight: 600;
+      color: #1f2937;
+      font-size: 1.1em;
+    }
+    @media print {
+      body { background: white; }
+      .container { box-shadow: none; padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-content">
+        <div class="header-left">
+          <h1>${trend.title}</h1>
+          <div class="meta-info">
+            <div class="meta-item"><strong>Country:</strong> ${trend.country}</div>
+            <div class="meta-item"><strong>Generated:</strong> ${timestamp}</div>
+            <div class="meta-item"><strong>Related Incidents:</strong> ${incidentCount}</div>
+          </div>
+        </div>
+        <div class="severity-badge">${String(highestSeverity).toUpperCase()}</div>
+      </div>
+    </header>
+
+    <div class="content">
+${reportContent.split('\n').map((line: string) => {
+  // Convert plain text sections to HTML
+  if (line.match(/^\\d+\\. /)) {
+    const title = line.replace(/^\\d+\\. /, '');
+    return `<h2>${title}</h2>`;
+  }
+  if (line.match(/^   -/)) {
+    return `<li>${line.replace(/^   - /, '')}</li>`;
+  }
+  if (line.trim() === '') {
+    return '';
+  }
+  if (line.match(/^   [A-Z]/)) {
+    return `<h3>${line.trim()}</h3>`;
+  }
+  if (line.match(/^   /)) {
+    return `<p>${line.replace(/^   /, '')}</p>`;
+  }
+  return `<p>${line}</p>`;
+}).join('\\n')}
+    </div>
+
+    <footer>
+      <div class="footer-content">
+        <div class="logo">MAGNUS Intelligence System</div>
+        <div>Situational Report · Trend ID: ${trend.id}</div>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>`;
+          return html;
+        };
+
         // Build the final report with MAGNUS branding
         const report = {
           id: crypto.randomUUID(),
           trendId: trend.id,
-          title: `${trend.title} - Situational Report`,
+          title: \`\${trend.title} - Situational Report\`,
           generatedAt: nowIso(),
           country: trend.country,
           severity: highestSeverity,
           content: reportContent,
+          html: buildReportHTML(),
           metadata: {
             trendTitle: trend.title,
             incidents: incidentCount,
