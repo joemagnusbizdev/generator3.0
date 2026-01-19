@@ -2369,6 +2369,111 @@ Format the response as plain text with clear section headers. Include specific, 
             highestSeverity === 'warning' ? orange :
             highestSeverity === 'caution' ? orange : orange;
 
+          // Convert markdown/plain text to HTML
+          const convertMarkdownToHTML = (text: string): string => {
+            // First, replace literal \n with actual newlines
+            let converted = text.replace(/\\n/g, '\n');
+            
+            // Split into lines for processing
+            const lines = converted.split('\n');
+            const htmlLines: string[] = [];
+            let inList = false;
+            
+            for (let i = 0; i < lines.length; i++) {
+              let line = lines[i];
+              const trimmed = line.trim();
+              
+              // Skip completely empty lines
+              if (trimmed === '') {
+                // Close list if we were in one
+                if (inList) {
+                  htmlLines.push('</ul>');
+                  inList = false;
+                }
+                continue;
+              }
+              
+              // Convert markdown headers ## to h2, ### to h3
+              if (trimmed.startsWith('## ')) {
+                if (inList) {
+                  htmlLines.push('</ul>');
+                  inList = false;
+                }
+                const headerText = trimmed.substring(3);
+                htmlLines.push(`<h2>${headerText}</h2>`);
+                continue;
+              }
+              
+              if (trimmed.startsWith('### ')) {
+                if (inList) {
+                  htmlLines.push('</ul>');
+                  inList = false;
+                }
+                const headerText = trimmed.substring(4);
+                htmlLines.push(`<h3>${headerText}</h3>`);
+                continue;
+              }
+              
+              // Convert markdown # to h1 (main title - shouldn't appear but handle it)
+              if (trimmed.startsWith('# ')) {
+                if (inList) {
+                  htmlLines.push('</ul>');
+                  inList = false;
+                }
+                const headerText = trimmed.substring(2);
+                htmlLines.push(`<h2>${headerText}</h2>`);
+                continue;
+              }
+              
+              // Convert bullet points
+              if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+                if (!inList) {
+                  htmlLines.push('<ul>');
+                  inList = true;
+                }
+                let listItem = trimmed.substring(2);
+                // Convert **bold** in list items
+                listItem = listItem.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+                htmlLines.push(`  <li>${listItem}</li>`);
+                continue;
+              }
+              
+              // Numbered lists
+              if (trimmed.match(/^\d+\.\s/)) {
+                if (inList) {
+                  htmlLines.push('</ul>');
+                  inList = false;
+                }
+                let listItem = trimmed.replace(/^\d+\.\s/, '');
+                // Convert **bold** in numbered items
+                listItem = listItem.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+                htmlLines.push(`<h2>${listItem}</h2>`);
+                continue;
+              }
+              
+              // Regular paragraph
+              if (inList) {
+                htmlLines.push('</ul>');
+                inList = false;
+              }
+              
+              // Convert **bold** to <strong>
+              line = trimmed.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+              
+              // Convert *italic* to <em>
+              line = line.replace(/\*(.+?)\*/g, '<em>$1</em>');
+              
+              htmlLines.push(`<p>${line}</p>`);
+            }
+            
+            // Close list if still open
+            if (inList) {
+              htmlLines.push('</ul>');
+            }
+            
+            return htmlLines.join('\n');
+          };
+
           let html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2505,64 +2610,23 @@ Format the response as plain text with clear section headers. Include specific, 
     </header>
 
     <div class="content">
-${reportContent.split('\n').reduce((acc: string[], line: string, idx: number, arr: string[]) => {
-  const trimmed = line.trim();
-  
-  // Skip empty lines
-  if (trimmed === '') return acc;
-  
-  // Section headers (numbered): Convert to title case and use h2
-  if (line.match(/^\\d+\\. /)) {
-    const title = line.replace(/^\\d+\\. /, '');
-    // Convert to title case: capitalize first letter of each word
-    const titleCase = title.split(' ').map(word => 
-      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-    ).join(' ');
-    acc.push(`<h2>${titleCase}</h2>`);
-    return acc;
-  }
-  
-  // Bullet points: wrap in ul/li
-  if (line.match(/^   -/)) {
-    const content = line.replace(/^   - /, '');
-    // Check if we need to open a ul
-    const prevLine = idx > 0 ? arr[idx - 1] : '';
-    const nextLine = idx < arr.length - 1 ? arr[idx + 1] : '';
-    
-    if (!prevLine.match(/^   -/)) {
-      acc.push('<ul>');
-    }
-    acc.push(`  <li>${content}</li>`);
-    if (!nextLine.match(/^   -/)) {
-      acc.push('</ul>');
-    }
-    return acc;
-  }
-  
-  // Subsection headers (starts with caps after indent): use h3
-  if (line.match(/^   [A-Z][a-z]+ [A-Z]/)) {
-    const title = line.trim();
-    acc.push(`<h3>${title}</h3>`);
-    return acc;
-  }
-  
-  // Regular indented text: paragraph
-  if (line.match(/^   /)) {
-    const content = line.replace(/^   /, '');
-    acc.push(`<p>${content}</p>`);
-    return acc;
-  }
-  
-  // Fallback: wrap in paragraph
-  acc.push(`<p>${line}</p>`);
-  return acc;
-}, []).join('\\n')}
+${convertMarkdownToHTML(reportContent)}
     </div>
 
     <footer>
       <div class="footer-content">
-        <div class="logo">MAGNUS Intelligence System</div>
-        <div>Situational Report · Trend ID: ${trend.id}</div>
+        <div style="text-align: center; width: 100%;">
+          <p style="font-weight: 600; font-size: 1.1em; margin-bottom: 15px; color: white;">
+            Report generated by MAGNUS Intelligence Department
+          </p>
+          <div style="display: flex; justify-content: center; gap: 30px; flex-wrap: wrap; font-size: 0.95em;">
+            <div>Customer Service: <strong style="color: white;">Service@magnusafety.com</strong></div>
+            <div>Emergency Phone: <strong style="color: white;">+972-50-889-9698</strong></div>
+          </div>
+          <p style="margin-top: 15px; font-size: 0.85em; color: rgba(255,255,255,0.8);">
+            Trend ID: ${trend.id}
+          </p>
+        </div>
       </div>
     </footer>
   </div>
