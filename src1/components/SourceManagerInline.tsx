@@ -16,6 +16,10 @@ interface Source {
   country?: string;
   enabled: boolean;
   created_at: string;
+  alertCount?: number;
+  lastAlertDate?: string | null;
+  reachable?: boolean;
+  underperforming?: boolean;
 }
 
 interface Props {
@@ -40,6 +44,9 @@ const SourceManagerInline: React.FC<Props> = ({
   const [draft, setDraft] = useState<Partial<Source>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [total, setTotal] = useState(0);
 
   const { isScouring, startScour } = useScour();
 
@@ -53,11 +60,16 @@ const SourceManagerInline: React.FC<Props> = ({
   async function loadSources() {
     try {
       setLoading(true);
-      const res = await apiFetchJson<{ ok: boolean; sources: Source[] }>(
-        "/sources",
+      const res = await apiFetchJson<{ ok: boolean; sources: Source[]; total: number; page: number; pageSize: number }>(
+        `/analytics/sources?page=${page}&pageSize=${pageSize}`,
         accessToken
       );
-      setSources(res.ok ? res.sources : []);
+      if (res.ok) {
+        setSources(res.sources || []);
+        setTotal(res.total || 0);
+      } else {
+        setSources([]);
+      }
     } catch (e: any) {
       setError(e.message || "Failed to load sources");
     } finally {
@@ -67,7 +79,7 @@ const SourceManagerInline: React.FC<Props> = ({
 
   useEffect(() => {
     loadSources();
-  }, [accessToken]);
+  }, [accessToken, page, pageSize]);
 
   /* =========================
      Search / Filter
@@ -245,14 +257,19 @@ const SourceManagerInline: React.FC<Props> = ({
               </>
             ) : (
               <>
-                <strong className="w-40 truncate">
+                <strong className="w-40 truncate flex items-center gap-2">
                   {s.name}
+                  {s.reachable === false && <span title="Unreachable" className="text-red-600">❌</span>}
+                  {s.underperforming && <span title="Underperforming" className="text-yellow-600">⚠️</span>}
                 </strong>
                 <span className="flex-1 truncate text-gray-500">
                   {s.url}
                 </span>
                 <span className="w-28">
                   {s.country || "—"}
+                </span>
+                <span className="w-28 text-gray-600">
+                  {typeof s.alertCount === 'number' ? `${s.alertCount} alerts` : '—'}
                 </span>
                 <span>{s.enabled ? "✅" : "❌"}</span>
 
@@ -276,6 +293,35 @@ const SourceManagerInline: React.FC<Props> = ({
             )}
           </div>
         ))}
+      </div>
+
+      {/* Pagination */}
+      <div className="flex items-center gap-3 mt-3">
+        <button
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          disabled={page <= 1}
+          className="px-3 py-1 rounded bg-gray-100 text-gray-800 disabled:opacity-50"
+        >
+          Prev
+        </button>
+        <span className="text-sm text-gray-600">Page {page}</span>
+        <button
+          onClick={() => setPage((p) => (p * pageSize < total ? p + 1 : p))}
+          disabled={page * pageSize >= total}
+          className="px-3 py-1 rounded bg-gray-100 text-gray-800 disabled:opacity-50"
+        >
+          Next
+        </button>
+        <span className="text-sm text-gray-600">Total: {total}</span>
+        <select
+          value={pageSize}
+          onChange={(e) => setPageSize(parseInt(e.target.value, 10))}
+          className="border px-2 py-1 rounded text-sm"
+        >
+          {[25, 50, 100].map((n) => (
+            <option key={n} value={n}>{n}/page</option>
+          ))}
+        </select>
       </div>
     </div>
   );

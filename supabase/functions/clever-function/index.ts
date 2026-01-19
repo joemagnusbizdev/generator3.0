@@ -465,7 +465,7 @@ async function querySupabaseForWorker(url: string, serviceKey: string, options: 
   return response.json();
 }
 
-async function fetchWithBraveSearch(query: string, braveApiKey: string): Promise<string> {
+async function fetchWithBraveSearch(query: string, braveApiKey: string): Promise<{ content: string; primaryUrl: string | null }> {
   try {
     const response = await fetch(
       `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10&freshness=pd`,
@@ -484,10 +484,12 @@ async function fetchWithBraveSearch(query: string, braveApiKey: string): Promise
 
     const data = await response.json();
     const results = data.web?.results || [];
-    return results.map((r: any) => `Title: ${r.title}\nDescription: ${r.description}\nURL: ${r.url}\n\n`).join('');
+    const primaryUrl = results[0]?.url || null;
+    const content = results.map((r: any) => `Title: ${r.title}\nDescription: ${r.description}\nURL: ${r.url}\n\n`).join('');
+    return { content, primaryUrl };
   } catch (err) {
     console.error('Brave Search error:', err);
-    return '';
+    return { content: '', primaryUrl: null };
   }
 }
 
@@ -763,12 +765,16 @@ async function runScourWorker(config: ScourConfig): Promise<{
         console.log(`Processing ${source.name}...`);
 
         let content = '';
+        let articleUrl: string | null = null;
         if (config.braveApiKey && source.query) {
-          content = await fetchWithBraveSearch(source.query, config.braveApiKey);
+          const br = await fetchWithBraveSearch(source.query, config.braveApiKey);
+          content = br.content;
+          articleUrl = br.primaryUrl;
         }
         
         if (!content || content.length < 100) {
           content = await scrapeUrl(source.url);
+          articleUrl = articleUrl || source.url;
         }
 
         if (!content || content.length < 50) {
@@ -778,7 +784,7 @@ async function runScourWorker(config: ScourConfig): Promise<{
 
         const extractedAlerts = await extractAlertsWithAI(
           content,
-          source.url,
+          articleUrl || source.url,
           source.name,
           existingAlerts,
           config
@@ -1386,25 +1392,58 @@ Deno.serve(async (req) => {
 
     // ANALYTICS — SOURCES (GET /analytics/sources)
     if (path === "/analytics/sources" && method === "GET") {
-      const sources = (await querySupabaseRest(`/sources?order=created_at.desc`)) || [];
-      const alerts = (await querySupabaseRest(`/alerts?order=created_at.desc&limit=1000`)) || [];
+      const page = parseInt(url.searchParams.get("page") || "1", 10);
+      const pageSize = parseInt(url.searchParams.get("pageSize") || "50", 10);
+      const offset = Math.max(0, (page - 1) * pageSize);
+      const daysBack = parseInt(url.searchParams.get("days") || "30", 10);
+      const cutoff = new Date(Date.now() - daysBack * 86400000).toISOString();
 
-      const sourceStats = sources.map((s: any) => {
-        const sourceAlerts = alerts.filter((a: any) => a.sources === s.name || a.sources?.includes(s.name));
-        return {
-          ...s,
-          alertCount: sourceAlerts.length,
-          lastAlertDate: sourceAlerts[0]?.created_at || null,
-        };
-      });
+      const sources = (await querySupabaseRest(`/sources?order=created_at.desc&limit=${pageSize}&offset=${offset}`)) || [];
+      const allAlerts = (await querySupabaseRest(`/alerts?order=created_at.desc&limit=2000`)) || [];
+      const alerts = allAlerts.filter((a: any) => a.created_at >= cutoff);
+
+      async function checkReachable(urlStr: string): Promise<boolean> {
+        try {
+          const res = await fetch(urlStr, { method: "HEAD", signal: AbortSignal.timeout(4000) });
+          if (res.ok) return true;
+          const getRes = await fetch(urlStr, { method: "GET", signal: AbortSignal.timeout(4000) });
+          return getRes.ok;
+        } catch {
+          return false;
+        }
+      }
+
+      const sourceStats = await Promise.all(
+        sources.map(async (s: any) => {
+          const sourceAlerts = alerts.filter((a: any) => a.sources === s.name || a.sources?.includes(s.name));
+          const alertCount = sourceAlerts.length;
+          const lastAlertDate = sourceAlerts[0]?.created_at || null;
+          const reachable = await checkReachable(s.url);
+          const underperforming = alertCount === 0 || (lastAlertDate && new Date(lastAlertDate) < new Date(Date.now() - daysBack * 86400000));
+          return {
+            ...s,
+            alertCount,
+            lastAlertDate,
+            reachable,
+            underperforming,
+          };
+        })
+      );
+
+      const totalRows = await safeQuerySupabaseRest(`/sources?select=id`);
+      const total = Array.isArray(totalRows) ? totalRows.length : 0;
 
       return json({
         ok: true,
         sources: sourceStats,
+        page,
+        pageSize,
+        total,
         stats: {
-          total: sources.length,
-          enabled: sources.filter((s: any) => s.enabled).length,
+          total: total,
+          enabled: sourceStats.filter((s: any) => s.enabled).length,
           totalAlertsFromSources: alerts.length,
+          daysBack,
         },
       });
     }
@@ -1752,9 +1791,13 @@ Return recommendations in plain text format, organized by category if helpful.`;
 
     // SOURCES — GET ALL
     if (path === "/sources" && method === "GET") {
-      const limit = url.searchParams.get("limit") || "1000";
-      const sources = await querySupabaseRest(`/sources?order=created_at.desc&limit=${limit}`);
-      return json({ ok: true, sources: sources || [] });
+      const page = parseInt(url.searchParams.get("page") || "1", 10);
+      const pageSize = parseInt(url.searchParams.get("pageSize") || "50", 10);
+      const offset = Math.max(0, (page - 1) * pageSize);
+      const sources = await querySupabaseRest(`/sources?order=created_at.desc&limit=${pageSize}&offset=${offset}`);
+      const totalRows = await safeQuerySupabaseRest(`/sources?select=id`);
+      const total = Array.isArray(totalRows) ? totalRows.length : 0;
+      return json({ ok: true, sources: sources || [], page, pageSize, total });
     }
 
     // SOURCES — CREATE
