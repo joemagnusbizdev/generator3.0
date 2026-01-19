@@ -1123,6 +1123,16 @@ async function approveAndPublishToWP(id: string) {
     const wpAuth = btoa(`${WP_USER}:${WP_APP_PASSWORD}`);
     const wpEndpoint = `${WP_URL}/wp-json/wp/v2/${WP_POST_TYPE}`;
     console.log("[WP Publish] Attempting POST", { endpoint: wpEndpoint, post_type: WP_POST_TYPE, has_url: !!WP_URL });
+    
+    // Map alert severity to ACF color codes
+    const severityMap: Record<string, string> = {
+      critical: "darkred",
+      warning: "orange",
+      caution: "yellow",
+      informative: "green",
+    };
+    const acfSeverity = severityMap[alert.severity] || "yellow";
+    
     const wpResponse = await fetch(wpEndpoint, {
       method: "POST",
       headers: {
@@ -1136,7 +1146,7 @@ async function approveAndPublishToWP(id: string) {
         // ACF Fields for RSS-FEED custom post type
         acf: {
           country: alert.country,
-          severity: alert.severity,
+          severity: acfSeverity,
           event_type: alert.eventType || alert.event_type,
           location: alert.location,
           latitude: alert.latitude,
