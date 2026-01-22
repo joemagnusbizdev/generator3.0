@@ -147,6 +147,7 @@ In the Vercel project settings, add:
 |----------|-------|
 | `VITE_SUPABASE_PROJECT_ID` | Your Supabase project ID (e.g., `xxxxxx`) |
 | `VITE_SUPABASE_ANON_KEY` | Your Supabase anon/public key |
+| `VITE_MAPBOX_ACCESS_TOKEN` | Your Mapbox access token (optional - enables GeoJSON modal map) |
 
 ### 4.4 Deploy
 1. Click **"Deploy"**
