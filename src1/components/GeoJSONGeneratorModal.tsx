@@ -89,11 +89,40 @@ const GeoJSONGeneratorModal: React.FC<GeoJSONGeneratorModalProps> = ({ mapboxTok
     }
   };
 
-  const handleCopy = () => {
-    if (geojson) {
-      navigator.clipboard.writeText(geojson);
+  const handleCopy = async () => {
+    if (!geojson) return;
+    
+    try {
+      // Try modern clipboard API first
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(geojson);
+      } else {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = geojson;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+      // Fallback: try to select and let user copy manually
+      alert('Copy failed. Please select the text and use Ctrl+C manually.');
+    }
+  };
+
+  const handleSelectAll = () => {
+    const textArea = document.querySelector('textarea') as HTMLTextAreaElement;
+    if (textArea) {
+      textArea.select();
+      textArea.focus();
     }
   };
 
@@ -148,13 +177,19 @@ const GeoJSONGeneratorModal: React.FC<GeoJSONGeneratorModalProps> = ({ mapboxTok
                 placeholder={'Enter GeoJSON manually:\n\n{\n  "type": "Feature",\n  "geometry": {\n    "type": "Polygon",\n    "coordinates": [[[lng, lat], [lng, lat], [lng, lat]]]\n  },\n  "properties": {}\n}'}
                 value={geojson}
                 onChange={e => setGeojson(e.target.value)}
-                style={{ width: "100%", height: "200px", padding: "8px", border: "1px solid #ccc", borderRadius: "4px", fontFamily: "monospace", fontSize: "12px" }}
+                style={{ width: "100%", height: "200px", padding: "8px", border: "1px solid #ccc", borderRadius: "4px", fontFamily: "monospace", fontSize: "12px", resize: "none" }}
+                readOnly={!hasValidToken}
+                spellCheck={false}
+                onFocus={(e) => e.target.select()}
               />
             </div>
           </div>
         )}
         
         <div style={{ padding: 12, borderTop: "1px solid #eee", display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={handleSelectAll} disabled={!geojson} style={{ padding: "6px 12px" }}>
+            Select All
+          </button>
           <button onClick={handleCopy} disabled={!geojson} style={{ padding: "6px 12px" }}>
             {copied ? "Copied!" : "Copy GeoJSON"}
           </button>
