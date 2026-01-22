@@ -22,6 +22,23 @@ export default function ScourStatusBarInline() {
     }
   }, [scourJob?.activityLog]);
 
+  // Parse current activity to determine component status
+  const getComponentStatus = () => {
+    if (!scourJob?.currentActivity) return { ai: false, brave: false, extraction: false, dupe: false };
+    
+    const activity = scourJob.currentActivity.toLowerCase();
+    const recentLogs = scourJob.activityLog?.slice(-5).map(e => e.message.toLowerCase()).join(' ') || '';
+    
+    return {
+      ai: activity.includes('ai') || activity.includes('🤖') || recentLogs.includes('ai analyzing'),
+      brave: activity.includes('brave') || activity.includes('🔎') || recentLogs.includes('brave search'),
+      extraction: activity.includes('extract') || activity.includes('parsing') || activity.includes('analyzing'),
+      dupe: activity.includes('check') || activity.includes('duplicate') || activity.includes('🔍') || recentLogs.includes('duplicate'),
+    };
+  };
+
+  const componentStatus = getComponentStatus();
+
   // 🚨 KEY FIX: never hide while job exists
   if (
     !isScouring &&
@@ -82,8 +99,37 @@ export default function ScourStatusBarInline() {
                   📰 Current: {scourJob.currentSource}
                 </div>
               )}
+              
+              {/* Scour Dashboard */}
+              <div className="grid grid-cols-2 gap-2 mt-2 p-3 rounded" style={{ backgroundColor: MAGNUS_COLORS.offWhite, border: `1px solid ${MAGNUS_COLORS.border}` }}>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">🤖 AI:</span>
+                  <span className={`text-sm font-bold ${componentStatus.ai ? 'text-green-600' : 'text-gray-400'}`}>
+                    {componentStatus.ai ? '✓ YES' : '○ NO'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">🔎 Brave:</span>
+                  <span className={`text-sm font-bold ${componentStatus.brave ? 'text-green-600' : 'text-gray-400'}`}>
+                    {componentStatus.brave ? '✓ YES' : '○ NO'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">📄 Extract:</span>
+                  <span className={`text-sm font-bold ${componentStatus.extraction ? 'text-green-600' : 'text-gray-400'}`}>
+                    {componentStatus.extraction ? '✓ YES' : '○ NO'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">🔍 Dupe Check:</span>
+                  <span className={`text-sm font-bold ${componentStatus.dupe ? 'text-green-600' : 'text-gray-400'}`}>
+                    {componentStatus.dupe ? '✓ YES' : '○ NO'}
+                  </span>
+                </div>
+              </div>
+              
               {scourJob.currentActivity && (
-                <div style={{ fontSize: '0.9em', fontWeight: '500', color: MAGNUS_COLORS.deepGreen }}>
+                <div style={{ fontSize: '0.85em', fontWeight: '500', color: MAGNUS_COLORS.deepGreen, marginTop: '4px' }}>
                   ⚙️ {scourJob.currentActivity}
                 </div>
               )}
