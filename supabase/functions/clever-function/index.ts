@@ -3919,6 +3919,7 @@ Return recommendations in plain text format, organized by category if helpful.`;
           count: typeof t.incident_count === "number" ? t.incident_count : (t.count ?? 0),
           highest_severity: t.severity || t.highest_severity || "informative",
           last_seen_at: t.last_seen || t.last_seen_at || t.updated_at || t.created_at,
+          alert_ids: t.alert_ids || [],
         }));
         
         return json({ ok: true, trends: normalized });
@@ -3930,10 +3931,40 @@ Return recommendations in plain text format, organized by category if helpful.`;
 
     // TRENDS � GET ONE
     if (path.startsWith("/trends/") && method === "GET") {
-      const id = path.split("/").pop()!;
-      const trends = await safeQuerySupabaseRest(`/trends?id=eq.${encodeURIComponent(id)}`);
-      if (!trends || trends.length === 0) return json({ ok: false, error: "Trend not found" }, 404);
-      return json({ ok: true, trend: trends[0] });
+      const parts = path.split("/");
+      const lastPart = parts[parts.length - 1];
+      const secondLastPart = parts[parts.length - 2];
+      
+      // Check if this is /trends/{id}/alerts
+      if (secondLastPart && lastPart === "alerts") {
+        const trendId = secondLastPart;
+        
+        try {
+          // First get the trend to get alert_ids
+          const trends = await safeQuerySupabaseRest(`/trends?id=eq.${encodeURIComponent(trendId)}`);
+          if (!trends || trends.length === 0) return json({ ok: false, error: "Trend not found" }, 404);
+          
+          const trend = trends[0];
+          const alertIds = trend.alert_ids || [];
+          
+          if (alertIds.length === 0) {
+            return json({ ok: true, alerts: [] });
+          }
+          
+          // Fetch alerts by IDs
+          const alerts = await safeQuerySupabaseRest(`/alerts?id=in.(${alertIds.map(id => `"${id}"`).join(",")})&order=created_at.desc`);
+          
+          return json({ ok: true, alerts: alerts || [] });
+        } catch (err: any) {
+          console.error(`? Error fetching trend alerts:`, err);
+          return json({ ok: false, error: err.message }, 500);
+        }
+      } else {
+        // Regular /trends/{id} endpoint
+        const trends = await safeQuerySupabaseRest(`/trends?id=eq.${encodeURIComponent(lastPart)}`);
+        if (!trends || trends.length === 0) return json({ ok: false, error: "Trend not found" }, 404);
+        return json({ ok: true, trend: trends[0] });
+      }
     }
 
     // TRENDS � CREATE

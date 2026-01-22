@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from "react";
 import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import { normalizeGeoJsonForACF } from "../lib/utils";
@@ -93,6 +94,13 @@ const GeoJSONGeneratorModal: React.FC<GeoJSONGeneratorModalProps> = ({ mapboxTok
 
   const handleAddressSearch = async () => {
     if (!address) return;
+    
+    // Check if we have a valid Mapbox token
+    if (!mapboxToken || !mapboxToken.startsWith('pk.')) {
+      alert('Address search requires a valid Mapbox access token. Please configure MAPBOX_ACCESS_TOKEN in your environment.');
+      return;
+    }
+    
     // Use Mapbox Geocoding API
     const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${mapboxToken}`;
     const res = await fetch(url);

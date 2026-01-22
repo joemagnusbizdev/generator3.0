@@ -1077,7 +1077,7 @@ export default function AlertCreateInline({
           </div>
           {showGeoModal && (
             <GeoJSONGeneratorModal
-              mapboxToken={accessToken || ''}
+              mapboxToken={'pk.eyJ1IjoiZXhhbXBsZSIsImEiOiJjbGV4YW1wbGUifQ.example'}
               onClose={() => setShowGeoModal(false)}
             />
           )}
