@@ -46,7 +46,12 @@ const GeoJSONGeneratorModal: React.FC<GeoJSONGeneratorModalProps> = ({ mapboxTok
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
 
+  // Check if we have a valid Mapbox token
+  const hasValidToken = mapboxToken && mapboxToken.startsWith('pk.') && !mapboxToken.includes('example');
+
   useEffect(() => {
+    if (!hasValidToken || !mapContainer.current) return;
+
     mapboxgl.accessToken = mapboxToken;
     if (!mapContainer.current) return;
     const map = new mapboxgl.Map({
@@ -122,17 +127,39 @@ const GeoJSONGeneratorModal: React.FC<GeoJSONGeneratorModalProps> = ({ mapboxTok
             onChange={e => setAddress(e.target.value)}
             style={{ flex: 1, padding: 6, border: "1px solid #ccc", borderRadius: 4 }}
             onKeyDown={e => { if (e.key === "Enter") handleAddressSearch(); }}
+            disabled={!hasValidToken}
           />
-          <button onClick={handleAddressSearch} style={{ padding: "6px 12px" }}>Go</button>
+          <button onClick={handleAddressSearch} style={{ padding: "6px 12px" }} disabled={!hasValidToken}>
+            Go
+          </button>
           <button onClick={onClose} style={{ marginLeft: 8, padding: "6px 12px" }}>Close</button>
         </div>
-        <div ref={mapContainer} style={MAP_STYLE} />
+        
+        {hasValidToken ? (
+          <div ref={mapContainer} style={MAP_STYLE} />
+        ) : (
+          <div style={{ ...MAP_STYLE, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f5f5f5", border: "2px dashed #ccc" }}>
+            <div style={{ textAlign: "center", padding: "20px" }}>
+              <h3 style={{ margin: "0 0 10px 0", color: "#666" }}>Map Unavailable</h3>
+              <p style={{ margin: "0 0 15px 0", color: "#888", fontSize: "14px" }}>
+                Configure a valid Mapbox access token to enable interactive map drawing.
+              </p>
+              <textarea
+                placeholder={'Enter GeoJSON manually:\n\n{\n  "type": "Feature",\n  "geometry": {\n    "type": "Polygon",\n    "coordinates": [[[lng, lat], [lng, lat], [lng, lat]]]\n  },\n  "properties": {}\n}'}
+                value={geojson}
+                onChange={e => setGeojson(e.target.value)}
+                style={{ width: "100%", height: "200px", padding: "8px", border: "1px solid #ccc", borderRadius: "4px", fontFamily: "monospace", fontSize: "12px" }}
+              />
+            </div>
+          </div>
+        )}
+        
         <div style={{ padding: 12, borderTop: "1px solid #eee", display: "flex", alignItems: "center", gap: 8 }}>
           <button onClick={handleCopy} disabled={!geojson} style={{ padding: "6px 12px" }}>
             {copied ? "Copied!" : "Copy GeoJSON"}
           </button>
           <span style={{ fontSize: 12, color: geojson ? "#333" : "#aaa" }}>
-            {geojson ? `${geojson.length} chars` : "Draw a polygon to enable copy"}
+            {geojson ? `${geojson.length} chars` : "Enter or draw GeoJSON to enable copy"}
           </span>
         </div>
       </div>
