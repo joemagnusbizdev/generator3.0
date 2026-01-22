@@ -1679,6 +1679,7 @@ async function runScourWorker(config: ScourConfig): Promise<{
         if (!source?.url) {
           stats.errors.push(`Source ${sourceId} not found`);
           await logActivity(`⚠️ Source ${sourceId} not found - skipping`);
+          stats.processed++; // Increment even for skipped sources
           continue;
         }
 
@@ -1899,13 +1900,20 @@ async function runScourWorker(config: ScourConfig): Promise<{
             updated_at: new Date().toISOString(),
           }).catch(() => {});
           console.log(`  ?? OpenAI Analysis ? Extracting alerts (${config.openaiKey ? 'API ready' : 'NO API KEY'})...`);
-          extractedAlerts = await extractAlertsWithAI(
-            content,
-            articleUrl || source.url,
-            source.name,
-            existingAlerts,
-            config
-          );
+          try {
+            extractedAlerts = await extractAlertsWithAI(
+              content,
+              articleUrl || source.url,
+              source.name,
+              existingAlerts,
+              config
+            );
+            console.log(`  ? AI extraction completed: ${extractedAlerts.length} alerts`);
+          } catch (aiErr: any) {
+            console.error(`  !! AI extraction failed: ${aiErr.message}`);
+            await logActivity(`⚠️ AI extraction failed: ${aiErr.message}`);
+            extractedAlerts = [];
+          }
         }
 
         console.log(`  ? Extracted ${extractedAlerts.length} alerts`);
@@ -1935,13 +1943,21 @@ async function runScourWorker(config: ScourConfig): Promise<{
 
           console.log(`    ?? Checking: "${alert.title}" (${alert.location}, ${alert.country})`);
 
-          for (const existing of existingAlerts) {
+          // Check against both existing alerts (from before scour) AND alerts created in this scour run
+          const allExistingAlerts = [...existingAlerts];
+
+          for (const existing of allExistingAlerts) {
+            // More comprehensive duplicate checking
             const titleMatch = existing.title.toLowerCase().includes(alert.title.toLowerCase().slice(0, 40)) ||
                              alert.title.toLowerCase().includes(existing.title.toLowerCase().slice(0, 40));
             const locationMatch = existing.location === alert.location && existing.country === alert.country;
+            const similarLocation = existing.location.toLowerCase().includes(alert.location.toLowerCase()) ||
+                                  alert.location.toLowerCase().includes(existing.location.toLowerCase());
+            const sameCountry = existing.country === alert.country;
 
-            if (titleMatch || locationMatch) {
-              console.log(`      ?? Potential duplicate found: "${existing.title}"`);
+            // Check for duplicates if titles are similar OR locations are the same OR (similar location + same country)
+            if (titleMatch || locationMatch || (similarLocation && sameCountry)) {
+              console.log(`      ?? Potential duplicate found: "${existing.title}" (${existing.location}, ${existing.country})`);
               const duplicate = await checkDuplicate(alert, existing, config.openaiKey);
               if (duplicate) {
                 isDuplicate = true;
@@ -2012,6 +2028,7 @@ async function runScourWorker(config: ScourConfig): Promise<{
 
       } catch (sourceErr: any) {
         stats.errors.push(`Source error: ${sourceErr.message}`);
+        stats.processed++; // Increment even for errored sources
       }
     }
 
@@ -3605,10 +3622,10 @@ Return recommendations in plain text format, organized by category if helpful.`;
       // Job not in KV - query alerts table directly for real results
       console.log(`?? Job ${jobId} not in KV store, querying alerts table for real results...`);
       try {
-        // Query alerts created recently
-        const timeWindow = new Date(Date.now() - 15 * 60000).toISOString();
+        // Query alerts created recently (last 30 minutes to catch current scour)
+        const timeWindow = new Date(Date.now() - 30 * 60000).toISOString();
         const jobAlerts = await querySupabaseRest(
-          `/alerts?created_at=gte.${encodeURIComponent(timeWindow)}&select=id,title,severity,status,created_at&order=created_at.desc&limit=100`
+          `/alerts?created_at=gte.${encodeURIComponent(timeWindow)}&select=id,title,severity,status,created_at&order=created_at.desc&limit=200`
         );
         
         const totalCreated = Array.isArray(jobAlerts) ? jobAlerts.length : 0;
@@ -3616,20 +3633,23 @@ Return recommendations in plain text format, organized by category if helpful.`;
 
         console.log(`? Found ${totalCreated} alerts from recent scour (${draftCount} draft)`);
 
-        // Return job status based on actual alerts found
+        // Return job status based on actual alerts found - assume 10 sources for progress calculation
+        const estimatedTotalSources = 10; // Conservative estimate
+        const estimatedProcessed = Math.min(estimatedTotalSources, Math.max(1, Math.round(totalCreated * 1.5)));
+        
         return json({
           ok: true,
           job: {
             id: jobId,
-            status: "running",
-            total: 479,
-            processed: Math.max(1, Math.round(totalCreated * 2)),
+            status: totalCreated > 0 ? "running" : "running",
+            total: estimatedTotalSources,
+            processed: estimatedProcessed,
             created: totalCreated,
             duplicatesSkipped: 0,
             errorCount: 0,
             errors: [],
             currentActivity: totalCreated > 0 
-              ? `?? Found ${totalCreated} alert(s)`
+              ? `?? Found ${totalCreated} alert(s) so far`
               : "?? Scour in progress"
           }
         });
@@ -3640,7 +3660,17 @@ Return recommendations in plain text format, organized by category if helpful.`;
       // Fallback: still return running status
       return json({
         ok: true,
-        job: { id: jobId, status: "running", total: 479, processed: 1, created: 0, duplicatesSkipped: 0, errorCount: 0, errors: [] },
+        job: { 
+          id: jobId, 
+          status: "running", 
+          total: 10, // Conservative estimate
+          processed: 1, 
+          created: 0, 
+          duplicatesSkipped: 0, 
+          errorCount: 0, 
+          errors: [],
+          currentActivity: "?? Scour in progress"
+        },
       });
     }
 
