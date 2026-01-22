@@ -1680,10 +1680,29 @@ async function runScourWorker(config: ScourConfig): Promise<{
           stats.errors.push(`Source ${sourceId} not found`);
           await logActivity(`⚠️ Source ${sourceId} not found - skipping`);
           stats.processed++; // Increment even for skipped sources
+          
+          // Update status for skipped source
+          await setKV(`scour_job:${config.jobId}`, {
+            id: config.jobId,
+            status: 'running',
+            total: config.sourceIds.length,
+            processed: stats.processed,
+            created: stats.created,
+            duplicatesSkipped: stats.duplicates,
+            errorCount: stats.errors.length,
+            currentSource: `Source ${sourceId}`,
+            currentActivity: `⚠️ Skipped: Source not found`,
+            activityLog: activityLog.slice(),
+            updated_at: new Date().toISOString(),
+          }).catch(() => {});
+          
           continue;
         }
 
-        console.log(`\n?? [${stats.processed + 1}/${config.sourceIds.length}] Processing: ${source.name}`);
+        // Increment processed count at the start of processing
+        stats.processed++;
+
+        console.log(`\n?? [${stats.processed}/${config.sourceIds.length}] Processing: ${source.name}`);
         await logActivity(`📰 Scouring: ${source.name}`);
 
         // Update status: Starting source
@@ -2024,11 +2043,38 @@ async function runScourWorker(config: ScourConfig): Promise<{
           }
         }
 
-        stats.processed++;
+        // Update status after completing this source
+        await setKV(`scour_job:${config.jobId}`, {
+          id: config.jobId,
+          status: 'running',
+          total: config.sourceIds.length,
+          processed: stats.processed,
+          created: stats.created,
+          duplicatesSkipped: stats.duplicates,
+          errorCount: stats.errors.length,
+          currentSource: source.name,
+          currentActivity: `✅ Completed: ${source.name}`,
+          activityLog: activityLog.slice(),
+          updated_at: new Date().toISOString(),
+        }).catch(() => {});
 
       } catch (sourceErr: any) {
         stats.errors.push(`Source error: ${sourceErr.message}`);
-        stats.processed++; // Increment even for errored sources
+        
+        // Update status for errored source
+        await setKV(`scour_job:${config.jobId}`, {
+          id: config.jobId,
+          status: 'running',
+          total: config.sourceIds.length,
+          processed: stats.processed,
+          created: stats.created,
+          duplicatesSkipped: stats.duplicates,
+          errorCount: stats.errors.length,
+          currentSource: source.name,
+          currentActivity: `❌ Error: ${source.name}`,
+          activityLog: activityLog.slice(),
+          updated_at: new Date().toISOString(),
+        }).catch(() => {});
       }
     }
 
