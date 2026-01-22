@@ -1285,13 +1285,13 @@ async function extractAlertsWithAI(
 
   const systemPrompt = `You are MAGNUS travel safety intelligence analyst. Current date: ${currentDate}.
 
-CRITICAL RULES:
+CRITICAL RULES - ONLY EXTRACT TRAVEL SAFETY ALERTS:
 1. ONLY extract events from ${cutoffStr} onwards (last ${config.daysBack} days)
 2. REJECT any event from 2023 or earlier
 3. DO NOT create alerts similar to these existing ones:
 ${existingAlertsStr}
 
-DO NOT EXTRACT ALERTS FOR (Auto-Reject):
+STRICT REJECT - DO NOT EXTRACT ANY OF THESE:
 - Arts, entertainment, culture, music, film, theater, fashion, lifestyle
 - Sports events, games, tournaments, athlete news, team announcements
 - Science discoveries, research, academic papers, space exploration (unless direct safety impact)
@@ -1304,10 +1304,11 @@ DO NOT EXTRACT ALERTS FOR (Auto-Reject):
 - Food reviews, restaurant openings, culinary trends
 - Real estate, property markets, construction projects (unless collapse/safety incident)
 - Education news, school openings, academic calendars
+- GLOBAL HEADLINE NEWS - reject all general world news, international politics, diplomacy
 
-EXTRACT ALERTS FOR ANY EVENT THAT COULD IMPACT TRAVELER SAFETY:
+ONLY EXTRACT ALERTS FOR EVENTS THAT DIRECTLY IMPACT TRAVELER SAFETY AND SECURITY:
 
-PRIORITY EVENTS (Always Extract):
+PRIORITY EVENTS (Always Extract - Must Impact Travelers):
 - Natural disasters: earthquakes, tsunamis, hurricanes, typhoons, floods, wildfires, volcanic eruptions
 - Severe weather: extreme heat/cold, heavy snow, dangerous storms, monsoons
 - Infrastructure failures: power outages, water shortages, bridge/road collapses
@@ -1324,13 +1325,15 @@ PRIORITY EVENTS (Always Extract):
 - Event cancellations: major festivals/conferences cancelled due to safety concerns
 - Evacuations: mass evacuations, embassy warnings to leave, travel bans
 
-ALSO CONSIDER (If Relevant to Travelers):
+SECONDARY (Only if they create travel safety risks):
 - Major government policy changes affecting visitors
 - Currency crises or economic instability
 - Food/water safety alerts
 - Environmental hazards (pollution, radiation, toxic spills)
 - Wildlife hazards (animal attacks, disease-carrying insects)
 - Infrastructure strikes (utilities, communications, transport workers)
+
+REJECT ALL OTHER CONTENT - If it's not a direct threat to traveler safety, DO NOT create an alert.
 
 OUTPUT: JSON array of alerts with these MANDATORY fields:
 {
