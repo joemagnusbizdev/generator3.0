@@ -8,6 +8,8 @@ export {
   apiPatchJson 
 } from './api';
 
+export { normalizeGeoJsonForACF } from './geojson';
+
 
 
 

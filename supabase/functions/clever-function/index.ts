@@ -193,6 +193,288 @@ function getContinent(country: string): string {
 }
 
 // ============================================================================
+// WORDPRESS ACF VALIDATORS
+// ============================================================================
+
+function normalizeCountryForACF(country: string | null | undefined): string | null {
+  if (!country) return null;
+  const c = country.trim().toLowerCase();
+  const map: Record<string, string | null> = {
+    "global": null,
+    "worldwide": null,
+    "international": null,
+    "usa": "United States of America",
+    "us": "United States of America",
+    "uk": "United Kingdom",
+    "gb": "United Kingdom",
+  };
+  return map[c] ?? country;
+}
+
+function normalizeIntelligenceTopicsForACF(topic: string | null | undefined): string | null {
+  if (!topic) return null;
+  const t = topic.trim().toLowerCase();
+  
+  // Valid ACF enum values for intelligence_topics
+  const validTopics = [
+    'Armed Conflict', 'Air Incidents', 'Air Raid Sirens', 'Avalanches', 'Bomb Threats',
+    'Building Collapses', 'Chemical Weapons', 'Coronavirus', 'Drought', 'Earthquakes',
+    'Elections', 'Evacuations', 'Explosions', 'Fires', 'Floods', 'Health', 'Heat Waves',
+    'Internet Outages', 'Kidnappings', 'Landslides', 'Lockdowns', 'Nuclear Weapons',
+    'Outbreaks', 'Police Shootings', 'Power Outages', 'Protests', 'Civil Unrest',
+    'Rail Incidents', 'Road Incidents', 'Robberies', 'Shootings', 'Stabbings',
+    'Strike Actions', 'Suspicious Packages', 'Terrorism', 'Traffic', 'Transportation Incidents',
+    'Tornadoes', 'Tropical Cyclones', 'Tsunamis', 'Volcanoes', 'Wildland Fires',
+    'Water Quality', 'Winter Storms', 'Severe Weather', 'Security', 'Safety',
+    'Flight Disruptions', 'Gas Leaks', 'Pro-Palestinian Protest'
+  ];
+  
+  // Mapping of common/invalid values to valid ACF enum
+  const map: Record<string, string> = {
+    "general": "Security",
+    "terrorism": "Terrorism",
+    "war": "Armed Conflict",
+    "armed conflict": "Armed Conflict",
+    "natural disaster": "Severe Weather",
+    "earthquake": "Earthquakes",
+    "flood": "Floods",
+    "hurricane": "Tropical Cyclones",
+    "typhoon": "Tropical Cyclones",
+    "cyclone": "Tropical Cyclones",
+    "tornado": "Tornadoes",
+    "wildfire": "Wildland Fires",
+    "fire": "Fires",
+    "volcanic": "Volcanoes",
+    "volcano": "Volcanoes",
+    "tsunami": "Tsunamis",
+    "avalanche": "Avalanches",
+    "landslide": "Landslides",
+    "drought": "Drought",
+    "heat wave": "Heat Waves",
+    "winter storm": "Winter Storms",
+    "severe weather": "Severe Weather",
+    "protest": "Protests",
+    "civil unrest": "Civil Unrest",
+    "evacuation": "Evacuations",
+    "explosion": "Explosions",
+    "attack": "Terrorism",
+    "bombing": "Bomb Threats",
+    "kidnapping": "Kidnappings",
+    "shootings": "Shootings",
+    "shooting": "Shootings",
+    "strikes": "Strike Actions",
+    "power outage": "Power Outages",
+    "outage": "Power Outages",
+    "internet": "Internet Outages",
+    "transportation": "Transportation Incidents",
+    "flight": "Flight Disruptions",
+    "health": "Health",
+    "disease": "Outbreaks",
+    "outbreak": "Outbreaks",
+    "coronavirus": "Coronavirus",
+    "covid": "Coronavirus",
+    "pandemic": "Outbreaks",
+    "election": "Elections",
+    "security": "Security",
+    "safety": "Safety",
+  };
+  
+  // Check if already a valid value
+  if (validTopics.includes(topic)) {
+    return topic;
+  }
+  
+  // Try exact mapping
+  if (map[t]) {
+    return map[t];
+  }
+  
+  // Try partial matching (if value contains one of the keywords)
+  for (const [key, value] of Object.entries(map)) {
+    if (t.includes(key) || key.includes(t)) {
+      return value;
+    }
+  }
+  
+  // Default fallback
+  return "Security";
+}
+
+// Convert recommendations string/array to ACF repeater format (array of objects)
+function formatRecommendationsForACF(recs: string | string[] | null | undefined): Array<Record<string, any>> {
+  if (!recs) return [];
+  
+  let recArray: string[] = [];
+  if (typeof recs === 'string') {
+    // Split by newline, bullet, or number patterns
+    recArray = recs
+      .split(/\n|;/)
+      .map((rec: string) => rec.replace(/^[\d+.•\-*]\s*/, '').trim())
+      .filter((rec: string) => rec.length > 0);
+  } else if (Array.isArray(recs)) {
+    recArray = recs.map((r: any) => String(r).trim()).filter((r: string) => r.length > 0);
+  }
+  
+  // Convert to ACF repeater format: array of objects with 'label' field to match ACF
+  return recArray.slice(0, 10).map((rec: string, idx: number) => ({
+    id: String(idx + 1),
+    label: rec
+  }));
+}
+
+// Map alert severity levels to ACF color codes
+function normalizeSeverityForACF(severity: string | null | undefined): string {
+  if (!severity) return "yellow";
+  
+  const s = severity.trim().toLowerCase();
+  const map: Record<string, string> = {
+    "critical": "darkred",
+    "high": "red",
+    "warning": "orange",
+    "caution": "yellow",
+    "informative": "green",
+    "info": "green",
+    "low": "green",
+    "severe": "darkred",
+    "red": "red",
+    "orange": "orange",
+    "yellow": "yellow",
+    "green": "green",
+    "darkred": "darkred",
+  };
+  
+  return map[s] ?? "yellow"; // Default to yellow if unknown
+}
+
+// ============================================================================
+// CONFIDENCE SCORING (FACTAL-STYLE)
+// ============================================================================
+
+interface ConfidenceFactors {
+  sourceTrustScore: number;  // 0.5-0.95 based on source authority
+  multiSourceBoost: boolean; // +0.15 if multiple independent sources
+  officialSourceBoost: boolean; // +0.15 if official (USGS/NWS/FAA/NOAA)
+  hasCoordinates: boolean;   // +0.1 if precise location data
+  hasTimeRange: boolean;     // +0.05 if event dates provided
+  timingPenalty: number;     // -0.15 if very old or unclear timing
+  locationPenalty: number;   // -0.2 if vague/unclear location
+}
+
+function getSourceTrustScore(source: any): number {
+  const sourceType = (source?.type || '').toLowerCase();
+  const name = (source?.name || '').toLowerCase();
+  
+  // Official high-trust sources
+  const officialSources: Record<string, number> = {
+    'usgs': 0.95,
+    'usgs-atom': 0.95,
+    'nws': 0.92,
+    'cap': 0.92,
+    'nws-cap': 0.92,
+    'faa': 0.90,
+    'faa-nas': 0.90,
+    'faa-json': 0.90,
+    'noaa': 0.90,
+    'noaa-tropical': 0.90,
+  };
+  
+  // Check by type first
+  if (sourceType && officialSources[sourceType]) {
+    return officialSources[sourceType];
+  }
+  
+  // Check by name for well-known sources
+  const wellKnown: Record<string, number> = {
+    'usgs': 0.95,
+    'us geological survey': 0.95,
+    'national weather service': 0.92,
+    'faa': 0.90,
+    'noaa': 0.90,
+    'national oceanic': 0.90,
+  };
+  
+  for (const [key, score] of Object.entries(wellKnown)) {
+    if (name.includes(key)) {
+      return score;
+    }
+  }
+  
+  // Generic sources (RSS, feeds, etc.)
+  if (sourceType && ['rss', 'atom', 'feed', 'web'].includes(sourceType)) {
+    return 0.55;
+  }
+  
+  // Default medium trust
+  return 0.5;
+}
+
+function calculateConfidence(alert: Alert, source: any = null): number {
+  let confidence = 0.5; // baseline
+  
+  // 1. Source trust (base 0.3 weight)
+  const sourceTrust = source ? getSourceTrustScore(source) : 0.5;
+  confidence = sourceTrust;
+  
+  // 2. Structured data quality boosters (each +0.08 to 0.1)
+  if (alert.latitude !== undefined && alert.longitude !== undefined) {
+    confidence += 0.1; // precise coordinates = high quality
+  } else if (alert.location && alert.location.length > 5 && !alert.location.includes('Unknown')) {
+    confidence += 0.05; // named location is better than vague
+  }
+  
+  if (alert.event_start_date) {
+    confidence += 0.05; // event timing information
+  }
+  
+  // 3. Severity-based adjustments
+  // Critical/Warning events from official sources are more trustworthy
+  if ((alert.severity === 'critical' || alert.severity === 'warning') && sourceTrust >= 0.85) {
+    confidence += 0.08;
+  }
+  
+  // 4. AI-generated alerts get a slight boost if ai_confidence is present
+  if (alert.ai_generated && alert.ai_confidence && alert.ai_confidence > 0.7) {
+    confidence += 0.05;
+  }
+  
+  // 5. Penalties for data quality issues
+  // Very vague location
+  if (alert.location && (alert.location.length < 3 || alert.location === 'Unknown' || alert.location.includes('?'))) {
+    confidence -= 0.2;
+  }
+  
+  // Missing critical fields
+  if (!alert.summary || alert.summary.length < 20) {
+    confidence -= 0.15;
+  }
+  
+  // Old alerts (more than 30 days) lose credibility
+  if (alert.created_at) {
+    const alertDate = new Date(alert.created_at);
+    const daysSinceCreation = (Date.now() - alertDate.getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSinceCreation > 30) {
+      confidence -= 0.25; // stale data
+    } else if (daysSinceCreation > 14) {
+      confidence -= 0.1;
+    }
+  }
+  
+  // Clamp to valid range [0.0, 1.0]
+  confidence = Math.max(0.0, Math.min(1.0, confidence));
+  
+  return confidence;
+}
+
+// Categorize alerts by confidence level for workflow routing
+function getConfidenceCategory(score: number): 'noise' | 'early-signal' | 'review' | 'publish' | 'verified' {
+  if (score < 0.4) return 'noise';
+  if (score < 0.6) return 'early-signal';
+  if (score < 0.7) return 'review';
+  if (score < 0.85) return 'publish';
+  return 'verified';
+}
+
+// ============================================================================
 // TREND MATCHING & AGGREGATION
 // ============================================================================
 
@@ -438,6 +720,7 @@ interface Alert {
   ai_generated: boolean;
   ai_model: string;
   ai_confidence?: number;
+  confidence_score?: number;  // Factal-style confidence (0.0-1.0)
   generation_metadata?: any;
   created_at: string;
   updated_at: string;
@@ -533,6 +816,319 @@ async function fetchWithBraveSearch(query: string, braveApiKey: string): Promise
     console.error('? Brave Search error:', err);
     return { content: '', primaryUrl: null };
   }
+}
+
+// ----------------------------------------------------------------------------
+// Structured Source Parsers (USGS Atom, NWS CAP, Generic RSS/Atom)
+// ----------------------------------------------------------------------------
+
+async function fetchRaw(url: string, timeoutMs = 10000): Promise<string> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`Fetch ${res.status}: ${t.slice(0, 120)}`);
+    }
+    return await res.text();
+  } catch (e: any) {
+    console.warn(`Raw fetch failed for ${url}: ${e?.message || e}`);
+    return "";
+  }
+}
+
+function parseText(tag: string, xml: string): string | null {
+  const m = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+  return m ? m[1].trim() : null;
+}
+
+function parseAttr(tag: string, attr: string, xml: string): string | null {
+  const m = xml.match(new RegExp(`<${tag}[^>]*${attr}=[\"']([^\"']+)[\"'][^>]*\\/?>`, 'i'));
+  return m ? m[1].trim() : null;
+}
+
+function splitEntries(xml: string, entryTag = 'entry'): string[] {
+  const entries: string[] = [];
+  const re = new RegExp(`<${entryTag}[^>]*>([\\s\\S]*?)<\\/${entryTag}>`, 'ig');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml)) !== null) entries.push(m[1]);
+  return entries;
+}
+
+function severityFromMagnitude(mag: number): 'critical' | 'warning' | 'caution' | 'informative' {
+  if (mag >= 7.0) return 'critical';
+  if (mag >= 6.0) return 'warning';
+  if (mag >= 5.5) return 'caution';
+  return 'informative';
+}
+
+function magnitudeFromTitle(title: string): number | null {
+  const m = title.match(/\\bM\\s*(\\d+(?:\\.\\d+)?)\\b/i);
+  return m ? parseFloat(m[1]) : null;
+}
+
+function centroidFromPolygon(polygon: string): { lat?: number; lon?: number; radiusKm?: number } {
+  try {
+    const points = polygon.split(/\\s+/).map(p => p.split(',').map(Number)).filter(a => a.length === 2 && !isNaN(a[0]) && !isNaN(a[1]));
+    if (!points.length) return {};
+    const lat = points.reduce((s, p) => s + p[0], 0) / points.length;
+    const lon = points.reduce((s, p) => s + p[1], 0) / points.length;
+    // crude radius: max distance to centroid
+    let maxKm = 0;
+    for (const [plat, plon] of points) {
+      const dlat = (plat - lat) * Math.PI / 180;
+      const dlon = (plon - lon) * Math.PI / 180;
+      const a = Math.sin(dlat/2)**2 + Math.cos(lat*Math.PI/180)*Math.cos(plat*Math.PI/180)*Math.sin(dlon/2)**2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      const km = 6371 * c;
+      if (km > maxKm) maxKm = km;
+    }
+    return { lat, lon, radiusKm: Math.round(maxKm) };
+  } catch {
+    return {};
+  }
+}
+
+async function parseUSGSAtom(xml: string, source: any): Promise<Alert[]> {
+  if (!xml) return [];
+  const now = new Date().toISOString();
+  const entries = splitEntries(xml, 'entry');
+  const alerts: Alert[] = [];
+  for (const e of entries) {
+    const title = parseText('title', e) || 'Earthquake';
+    const link = parseAttr('link', 'href', e) || source.url;
+    const updated = parseText('updated', e) || now;
+    const point = parseText('georss:point', e) || parseText('point', e) || '';
+    const mag = magnitudeFromTitle(title);
+    if (mag === null || mag < 5.5) continue; // enforce threshold
+    const [latStr, lonStr] = point.split(/\\s+/);
+    const lat = latStr ? parseFloat(latStr) : undefined;
+    const lon = lonStr ? parseFloat(lonStr) : undefined;
+    const locPart = title.replace(/M\\s*\\d+(?:\\.\\d+)?\\s*-\\s*/i, '').trim();
+    const alert: Alert = {
+      id: crypto.randomUUID(),
+      title,
+      summary: title,
+      location: locPart || 'Unknown',
+      country: 'Unknown',
+      latitude: isNaN(lat || NaN) ? undefined : lat,
+      longitude: isNaN(lon || NaN) ? undefined : lon,
+      radiusKm: 50,
+      event_type: 'earthquake',
+      severity: severityFromMagnitude(mag!),
+      status: 'draft',
+      source_url: source.url,
+      article_url: link,
+      sources: source.name,
+      ai_generated: false,
+      ai_model: 'structured-parser',
+      created_at: updated,
+      updated_at: updated,
+    };
+    alerts.push(alert);
+  }
+  return alerts;
+}
+
+function mapCapSeverity(sev: string | null, urgency: string | null): 'critical' | 'warning' | 'caution' | 'informative' {
+  const s = (sev || '').toLowerCase();
+  const u = (urgency || '').toLowerCase();
+  if (s === 'extreme' || (s === 'severe' && u === 'immediate')) return 'critical';
+  if (s === 'severe' || u === 'expected' || u === 'immediate') return 'warning';
+  if (s === 'moderate') return 'caution';
+  return 'informative';
+}
+
+function mapCapAlertType(event: string | null): 'Current' | 'Forecast' | 'Escalation Watch' | 'Emerging Pattern' | 'Seasonal Risk' | undefined {
+  const e = (event || '').toLowerCase();
+  if (e.includes('watch') || e.includes('outlook') || e.includes('advisory')) return 'Forecast';
+  return undefined;
+}
+
+async function parseCAPAtom(xml: string, source: any): Promise<Alert[]> {
+  if (!xml) return [];
+  const now = new Date().toISOString();
+  const entries = splitEntries(xml, 'entry');
+  const alerts: Alert[] = [];
+  for (const e of entries) {
+    const title = parseText('title', e) || 'Weather Alert';
+    const link = parseAttr('link', 'href', e) || source.url;
+    const updated = parseText('updated', e) || now;
+    const event = parseText('cap:event', e) || parseText('event', e);
+    const severity = parseText('cap:severity', e) || parseText('severity', e);
+    const urgency = parseText('cap:urgency', e) || parseText('urgency', e);
+    const effective = parseText('cap:effective', e) || parseText('effective', e);
+    const expires = parseText('cap:expires', e) || parseText('expires', e);
+    const areaDesc = parseText('cap:areaDesc', e) || parseText('areaDesc', e) || 'Affected Area';
+    const polygon = parseText('cap:polygon', e) || parseText('polygon', e) || '';
+    const centroid = polygon ? centroidFromPolygon(polygon) : {};
+    const alert: Alert = {
+      id: crypto.randomUUID(),
+      title,
+      summary: title,
+      location: areaDesc,
+      country: 'USA',
+      latitude: centroid.lat,
+      longitude: centroid.lon,
+      radiusKm: centroid.radiusKm,
+      event_type: (event || 'weather').toLowerCase(),
+      severity: mapCapSeverity(severity, urgency),
+      status: 'draft',
+      source_url: source.url,
+      article_url: link,
+      sources: source.name,
+      event_start_date: effective || undefined,
+      event_end_date: expires || undefined,
+      alertType: mapCapAlertType(event),
+      ai_generated: false,
+      ai_model: 'structured-parser',
+      created_at: updated,
+      updated_at: updated,
+    } as Alert;
+    alerts.push(alert);
+  }
+  return alerts;
+}
+
+async function parseRSSOrAtom(xml: string, source: any): Promise<Alert[]> {
+  if (!xml) return [];
+  const now = new Date().toISOString();
+  const itemEntries = splitEntries(xml, 'item');
+  const atomEntries = splitEntries(xml, 'entry');
+  const entries = itemEntries.length ? itemEntries : atomEntries;
+  const alerts: Alert[] = [];
+  for (const e of entries) {
+    const title = parseText('title', e) || 'Update';
+    const link = parseText('link', e) || parseAttr('link', 'href', e) || source.url;
+    const pub = parseText('pubDate', e) || parseText('updated', e) || now;
+    const alert: Alert = {
+      id: crypto.randomUUID(),
+      title,
+      summary: title,
+      location: source.country || 'Unknown',
+      country: source.country || 'Unknown',
+      event_type: 'general',
+      severity: 'informative',
+      status: 'draft',
+      source_url: source.url,
+      article_url: link,
+      sources: source.name,
+      ai_generated: false,
+      ai_model: 'structured-parser',
+      created_at: pub,
+      updated_at: pub,
+    };
+    alerts.push(alert);
+  }
+  return alerts;
+}
+
+async function parseFAANASJson(jsonStr: string, source: any): Promise<Alert[]> {
+  if (!jsonStr) return [];
+  const now = new Date().toISOString();
+  try {
+    let data: any = JSON.parse(jsonStr);
+    if (!Array.isArray(data)) data = data.notices || data.alerts || [];
+    if (!Array.isArray(data)) return [];
+    
+    const alerts: Alert[] = [];
+    for (const notice of data.slice(0, 100)) {
+      const title = notice.title || notice.notam || notice.notice || 'FAA Notice';
+      const link = notice.link || notice.url || source.url;
+      const effective = notice.effective || notice.issued || now;
+      const expires = notice.expires || null;
+      const alert: Alert = {
+        id: crypto.randomUUID(),
+        title,
+        summary: notice.description || notice.text || title,
+        location: notice.location || notice.airport || 'Unknown',
+        country: 'USA',
+        event_type: 'aviation',
+        severity: notice.severity?.toLowerCase() === 'high' ? 'warning' : 'caution',
+        status: 'draft',
+        source_url: source.url,
+        article_url: link,
+        sources: source.name,
+        event_start_date: effective,
+        event_end_date: expires || undefined,
+        alertType: 'Current' as const,
+        ai_generated: false,
+        ai_model: 'structured-parser',
+        created_at: effective,
+        updated_at: effective,
+      };
+      alerts.push(alert);
+    }
+    return alerts;
+  } catch (e: any) {
+    console.warn(`FAA NAS JSON parse failed: ${e?.message || e}`);
+    return [];
+  }
+}
+
+async function parseNOAATropical(xml: string, source: any): Promise<Alert[]> {
+  if (!xml) return [];
+  const now = new Date().toISOString();
+  const entries = splitEntries(xml, 'entry');
+  const alerts: Alert[] = [];
+  
+  for (const e of entries) {
+    const title = parseText('title', e) || 'Tropical Cyclone Advisory';
+    const link = parseAttr('link', 'href', e) || source.url;
+    const updated = parseText('updated', e) || now;
+    const summary = parseText('summary', e) || parseText('content', e) || title;
+    
+    // Extract location from title if it contains a storm name
+    const locationMatch = title.match(/(?:Hurricane|Typhoon|Storm|Cyclone)\s+([A-Za-z]+)/i);
+    const location = locationMatch ? locationMatch[1] : 'Atlantic/Pacific';
+    
+    // Determine severity from title keywords
+    let severity: 'critical' | 'warning' | 'caution' | 'informative' = 'warning';
+    if (title.includes('Hurricane') || title.includes('Typhoon')) severity = 'critical';
+    if (title.includes('Tropical Storm')) severity = 'caution';
+    if (title.includes('Outlook')) severity = 'informative';
+    
+    const alert: Alert = {
+      id: crypto.randomUUID(),
+      title,
+      summary,
+      location,
+      country: 'USA',
+      event_type: 'tropical-cyclone',
+      severity,
+      status: 'draft',
+      source_url: source.url,
+      article_url: link,
+      sources: source.name,
+      alertType: title.includes('Outlook') ? 'Forecast' : 'Current',
+      ai_generated: false,
+      ai_model: 'structured-parser',
+      created_at: updated,
+      updated_at: updated,
+    };
+    alerts.push(alert);
+  }
+  return alerts;
+}
+
+async function parseBySourceType(source: any): Promise<Alert[]> {
+  const type = (source.type || '').toLowerCase();
+  if (!type || type === 'unknown') return []; // skip unknown types
+  
+  const raw = await fetchRaw(source.url);
+  if (!raw) return [];
+  
+  if (type === 'usgs-atom' || type === 'usgs') return await parseUSGSAtom(raw, source);
+  if (type === 'cap' || type === 'nws-cap') return await parseCAPAtom(raw, source);
+  if (type === 'faa-nas' || type === 'faa-json') {
+    try {
+      return await parseFAANASJson(raw, source);
+    } catch {
+      return [];
+    }
+  }
+  if (type === 'noaa-tropical' || type === 'noaa') return await parseNOAATropical(raw, source);
+  if (type === 'rss' || type === 'atom' || type === 'feed') return await parseRSSOrAtom(raw, source);
+  return [];
 }
 
 async function scrapeUrl(url: string): Promise<string> {
@@ -695,6 +1291,20 @@ CRITICAL RULES:
 3. DO NOT create alerts similar to these existing ones:
 ${existingAlertsStr}
 
+DO NOT EXTRACT ALERTS FOR (Auto-Reject):
+- Arts, entertainment, culture, music, film, theater, fashion, lifestyle
+- Sports events, games, tournaments, athlete news, team announcements
+- Science discoveries, research, academic papers, space exploration (unless direct safety impact)
+- Business news, corporate earnings, stock markets, mergers, company announcements
+- Technology product launches, app releases, gadget reviews
+- Celebrity news, personal stories, human interest stories without safety relevance
+- Political speeches, election campaigns, policy debates (unless causing unrest/violence)
+- Historical anniversaries, memorials, commemorations
+- General tourism promotion, destination marketing, travel tips
+- Food reviews, restaurant openings, culinary trends
+- Real estate, property markets, construction projects (unless collapse/safety incident)
+- Education news, school openings, academic calendars
+
 EXTRACT ALERTS FOR ANY EVENT THAT COULD IMPACT TRAVELER SAFETY:
 
 PRIORITY EVENTS (Always Extract):
@@ -725,15 +1335,16 @@ ALSO CONSIDER (If Relevant to Travelers):
 OUTPUT: JSON array of alerts with these MANDATORY fields:
 {
   "severity": "critical"|"warning"|"caution"|"informative",
-  "country": "Country name",
-  "eventType": "Category (Natural Disaster, Transportation, Medical Emergency, Political, Terrorism, War, Hate Crime, Infrastructure, Border Security, Crime, Aviation, Maritime, Health, Environmental, etc)",
+  "country": "SPECIFIC country name (NEVER use 'Global', 'Worldwide', 'International' - list affected countries as separate alerts or use specific regions)",
+  "eventType": "MUST be one of: Armed Conflict, Air Incidents, Air Raid Sirens, Avalanches, Bomb Threats, Building Collapses, Chemical Weapons, Coronavirus, Drought, Earthquakes, Elections, Evacuations, Explosions, Fires, Floods, Health, Heat Waves, Internet Outages, Kidnappings, Landslides, Lockdowns, Nuclear Weapons, Outbreaks, Police Shootings, Power Outages, Protests, Civil Unrest, Rail Incidents, Road Incidents, Robberies, Shootings, Stabbings, Strike Actions, Suspicious Packages, Terrorism, Traffic, Transportation Incidents, Tornadoes, Tropical Cyclones, Tsunamis, Volcanoes, Wildland Fires, Water Quality, Winter Storms, Severe Weather, Security, Safety, Flight Disruptions, Gas Leaks, Pro-Palestinian Protest",
   "title": "Clear, specific alert headline",
-  "location": "City/location (or 'Multiple locations' if widespread)",
-  "latitude": decimal degrees,
-  "longitude": decimal degrees,
+  "location": "SPECIFIC city/location (NEVER generic like 'Various locations' - be specific: 'Cairo', 'Tokyo', or 'Mexico City to Cancun' if multiple specific places)",
+  "latitude": decimal degrees (REQUIRED - must be specific coordinate, not null),
+  "longitude": decimal degrees (REQUIRED - must be specific coordinate, not null),
   "radiusKm": "Estimated radius of impact in kilometers (local/small area: 5-20, city: 20-50, regional: 50-200, national: 200-500, multinational: 500+)",
   "region": "Broader regional context",
   "geoScope": "local"|"city"|"regional"|"national"|"multinational",
+  "geoJSON": {REQUIRED GeoJSON object: FeatureCollection with polygon or point features covering the affected area. Example: {"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[-73.935242,40.730610],[-73.935242,40.780610],[-73.885242,40.780610],[-73.885242,40.730610],[-73.935242,40.730610]]]},"properties":{"name":"Affected Area"}}]}. MUST be valid GeoJSON or alert will be rejected.},
   "summary": "What happened, when, where, current status - 2-3 sentences under 150 words",
   "recommendations": "Specific, actionable advice for travelers - what to do/avoid",
   "mitigation": "Safety precautions, official guidance, and protective measures",
@@ -748,14 +1359,25 @@ SEVERITY GUIDELINES:
 - CAUTION: Elevated risk, ongoing monitoring needed, minor disruptions, heightened security
 - INFORMATIVE: Awareness advisories, resolved situations, general travel considerations
 
+CRITICAL REQUIREMENTS:
+- COUNTRY: MUST be specific country name. REJECT any alert with 'Global', 'Worldwide', 'International', or 'Multiple'. If event affects multiple countries, create separate alerts per country.
+- LOCATION: MUST be specific city or region name. REJECT vague locations like 'Various locations' or 'Nationwide'. If nationwide, use capital city + radius. For multi-city events, list specific cities.
+- LATITUDE/LONGITUDE: REQUIRED and MUST NOT be null. Provide decimal degrees for the affected area's center.
+- GEOJSON: REQUIRED for all alerts. Must be valid GeoJSON FeatureCollection with polygon(s) or point(s) covering affected area. No null values.
+
 CRITICAL DATES:
 - eventEndDate: Critical=72h from start, Warning=48h, Caution=36h, Informative=24h (adjust based on event duration if specified)
 - Format: ISO 8601 timestamp
 
-COORDINATES:
-- latitude/longitude: Required! Provide best estimate for affected area
-- For countries: Use capital city coordinates if specific location unclear
-- For regional events: Use geographic center of affected area
+REJECT CRITERIA - DO NOT INCLUDE ALERTS WITH:
+- country = "Global", "Worldwide", "International", "Multiple", null, or undefined
+- location = null, undefined, vague descriptions like "Various locations"
+- latitude or longitude = null, undefined, 0, or missing
+- geoJSON = null, undefined, invalid JSON, or missing
+- Content about: arts, sports, entertainment, business, science, technology, celebrity news, culture, lifestyle, food, real estate, education (unless direct safety impact)
+- If any of these are missing, skip the alert entirely
+
+If NO travel-safety-relevant events are found, return an empty array: []
 
 Return ONLY valid JSON array, no markdown formatting, no explanatory text.`;
 
@@ -818,28 +1440,100 @@ Return ONLY valid JSON array, no markdown formatting, no explanatory text.`;
       return [];
     }
 
+    // VALIDATION: Filter out alerts that don't meet mandatory requirements
+    const validAlerts = alerts.filter((alert: any) => {
+      const issues: string[] = [];
+      
+      // Check country - MUST NOT be Global/Worldwide/International/Multiple
+      const country = alert.country?.trim().toLowerCase() || '';
+      const invalidCountries = ['global', 'worldwide', 'international', 'multiple', 'various'];
+      if (!alert.country || invalidCountries.includes(country)) {
+        issues.push(`Invalid country: "${alert.country}"`);
+      }
+      
+      // Check location - MUST be specific
+      const location = alert.location?.trim().toLowerCase() || '';
+      const invalidLocations = ['various', 'various locations', 'multiple locations', 'nationwide', 'countrywide', 'unknown'];
+      if (!alert.location || invalidLocations.includes(location)) {
+        issues.push(`Invalid location: "${alert.location}"`);
+      }
+      
+      // Check coordinates - MUST NOT be null/undefined/zero
+      const lat = parseFloat(alert.latitude ?? 'NaN');
+      const lon = parseFloat(alert.longitude ?? 'NaN');
+      if (isNaN(lat) || isNaN(lon) || lat === 0 && lon === 0) {
+        issues.push(`Invalid coordinates: lat=${alert.latitude}, lon=${alert.longitude}`);
+      }
+      
+      // Check geoJSON - MUST be present and valid
+      if (!alert.geoJSON) {
+        issues.push('Missing geoJSON');
+      } else {
+        try {
+          const gj = typeof alert.geoJSON === 'string' ? JSON.parse(alert.geoJSON) : alert.geoJSON;
+          if (!gj.type || !gj.features) {
+            issues.push('Invalid geoJSON structure');
+          }
+        } catch (e) {
+          issues.push('geoJSON parse error');
+        }
+      }
+      
+      // Check eventType - MUST be one of the valid ACF enum values (will be normalized if not)
+      // Note: We normalize invalid values, so just log a warning if it's very wrong
+      if (!alert.eventType || alert.eventType.trim() === '') {
+        issues.push(`Missing eventType`);
+      }
+      
+      if (issues.length > 0) {
+        console.warn(`? Filtering out alert "${alert.title}": ${issues.join(', ')}`);
+        return false;
+      }
+      return true;
+    });
+
+    if (validAlerts.length < alerts.length) {
+      console.log(`? Filtered ${alerts.length} alerts → ${validAlerts.length} valid (${alerts.length - validAlerts.length} rejected for missing required fields)`);
+    }
+
     const now = new Date().toISOString();
-    return alerts.map((alert: any) => {
+    return validAlerts.map((alert: any) => {
       const lat = alert.latitude || 0;
       const lon = alert.longitude || 0;
       const severity = alert.severity || 'informative';
       const geoScope = alert.geoScope || determineGeoScope(severity, alert.country, alert.region);
       const eventType = alert.eventType || 'General';
       const radiusKm = alert.radiusKm || getRadiusFromSeverity(severity, geoScope, eventType);
-      const geoJSON = lat && lon ? generateCircleGeoJSON(lat, lon, radiusKm) : generatePointGeoJSON(lat, lon);
+      
+      // Use geoJSON from AI response (validation ensures it exists)
+      let geoJSON = null;
+      if (alert.geoJSON) {
+        try {
+          geoJSON = typeof alert.geoJSON === 'string' ? JSON.parse(alert.geoJSON) : alert.geoJSON;
+        } catch (e) {
+          console.warn(`Failed to parse geoJSON for "${alert.title}", will generate fallback`);
+          geoJSON = generateCircleGeoJSON(lat, lon, radiusKm);
+        }
+      } else {
+        // Validation should have prevented this, but fallback just in case
+        geoJSON = lat && lon ? generateCircleGeoJSON(lat, lon, radiusKm) : generatePointGeoJSON(lat, lon);
+      }
       
       // Generate default recommendations if missing
       const recommendations = alert.recommendations?.trim() || generateDefaultRecommendations(severity, alert.eventType, alert.location);
       
-      console.log(`?? Alert "${alert.title}" - Radius: ${radiusKm}km, Recommendations: ${recommendations ? 'YES (' + recommendations.slice(0, 50) + '...)' : 'NO - using fallback'}`);
+      console.log(`?? Alert "${alert.title}" - Location: ${alert.location}, Country: ${alert.country}, GeoJSON: YES, Recommendations: ${recommendations ? 'YES (' + recommendations.slice(0, 50) + '...)' : 'NO - using fallback'}`);
 
       return {
         id: crypto.randomUUID(),
         title: alert.title,
         summary: alert.summary,
+        description: alert.summary || '',  // ACF field
         location: alert.location,
         country: alert.country,
         region: alert.region,
+        mainland: alert.mainland || null,  // ACF field
+        intelligence_topics: normalizeIntelligenceTopicsForACF(alert.eventType),  // ACF field
         event_type: alert.eventType || alert.event_type,
         severity,
         status: 'draft' as const,
@@ -848,12 +1542,15 @@ Return ONLY valid JSON array, no markdown formatting, no explanatory text.`;
         sources: sourceName,
         event_start_date: alert.eventStartDate || alert.event_start_date,
         event_end_date: alert.eventEndDate || alert.event_end_date,
+        latitude: lat ? String(lat) : null,  // ACF field (as string)
+        longitude: lon ? String(lon) : null,  // ACF field (as string)
+        radius: radiusKm || null,  // ACF field
+        geojson: geoJSON ? JSON.stringify(geoJSON) : null,  // ACF polygon field (stringified GeoJSON)
+        recommendations: alert.recommendations || alert.mitigation || '',  // ACF field
         ai_generated: true,
         ai_model: 'gpt-4o-mini',
         ai_confidence: 0.85,
-        recommendations: alert.recommendations || '',
-        mitigation: alert.mitigation || '',
-        geo_json: geoJSON || null,
+        geo_json: geoJSON,
         generation_metadata: JSON.stringify({
           extracted_at: now,
           source_name: sourceName,
@@ -930,6 +1627,26 @@ async function runScourWorker(config: ScourConfig): Promise<{
     errors: [] as string[],
   };
 
+  // Activity log helper - adds timestamped entry to job status
+  const activityLog: Array<{ time: string; message: string }> = [];
+  const logActivity = async (message: string) => {
+    const entry = { time: new Date().toISOString(), message };
+    activityLog.push(entry);
+    // Keep only last 10 entries to avoid bloat
+    if (activityLog.length > 10) activityLog.shift();
+    
+    try {
+      const currentJob = await getKV(`scour_job:${config.jobId}`) || {};
+      await setKV(`scour_job:${config.jobId}`, {
+        ...currentJob,
+        activityLog: activityLog.slice(), // Clone array
+        updated_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      // Non-critical: log update failed
+    }
+  };
+
   console.log(`\n?? Starting scour ${config.jobId} with ${config.sourceIds.length} sources`);
   console.log(`?? Config: daysBack=${config.daysBack}, OpenAI=${config.openaiKey ? '?' : '?'}, Brave=${config.braveApiKey ? '?' : '?'}`);
   if (config.braveApiKey) {
@@ -937,6 +1654,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
   } else {
     console.log(`?? WARNING: No Brave API Key in config!`);
   }
+  
+  await logActivity(`Starting scour with ${config.sourceIds.length} sources`);
 
   try {
     // Only check against recent alerts (last 7 days) to reduce false duplicates
@@ -947,6 +1666,7 @@ async function runScourWorker(config: ScourConfig): Promise<{
     );
 
     console.log(`?? Found ${existingAlerts.length} existing alerts (last 7 days) for deduplication`);
+    await logActivity(`Loaded ${existingAlerts.length} recent alerts for dedup check`);
 
     for (const sourceId of config.sourceIds) {
       try {
@@ -958,10 +1678,12 @@ async function runScourWorker(config: ScourConfig): Promise<{
 
         if (!source?.url) {
           stats.errors.push(`Source ${sourceId} not found`);
+          await logActivity(`⚠️ Source ${sourceId} not found - skipping`);
           continue;
         }
 
         console.log(`\n?? [${stats.processed + 1}/${config.sourceIds.length}] Processing: ${source.name}`);
+        await logActivity(`📰 Scouring: ${source.name}`);
 
         // Update status: Starting source
         await setKV(`scour_job:${config.jobId}`, {
@@ -974,6 +1696,7 @@ async function runScourWorker(config: ScourConfig): Promise<{
           errorCount: stats.errors.length,
           currentSource: source.name,
           currentActivity: 'Fetching content',
+          activityLog: activityLog.slice(),
           updated_at: new Date().toISOString(),
         }).catch(() => {});
 
@@ -984,6 +1707,7 @@ async function runScourWorker(config: ScourConfig): Promise<{
         
         // Try Brave Search first if configured
         if (config.braveApiKey && source.query) {
+          await logActivity(`🔎 Brave searching: "${source.query.slice(0, 40)}..."`);
           await setKV(`scour_job:${config.jobId}`, {
             id: config.jobId,
             status: 'running',
@@ -993,7 +1717,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
             duplicatesSkipped: stats.duplicates,
             errorCount: stats.errors.length,
             currentSource: source.name,
-            currentActivity: '?? Brave Search',
+            currentActivity: '🔎 Brave Search',
+            activityLog: activityLog.slice(),
             updated_at: new Date().toISOString(),
           }).catch(() => {});
           console.log(`  ?? Brave Search ? "${source.query}"`);
@@ -1001,6 +1726,7 @@ async function runScourWorker(config: ScourConfig): Promise<{
           content = br.content;
           articleUrl = br.primaryUrl;
           console.log(`  ? Brave: ${content.length} chars, URL: ${articleUrl ? '?' : '?'}`);
+          await logActivity(`✓ Found ${content.length} characters from Brave`);
         } else {
           if (!config.braveApiKey) console.warn(`  ? No Brave API key - cannot search`);
           if (!source.query) console.warn(`  ? No search query configured`);
@@ -1008,6 +1734,7 @@ async function runScourWorker(config: ScourConfig): Promise<{
         
         // Fall back to scraping if Brave didn't provide enough content
         if (!content || content.length < 100) {
+          await logActivity(`🌐 Web scraping ${source.name}...`);
           await setKV(`scour_job:${config.jobId}`, {
             id: config.jobId,
             status: 'running',
@@ -1017,7 +1744,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
             duplicatesSkipped: stats.duplicates,
             errorCount: stats.errors.length,
             currentSource: source.name,
-            currentActivity: '?? Web scraping',
+            currentActivity: '🌐 Web scraping',
+            activityLog: activityLog.slice(),
             updated_at: new Date().toISOString(),
           }).catch(() => {});
           console.log(`  ?? Scraping source: ${source.url}`);
@@ -1026,6 +1754,7 @@ async function runScourWorker(config: ScourConfig): Promise<{
             content = scraped;
             articleUrl = articleUrl || source.url;
             console.log(`  ? Scraped: ${content.length} chars`);
+            await logActivity(`✓ Scraped ${content.length} characters`);
           } else {
             // Scrape failed or returned too little - use Brave as primary fallback
             if (config.braveApiKey && source.query) {
@@ -1054,33 +1783,137 @@ async function runScourWorker(config: ScourConfig): Promise<{
         if (!content || content.length < 50) {
           stats.errors.push(`No content from ${source.name}`);
           console.log(`  ? No content extracted from any source`);
+          await logActivity(`⚠️ No content retrieved - skipping source`);
           continue;
         }
 
-        await setKV(`scour_job:${config.jobId}`, {
-          id: config.jobId,
-          status: 'running',
-          total: config.sourceIds.length,
-          processed: stats.processed,
-          created: stats.created,
-          duplicatesSkipped: stats.duplicates,
-          errorCount: stats.errors.length,
-          currentSource: source.name,
-          currentActivity: '?? AI analyzing content',
-          updated_at: new Date().toISOString(),
-        }).catch(() => {});
-        console.log(`  ?? OpenAI Analysis ? Extracting alerts (${config.openaiKey ? 'API ready' : 'NO API KEY'})...`);
-        const extractedAlerts = await extractAlertsWithAI(
-          content,
-          articleUrl || source.url,
-          source.name,
-          existingAlerts,
-          config
-        );
+        let extractedAlerts: Alert[] = [];
+        const sourceType = (source.type || '').toLowerCase();
+        const knownTypes = ['usgs-atom','usgs','cap','nws-cap','faa-nas','faa-json','noaa-tropical','noaa','rss','atom','feed'];
+        
+        // Only attempt structured parse if source has a recognized type
+        if (sourceType && knownTypes.includes(sourceType)) {
+          console.log(`  ?? Attempting structured parse for type: ${sourceType}`);
+          try {
+            extractedAlerts = await parseBySourceType(source);
+            console.log(`  ? Structured parser produced ${extractedAlerts.length} alerts`);
+          } catch (parseErr: any) {
+            console.warn(`  !! Structured parser failed: ${parseErr?.message || parseErr}`);
+            extractedAlerts = [];
+          }
+        } else if (sourceType) {
+          console.log(`  ?? Unknown source type '${sourceType}' - will use AI fallback`);
+        }
 
-        console.log(`  ? AI extracted ${extractedAlerts.length} alerts`);
+        // Fallback to Brave Search + AI if no structured parser or it returned nothing
+        if (!extractedAlerts.length) {
+          console.log(`  ?? No alerts from structured parser (or none attempted) - fetching content for AI...`);
+          
+          // Try Brave Search first if configured
+          if (config.braveApiKey && source.query) {
+            await setKV(`scour_job:${config.jobId}`, {
+              id: config.jobId,
+              status: 'running',
+              total: config.sourceIds.length,
+              processed: stats.processed,
+              created: stats.created,
+              duplicatesSkipped: stats.duplicates,
+              errorCount: stats.errors.length,
+              currentSource: source.name,
+              currentActivity: '?? Brave Search',
+              updated_at: new Date().toISOString(),
+            }).catch(() => {});
+            console.log(`  ?? Brave Search ? "${source.query}"`);
+            const br = await fetchWithBraveSearch(source.query, config.braveApiKey);
+            content = br.content;
+            articleUrl = br.primaryUrl;
+            console.log(`  ? Brave: ${content.length} chars, URL: ${articleUrl ? '?' : '?'}`);
+          } else {
+            if (!config.braveApiKey) console.warn(`  ? No Brave API key - cannot search`);
+            if (!source.query) console.warn(`  ? No search query configured`);
+          }
+          
+          // Fall back to scraping if Brave didn't provide enough content
+          if (!content || content.length < 100) {
+            await setKV(`scour_job:${config.jobId}`, {
+              id: config.jobId,
+              status: 'running',
+              total: config.sourceIds.length,
+              processed: stats.processed,
+              created: stats.created,
+              duplicatesSkipped: stats.duplicates,
+              errorCount: stats.errors.length,
+              currentSource: source.name,
+              currentActivity: '?? Web scraping',
+              updated_at: new Date().toISOString(),
+            }).catch(() => {});
+            console.log(`  ?? Scraping source: ${source.url}`);
+            const scraped = await scrapeUrl(source.url);
+            if (scraped && scraped.length >= 100) {
+              content = scraped;
+              articleUrl = articleUrl || source.url;
+              console.log(`  ? Scraped: ${content.length} chars`);
+            } else {
+              // Scrape failed or returned too little - use Brave as primary fallback
+              if (config.braveApiKey && source.query) {
+                console.log(`  ?? Scrape blocked/failed - retrying Brave Search`);
+                const br = await fetchWithBraveSearch(source.query, config.braveApiKey);
+                if (br.content && br.content.length >= 100) {
+                  content = br.content;
+                  articleUrl = br.primaryUrl || articleUrl || source.url;
+                  console.log(`  ? Brave (retry): ${content.length} chars`);
+                }
+              }
+              
+              // Final fallback: try Brave with source name if no query
+              if ((!content || content.length < 100) && config.braveApiKey && !source.query) {
+                console.log(`  ?? No query configured - searching by source name`);
+                const br = await fetchWithBraveSearch(source.name, config.braveApiKey);
+                if (br.content && br.content.length >= 100) {
+                  content = br.content;
+                  articleUrl = br.primaryUrl;
+                  console.log(`  ? Brave (by name): ${content.length} chars`);
+                }
+              }
+            }
+          }
+          
+          if (!content || content.length < 50) {
+            stats.errors.push(`No content from ${source.name}`);
+            console.log(`  ? No content extracted from any source`);
+            continue;
+          }
+
+          await logActivity(`🤖 AI analyzing content...`);
+          await setKV(`scour_job:${config.jobId}`, {
+            id: config.jobId,
+            status: 'running',
+            total: config.sourceIds.length,
+            processed: stats.processed,
+            created: stats.created,
+            duplicatesSkipped: stats.duplicates,
+            errorCount: stats.errors.length,
+            currentSource: source.name,
+            currentActivity: '🤖 AI analyzing content',
+            activityLog: activityLog.slice(),
+            updated_at: new Date().toISOString(),
+          }).catch(() => {});
+          console.log(`  ?? OpenAI Analysis ? Extracting alerts (${config.openaiKey ? 'API ready' : 'NO API KEY'})...`);
+          extractedAlerts = await extractAlertsWithAI(
+            content,
+            articleUrl || source.url,
+            source.name,
+            existingAlerts,
+            config
+          );
+        }
+
+        console.log(`  ? Extracted ${extractedAlerts.length} alerts`);
         if (extractedAlerts.length === 0) {
           console.log(`  ??  No alerts found in content - AI may have rejected or found no travel-relevant events`);
+          await logActivity(`No relevant alerts found in content`);
+        } else {
+          await logActivity(`✓ Extracted ${extractedAlerts.length} potential alerts`);
         }
 
         for (const alert of extractedAlerts) {
@@ -1095,7 +1928,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
             duplicatesSkipped: stats.duplicates,
             errorCount: stats.errors.length,
             currentSource: source.name,
-            currentActivity: `?? Deduping: ${alert.title.slice(0, 40)}...`,
+            currentActivity: `🔍 Checking: ${alert.title.slice(0, 40)}...`,
+            activityLog: activityLog.slice(),
             updated_at: new Date().toISOString(),
           }).catch(() => {});
 
@@ -1113,6 +1947,7 @@ async function runScourWorker(config: ScourConfig): Promise<{
                 isDuplicate = true;
                 stats.duplicates++;
                 console.log(`      ? Confirmed duplicate by AI`);
+                await logActivity(`⊘ Skipped duplicate: "${alert.title.slice(0, 35)}..."`);
                 break;
               } else {
                 console.log(`      ? AI says not duplicate - continuing`);
@@ -1122,6 +1957,13 @@ async function runScourWorker(config: ScourConfig): Promise<{
 
           if (!isDuplicate) {
             try {
+              // Calculate confidence score (Factal-style)
+              const confidenceScore = calculateConfidence(alert, source);
+              alert.confidence_score = confidenceScore;
+              const confidenceCategory = getConfidenceCategory(confidenceScore);
+              
+              console.log(`    ?? Confidence: ${(confidenceScore * 100).toFixed(1)}% (${confidenceCategory})`);
+              
               await querySupabaseForWorker(
                 `${config.supabaseUrl}/rest/v1/alerts`,
                 config.serviceKey,
@@ -1135,6 +1977,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
               existingAlerts.push(alert);
               stats.created++;
               
+              await logActivity(`✅ Created: "${alert.title.slice(0, 40)}..." (${alert.country})`);
+              
               // Update job tracking in real-time for frontend progress display
               try {
                 await setKV(`scour_job:${config.jobId}`, {
@@ -1147,6 +1991,7 @@ async function runScourWorker(config: ScourConfig): Promise<{
                   errorCount: stats.errors.length,
                   currentSource: source.name,
                   lastAlert: alert.title,
+                  activityLog: activityLog.slice(),
                   updated_at: new Date().toISOString(),
                 });
               } catch (e) {
@@ -1199,8 +2044,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
 // GLOBAL CONFIG & HELPERS
 // ============================================================================
 
-const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const supabaseUrl = Deno.env.get("SUPABASE_URL") || "https://gnobnyzezkuyptuakztf.supabase.co";
+const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") || Deno.env.get("OPENAI_KEY");
 // Try multiple possible names for the Brave API key (handle typos and variants)
 const BRAVE_API_KEY = Deno.env.get("BRAVRE_SEARCH_API_KEY") || Deno.env.get("BRAVE_API_KEY") || Deno.env.get("BRAVE_SEARCH_API_KEY");
@@ -1210,10 +2055,11 @@ const WP_APP_PASSWORD = Deno.env.get("WP_APP_PASSWORD");
 const WP_POST_TYPE = Deno.env.get("WP_POST_TYPE") || "rss-feed"; // REST-enabled CPT slug
 
 // Log startup config (only once per function instance)
-console.log(`?? Edge function initialized:`);
-console.log(`   OpenAI: ${OPENAI_API_KEY ? '✓' : '✗'}`);
-console.log(`   Brave: ${BRAVE_API_KEY ? '✓ ' + BRAVE_API_KEY.slice(0, 12) + '...' : '✗ NOT SET'}`);
-console.log(`   WordPress: ${WP_URL ? '✓' : '✗'}`);
+console.log(`Edge function initialized:`);
+if (!serviceKey) console.warn("WARNING: SUPABASE_SERVICE_ROLE_KEY not set!");
+console.log(`   OpenAI: ${OPENAI_API_KEY ? 'OK' : 'NOT SET'}`);
+console.log(`   Brave: ${BRAVE_API_KEY ? 'OK' : 'NOT SET'}`);
+console.log(`   WordPress: ${WP_URL ? 'OK' : 'NOT SET'}`);console.log(`   WordPress: ${WP_URL ? '✓' : '✗'}`);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1389,6 +2235,45 @@ async function approveAndPublishToWP(id: string) {
   const alert = await fetchAlertById(id);
   if (!alert) return { status: 404, body: { ok: false, error: "Alert not found" } };
 
+  // Validate required fields before attempting to publish
+  const validationErrors: string[] = [];
+  
+  if (!alert.title || alert.title.trim().length === 0) {
+    validationErrors.push("Missing title");
+  }
+  if (!alert.country || alert.country.trim().length === 0) {
+    validationErrors.push("Missing country");
+  }
+  if (!alert.location || alert.location.trim().length === 0) {
+    validationErrors.push("Missing location");
+  }
+  if (!alert.summary && !alert.description) {
+    validationErrors.push("Missing summary or description");
+  }
+  
+  // Check if alert has EITHER polygon OR valid coordinates
+  const hasPolygon = !!(alert.geojson || alert.geo_json);
+  const hasValidCoords = !!(alert.latitude && alert.longitude && 
+    !isNaN(parseFloat(String(alert.latitude))) && 
+    !isNaN(parseFloat(String(alert.longitude))));
+  
+  if (!hasPolygon && !hasValidCoords) {
+    validationErrors.push("Missing polygon and coordinates - alert must have either a GeoJSON polygon OR valid latitude/longitude to publish to WordPress");
+  }
+  
+  if (validationErrors.length > 0) {
+    return {
+      status: 400,
+      body: {
+        ok: false,
+        error: "Cannot publish alert - validation failed",
+        validation_errors: validationErrors,
+        instructions: "Please edit the alert to add missing fields. Polygon/coordinates are needed for WordPress publishing.",
+        alert_id: id
+      }
+    };
+  }
+
   // If WordPress not configured, just approve the alert
   if (!WP_URL || !WP_USER || !WP_APP_PASSWORD) {
     const updated = await patchAlertById(id, { status: "approved" });
@@ -1526,14 +2411,160 @@ async function approveAndPublishToWP(id: string) {
     const wpEndpoint = `${WP_URL}/wp-json/wp/v2/${WP_POST_TYPE}`;
     console.log("[WP Publish] Attempting POST", { endpoint: wpEndpoint, post_type: WP_POST_TYPE, has_url: !!WP_URL });
     
-    // Map alert severity to ACF color codes
-    const severityMap: Record<string, string> = {
-      critical: "darkred",
-      warning: "orange",
-      caution: "yellow",
-      informative: "green",
+    // Log alert data to diagnose missing fields
+    console.log("[WP Publish] Alert data from database:", {
+      id: alert.id,
+      title: alert.title,
+      summary: alert.summary,
+      description: alert.description,
+      recommendations: alert.recommendations,
+      latitude: alert.latitude,
+      longitude: alert.longitude,
+      radius: alert.radius,
+      geojson: alert.geojson ? alert.geojson.substring(0, 100) + '...' : null,
+      mainland: alert.mainland,
+      intelligence_topics: alert.intelligence_topics,
+      event_start_date: alert.event_start_date,
+      event_end_date: alert.event_end_date,
+      country: alert.country,
+      location: alert.location,
+      severity: alert.severity,
+      event_type: alert.event_type
+    });
+    
+    // Build ACF fields - plain data only, NO HTML
+    const normalizedCountry = normalizeCountryForACF(alert.country);
+    const normalizedSeverity = normalizeSeverityForACF(alert.severity);
+    const normalizedTopics = alert.intelligence_topics || normalizeIntelligenceTopicsForACF(alert.event_type || "");
+    
+    // Keep description and recommendations separate (no HTML/markdown in description)
+    const descriptionText = (alert.description ?? alert.summary ?? alert.title ?? "").trim();
+    const recommendationsText = (alert.recommendations ?? "").trim();
+    const formattedRecommendations = formatRecommendationsForACF(recommendationsText);
+    
+        console.log('[WP Publish] Recommendations processing:', {
+          raw_recommendations: recommendationsText.substring(0, 200),
+          formatted_count: formattedRecommendations.length,
+          formatted_preview: formattedRecommendations.slice(0, 2)
+        });
+    const startIso = alert.event_start_date
+      ? new Date(alert.event_start_date).toISOString()
+      : alert.created_at
+        ? new Date(alert.created_at).toISOString()
+        : "";
+    const endIso = alert.event_end_date
+      ? new Date(alert.event_end_date).toISOString()
+      : "";
+    // Prefer stored string, but allow JSONB geo_json fallback
+    let polyText = "";
+    if (alert.geojson) {
+      polyText = alert.geojson;
+    } else if (alert.geo_json) {
+      try {
+        polyText = typeof alert.geo_json === 'string' ? alert.geo_json : JSON.stringify(alert.geo_json);
+      } catch {
+        polyText = "";
+      }
+    }
+    
+    const latText = alert.latitude ? String(alert.latitude) : "";
+    const lonText = alert.longitude ? String(alert.longitude) : "";
+    const radiusNum = alert.radius ?? "";
+    const safeLocation = alert.location || "";
+    
+    console.log('[WP Publish] Polygon from DB:', {
+      has_geojson: !!alert.geojson,
+      has_geo_json_jsonb: !!alert.geo_json,
+      geojson_length: polyText ? polyText.length : 0,
+      geojson_preview: polyText ? polyText.substring(0, 120) : 'NULL',
+      has_lat_lon: !!(latText && lonText),
+      latitude: latText,
+      longitude: lonText,
+      radius: radiusNum
+    });
+    
+    // FALLBACK: Generate polygon from lat/lon if missing but coordinates exist
+    if (!polyText && latText && lonText) {
+      console.warn('[WP Publish] No polygon found but coordinates exist - generating circle polygon from lat/lon');
+      try {
+        const lat = parseFloat(latText);
+        const lon = parseFloat(lonText);
+        const radius = radiusNum ? parseFloat(String(radiusNum)) : 25;
+        if (!isNaN(lat) && !isNaN(lon)) {
+          const circleGeoJSON = generateCircleGeoJSON(lat, lon, radius);
+          polyText = JSON.stringify(circleGeoJSON);
+          console.log('[WP Publish] Generated fallback polygon:', polyText.substring(0, 120) + '...');
+          
+          // Update the database with the generated polygon for future use
+          await patchAlertById(alert.id, {
+            geojson: polyText,
+            geo_json: circleGeoJSON
+          });
+          console.log('[WP Publish] Updated alert with generated polygon');
+        }
+      } catch (err) {
+        console.error('[WP Publish] Failed to generate fallback polygon:', err);
+      }
+    }
+    
+    // Auto-derive mainland from country if not explicitly set
+    const continent = alert.mainland || (normalizedCountry ? getContinent(normalizedCountry) : "");
+    
+    // Build deduplicated location string
+    const locationParts = [safeLocation, normalizedCountry]
+      .map((p) => (p || "").trim())
+      .filter(Boolean);
+    const theLocation = Array.from(new Set(locationParts)).join(", ");
+
+    const acfFields: Record<string, any> = {
+      mainland: continent,
+      intelligence_topics: normalizedTopics,
+      the_location: theLocation,
+      latitude: latText,
+      longitude: lonText,
+      radius: radiusNum,
+      polygon: polyText,
+      start: startIso,
+      end: endIso,
+      severity: normalizedSeverity,
+      description: descriptionText,
+      recommendations: formattedRecommendations.length > 0 ? formattedRecommendations : false,
+      sources: alert.article_url || alert.source_url || "",
     };
-    const acfSeverity = severityMap[alert.severity] || "yellow";
+
+    if (!polyText) {
+      console.error('[WP Publish] Missing polygon and cannot generate from coordinates - refusing to publish');
+      console.error('[WP Publish] Alert data dump:', {
+        id: alert.id,
+        title: alert.title,
+        has_geojson: !!alert.geojson,
+        has_geo_json: !!alert.geo_json,
+        latitude: alert.latitude,
+        longitude: alert.longitude,
+        radius: alert.radius,
+        lat_type: typeof alert.latitude,
+        lon_type: typeof alert.longitude,
+        latText,
+        lonText,
+        radiusNum
+      });
+      throw new Error(`Missing polygon/geojson for alert ${alert.id}. No geojson/geo_json in DB and coordinates are: lat=${alert.latitude}, lon=${alert.longitude}`);
+    }
+    
+    console.log('[WP Publish] ACF fields being sent:', {
+      mainland: acfFields.mainland,
+      latitude: acfFields.latitude,
+      longitude: acfFields.longitude,
+      radius: acfFields.radius,
+      polygon_length: polyText.length,
+      recommendations_type: typeof acfFields.recommendations,
+      recommendations_count: Array.isArray(acfFields.recommendations) ? acfFields.recommendations.length : 0,
+      recommendations_sample: Array.isArray(acfFields.recommendations) && acfFields.recommendations.length > 0 ? acfFields.recommendations[0] : null
+    });
+    // Only include Country if normalized value exists (Global/worldwide alerts get omitted)
+    if (normalizedCountry) {
+      acfFields.Country = normalizedCountry;
+    }
     
     const wpResponse = await fetch(wpEndpoint, {
       method: "POST",
@@ -1543,21 +2574,19 @@ async function approveAndPublishToWP(id: string) {
       },
       body: JSON.stringify({
         title: alert.title || "Travel Alert",
-        content: buildContent(),
+        // Leave WP post content empty to avoid rendering in the main body
+        content: "",
         status: "publish",
-        // ACF Fields for RSS-FEED custom post type
-        acf: {
-          country: alert.country,
-          severity: acfSeverity,
-          event_type: alert.eventType || alert.event_type,
-          location: alert.location,
-          latitude: alert.latitude,
-          longitude: alert.longitude,
-          geo_scope: alert.geoScope,
-          geo_json: alert.geoJSON,
-        },
+        fields: acfFields,  // Plain ACF data only
       }),
       signal: AbortSignal.timeout(15000),
+    });
+
+    console.log("[WP Publish] Response", { 
+      status: wpResponse.status, 
+      statusText: wpResponse.statusText,
+      acfFieldsCount: Object.keys(acfFields).length,
+      acfFieldNames: Object.keys(acfFields)
     });
 
     if (!wpResponse.ok) {
@@ -2097,7 +3126,8 @@ Deno.serve(async (req) => {
 
     // ALERTS � GET ALL
     if (path === "/alerts" && method === "GET") {
-      const status = url.searchParams.get("status");
+      try {
+        const status = url.searchParams.get("status");
       const limit = url.searchParams.get("limit") || "1000";
       let endpoint = `/alerts?order=created_at.desc&limit=${limit}`;
       if (status) {
@@ -2105,12 +3135,21 @@ Deno.serve(async (req) => {
       }
       const alerts = await querySupabaseRest(endpoint);
       return json({ ok: true, alerts: alerts || [] });
+      } catch (error: any) {
+        console.error(`[GET /alerts] Error: ${error?.message || error}`);
+        return json({ ok: false, error: error?.message || "Failed to fetch alerts" }, 500);
+      }
     }
 
     // ALERTS � REVIEW (DRAFT)
     if (path === "/alerts/review" && method === "GET") {
-      const alerts = await querySupabaseRest("/alerts?status=eq.draft&order=created_at.desc&limit=200");
+      try {
+        const alerts = await querySupabaseRest("/alerts?status=eq.draft&order=created_at.desc&limit=200");
       return json({ ok: true, alerts: alerts || [] });
+      } catch (error: any) {
+        console.error(`[GET /alerts/review] Error: ${error?.message || error}`);
+        return json({ ok: false, error: error?.message || "Failed to fetch draft alerts" }, 500);
+      }
     }
 
     // ALERTS � COMPILE
@@ -2140,16 +3179,78 @@ Deno.serve(async (req) => {
       }
 
       const now = nowIso();
+      
+      console.log('[Alert Create] Incoming body fields:', {
+        has_summary: !!body.summary,
+        has_description: !!body.description,
+        has_recommendations: !!body.recommendations,
+        has_geo_json: !!body.geo_json,
+        summary_preview: body.summary ? body.summary.substring(0, 100) : null,
+        recommendations_preview: body.recommendations ? body.recommendations.substring(0, 100) : null
+      });
+      
+      // Build alert object with ACF-aligned fields
+      const alertData: any = {
+        id: crypto.randomUUID(),
+        ...body,
+        status: body.status || "draft",
+        created_at: body.created_at || now,
+        updated_at: now,
+      };
+      
+      // Map geo_json to geojson and keep both fields
+      if (body.geo_json) {
+        const geoJsonString = typeof body.geo_json === 'string' ? body.geo_json : JSON.stringify(body.geo_json);
+        const geoJsonObject = typeof body.geo_json === 'string' ? JSON.parse(body.geo_json) : body.geo_json;
+        alertData.geojson = geoJsonString;  // TEXT column for WordPress
+        alertData.geo_json = geoJsonObject; // JSONB column for map display
+        console.log('[Alert Create] Saved polygon to both geojson (TEXT) and geo_json (JSONB)');
+      } else if (body.geojson) {
+        // If geojson TEXT is provided directly, parse it to populate geo_json JSONB
+        try {
+          alertData.geo_json = typeof body.geojson === 'string' ? JSON.parse(body.geojson) : body.geojson;
+          console.log('[Alert Create] Parsed geojson TEXT to populate geo_json JSONB');
+        } catch (e) {
+          console.warn('[Alert Create] Failed to parse geojson to JSONB:', e);
+        }
+      } else if (!alertData.geojson && !alertData.geo_json) {
+        // Auto-generate polygon from coordinates if missing both fields
+        const lat = parseFloat(body.latitude ?? 'NaN');
+        const lon = parseFloat(body.longitude ?? 'NaN');
+        const radius = parseFloat(body.radius ?? '50');
+        if (!isNaN(lat) && !isNaN(lon)) {
+          const autoPolygon = generateCircleGeoJSON(lat, lon, radius);
+          alertData.geojson = JSON.stringify(autoPolygon);
+          alertData.geo_json = autoPolygon;
+          console.log('[Alert Create] Auto-generated polygon from coordinates:', { lat, lon, radius });
+        }
+      }
+      
+      // Normalize intelligence_topics from event_type if not provided
+      if (!alertData.intelligence_topics && alertData.event_type) {
+        alertData.intelligence_topics = normalizeIntelligenceTopicsForACF(alertData.event_type);
+      }
+      
+      console.log('[Alert Create] Final alert data before save:', {
+        has_summary: !!alertData.summary,
+        has_description: !!alertData.description,
+        has_recommendations: !!alertData.recommendations,
+        has_geojson: !!alertData.geojson,
+        geojson_length: alertData.geojson ? alertData.geojson.length : 0,
+        intelligence_topics: alertData.intelligence_topics,
+        mainland: alertData.mainland
+      });
+      
+      // Calculate confidence if not already provided
+      if (!alertData.confidence_score) {
+        const tempAlert = alertData as Alert;
+        alertData.confidence_score = calculateConfidence(tempAlert);
+      }
+      
       const created = await querySupabaseRest("/alerts", {
         method: "POST",
         headers: { Prefer: "return=representation" },
-        body: JSON.stringify({
-          id: crypto.randomUUID(),
-          ...body,
-          status: body.status || "draft",
-          created_at: body.created_at || now,
-          updated_at: now,
-        }),
+        body: JSON.stringify(alertData),
       });
 
       return json({ ok: true, alert: created?.[0] });
@@ -2686,6 +3787,7 @@ Return recommendations in plain text format, organized by category if helpful.`;
           id: crypto.randomUUID(),
           name: source.name || source.Name || source.title || "Untitled Source",
           url: source.url || source.URL || source.link || "",
+          type: source.type || source.Type || 'rss',
           country: source.country || source.Country || null,
           enabled: source.enabled !== undefined ? source.enabled : true,
           created_at: nowIso(),

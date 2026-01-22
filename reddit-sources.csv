@@ -1,0 +1,138 @@
+name,url,country,enabled,query
+Reddit - r/travel,https://www.reddit.com/r/travel/.rss,Global,TRUE,safety warning alert danger crisis
+Reddit - r/solotravel,https://www.reddit.com/r/solotravel/.rss,Global,TRUE,safety warning danger alert
+Reddit - r/worldnews,https://www.reddit.com/r/worldnews/.rss,Global,TRUE,travel alert warning evacuation
+Reddit - r/news,https://www.reddit.com/r/news/.rss,Global,TRUE,emergency disaster attack terror
+Reddit - r/UpliftingNews,https://www.reddit.com/r/UpliftingNews/.rss,Global,TRUE,rescue relief recovery
+Reddit - r/disasters,https://www.reddit.com/r/disasters/.rss,Global,TRUE,earthquake hurricane flood tsunami
+Reddit - r/geopolitics,https://www.reddit.com/r/geopolitics/.rss,Global,TRUE,conflict war tension crisis
+Reddit - r/worldpolitics,https://www.reddit.com/r/worldpolitics/.rss,Global,TRUE,conflict war protest crisis
+Reddit - r/expats,https://www.reddit.com/r/expats/.rss,Global,TRUE,safety warning danger crisis
+Reddit - r/digitalnomad,https://www.reddit.com/r/digitalnomad/.rss,Global,TRUE,safety warning danger crime
+Reddit - r/backpacking,https://www.reddit.com/r/backpacking/.rss,Global,TRUE,safety danger warning
+Reddit - r/onebag,https://www.reddit.com/r/onebag/.rss,Global,TRUE,travel safety security
+Reddit - r/TravelNoPics,https://www.reddit.com/r/TravelNoPics/.rss,Global,TRUE,warning danger crisis
+Reddit - r/shoestring,https://www.reddit.com/r/shoestring/.rss,Global,TRUE,safety warning scam
+Reddit - r/Africa,https://www.reddit.com/r/Africa/.rss,Africa,TRUE,crisis conflict alert emergency
+Reddit - r/europe,https://www.reddit.com/r/europe/.rss,Europe,TRUE,travel alert warning emergency
+Reddit - r/asia,https://www.reddit.com/r/asia/.rss,Asia,TRUE,crisis conflict alert emergency
+Reddit - r/LatinAmerica,https://www.reddit.com/r/LatinAmerica/.rss,Latin America,TRUE,crisis conflict alert emergency
+Reddit - r/MiddleEast,https://www.reddit.com/r/MiddleEast/.rss,Middle East,TRUE,crisis conflict alert emergency
+Reddit - r/unitedkingdom,https://www.reddit.com/r/unitedkingdom/.rss,United Kingdom,TRUE,terror attack crisis emergency
+Reddit - r/london,https://www.reddit.com/r/london/.rss,United Kingdom,TRUE,attack terror crime emergency
+Reddit - r/france,https://www.reddit.com/r/france/.rss,France,TRUE,attack terror protest strike
+Reddit - r/Paris,https://www.reddit.com/r/Paris/.rss,France,TRUE,attack terror crime protest
+Reddit - r/germany,https://www.reddit.com/r/germany/.rss,Germany,TRUE,attack crisis emergency
+Reddit - r/berlin,https://www.reddit.com/r/berlin/.rss,Germany,TRUE,attack crime emergency
+Reddit - r/italy,https://www.reddit.com/r/italy/.rss,Italy,TRUE,earthquake crisis emergency
+Reddit - r/rome,https://www.reddit.com/r/rome/.rss,Italy,TRUE,crime emergency
+Reddit - r/spain,https://www.reddit.com/r/spain/.rss,Spain,TRUE,terror attack crisis
+Reddit - r/Barcelona,https://www.reddit.com/r/Barcelona/.rss,Spain,TRUE,attack crime terror
+Reddit - r/portugal,https://www.reddit.com/r/portugal/.rss,Portugal,TRUE,fire emergency crisis
+Reddit - r/greece,https://www.reddit.com/r/greece/.rss,Greece,TRUE,fire earthquake crisis
+Reddit - r/Netherlands,https://www.reddit.com/r/Netherlands/.rss,Netherlands,TRUE,crisis emergency
+Reddit - r/Belgium,https://www.reddit.com/r/belgium/.rss,Belgium,TRUE,attack terror crisis
+Reddit - r/Switzerland,https://www.reddit.com/r/Switzerland/.rss,Switzerland,TRUE,avalanche emergency
+Reddit - r/Austria,https://www.reddit.com/r/Austria/.rss,Austria,TRUE,avalanche emergency
+Reddit - r/Poland,https://www.reddit.com/r/Polska/.rss,Poland,TRUE,crisis emergency
+Reddit - r/Romania,https://www.reddit.com/r/Romania/.rss,Romania,TRUE,crisis emergency
+Reddit - r/Hungary,https://www.reddit.com/r/hungary/.rss,Hungary,TRUE,crisis emergency protest
+Reddit - r/CzechRepublic,https://www.reddit.com/r/czech/.rss,Czech Republic,TRUE,crisis emergency
+Reddit - r/Sweden,https://www.reddit.com/r/sweden/.rss,Sweden,TRUE,attack crime emergency
+Reddit - r/Norway,https://www.reddit.com/r/Norway/.rss,Norway,TRUE,avalanche emergency
+Reddit - r/Denmark,https://www.reddit.com/r/Denmark/.rss,Denmark,TRUE,attack emergency
+Reddit - r/Finland,https://www.reddit.com/r/Finland/.rss,Finland,TRUE,crisis emergency
+Reddit - r/Ireland,https://www.reddit.com/r/ireland/.rss,Ireland,TRUE,storm emergency
+Reddit - r/Turkey,https://www.reddit.com/r/Turkey/.rss,Turkey,TRUE,earthquake crisis emergency attack
+Reddit - r/Russia,https://www.reddit.com/r/russia/.rss,Russia,TRUE,conflict crisis emergency
+Reddit - r/Ukraine,https://www.reddit.com/r/ukraine/.rss,Ukraine,TRUE,war conflict attack military
+Reddit - r/Georgia,https://www.reddit.com/r/Sakartvelo/.rss,Georgia,TRUE,conflict crisis
+Reddit - r/Armenia,https://www.reddit.com/r/armenia/.rss,Armenia,TRUE,conflict crisis earthquake
+Reddit - r/Mexico,https://www.reddit.com/r/mexico/.rss,Mexico,TRUE,violence crime cartel safety earthquake
+Reddit - r/Guatemala,https://www.reddit.com/r/Guatemala/.rss,Guatemala,TRUE,violence crime volcano
+Reddit - r/CostaRica,https://www.reddit.com/r/costarica/.rss,Costa Rica,TRUE,earthquake volcano
+Reddit - r/Panama,https://www.reddit.com/r/Panama/.rss,Panama,TRUE,crime violence
+Reddit - r/Colombia,https://www.reddit.com/r/Colombia/.rss,Colombia,TRUE,violence crime kidnapping
+Reddit - r/Venezuela,https://www.reddit.com/r/vzla/.rss,Venezuela,TRUE,crisis violence crime
+Reddit - r/Ecuador,https://www.reddit.com/r/Ecuador/.rss,Ecuador,TRUE,earthquake volcano violence
+Reddit - r/Peru,https://www.reddit.com/r/PERU/.rss,Peru,TRUE,earthquake protest violence
+Reddit - r/Brazil,https://www.reddit.com/r/brasil/.rss,Brazil,TRUE,violence crime flood
+Reddit - r/Chile,https://www.reddit.com/r/chile/.rss,Chile,TRUE,earthquake protest volcano
+Reddit - r/Argentina,https://www.reddit.com/r/argentina/.rss,Argentina,TRUE,protest violence
+Reddit - r/Bolivia,https://www.reddit.com/r/BOLIVIA/.rss,Bolivia,TRUE,protest crisis violence
+Reddit - r/Paraguay,https://www.reddit.com/r/Paraguay/.rss,Paraguay,TRUE,protest violence
+Reddit - r/Uruguay,https://www.reddit.com/r/uruguay/.rss,Uruguay,TRUE,protest violence
+Reddit - r/Canada,https://www.reddit.com/r/canada/.rss,Canada,TRUE,wildfire emergency attack
+Reddit - r/Toronto,https://www.reddit.com/r/toronto/.rss,Canada,TRUE,attack crime emergency
+Reddit - r/Vancouver,https://www.reddit.com/r/vancouver/.rss,Canada,TRUE,earthquake emergency
+Reddit - r/USA,https://www.reddit.com/r/usa/.rss,United States,TRUE,shooting attack terror disaster
+Reddit - r/NewYork,https://www.reddit.com/r/newyork/.rss,United States,TRUE,attack terror crime
+Reddit - r/LosAngeles,https://www.reddit.com/r/LosAngeles/.rss,United States,TRUE,earthquake fire crime
+Reddit - r/Miami,https://www.reddit.com/r/Miami/.rss,United States,TRUE,hurricane crime
+Reddit - r/Chicago,https://www.reddit.com/r/chicago/.rss,United States,TRUE,shooting crime violence
+Reddit - r/China,https://www.reddit.com/r/China/.rss,China,TRUE,crisis emergency lockdown earthquake
+Reddit - r/Beijing,https://www.reddit.com/r/Beijing/.rss,China,TRUE,crisis lockdown
+Reddit - r/Shanghai,https://www.reddit.com/r/shanghai/.rss,China,TRUE,crisis lockdown
+Reddit - r/HongKong,https://www.reddit.com/r/HongKong/.rss,Hong Kong,TRUE,protest crisis violence
+Reddit - r/Taiwan,https://www.reddit.com/r/taiwan/.rss,Taiwan,TRUE,earthquake typhoon conflict
+Reddit - r/Japan,https://www.reddit.com/r/japan/.rss,Japan,TRUE,earthquake tsunami typhoon
+Reddit - r/Tokyo,https://www.reddit.com/r/Tokyo/.rss,Japan,TRUE,earthquake emergency
+Reddit - r/SouthKorea,https://www.reddit.com/r/korea/.rss,South Korea,TRUE,conflict crisis
+Reddit - r/NorthKorea,https://www.reddit.com/r/NorthKoreaNews/.rss,North Korea,TRUE,missile crisis conflict
+Reddit - r/Thailand,https://www.reddit.com/r/Thailand/.rss,Thailand,TRUE,flood protest coup
+Reddit - r/Bangkok,https://www.reddit.com/r/Bangkok/.rss,Thailand,TRUE,flood protest
+Reddit - r/Vietnam,https://www.reddit.com/r/Vietnam/.rss,Vietnam,TRUE,typhoon flood
+Reddit - r/Philippines,https://www.reddit.com/r/Philippines/.rss,Philippines,TRUE,typhoon earthquake volcano
+Reddit - r/Indonesia,https://www.reddit.com/r/indonesia/.rss,Indonesia,TRUE,earthquake tsunami volcano
+Reddit - r/Malaysia,https://www.reddit.com/r/malaysia/.rss,Malaysia,TRUE,flood crisis
+Reddit - r/Singapore,https://www.reddit.com/r/singapore/.rss,Singapore,TRUE,crisis emergency
+Reddit - r/India,https://www.reddit.com/r/india/.rss,India,TRUE,violence protest emergency disaster earthquake
+Reddit - r/Delhi,https://www.reddit.com/r/delhi/.rss,India,TRUE,violence protest pollution
+Reddit - r/Mumbai,https://www.reddit.com/r/mumbai/.rss,India,TRUE,flood violence terror
+Reddit - r/Pakistan,https://www.reddit.com/r/pakistan/.rss,Pakistan,TRUE,attack terror crisis emergency earthquake
+Reddit - r/Bangladesh,https://www.reddit.com/r/bangladesh/.rss,Bangladesh,TRUE,flood cyclone protest
+Reddit - r/SriLanka,https://www.reddit.com/r/srilanka/.rss,Sri Lanka,TRUE,crisis protest violence
+Reddit - r/Nepal,https://www.reddit.com/r/Nepal/.rss,Nepal,TRUE,earthquake avalanche flood
+Reddit - r/Afghanistan,https://www.reddit.com/r/afghanistan/.rss,Afghanistan,TRUE,attack terror crisis emergency earthquake
+Reddit - r/Iran,https://www.reddit.com/r/iran/.rss,Iran,TRUE,earthquake protest crisis
+Reddit - r/Iraq,https://www.reddit.com/r/Iraq/.rss,Iraq,TRUE,attack violence terror
+Reddit - r/Syria,https://www.reddit.com/r/syriancivilwar/.rss,Syria,TRUE,war conflict attack
+Reddit - r/Lebanon,https://www.reddit.com/r/lebanon/.rss,Lebanon,TRUE,explosion crisis economic
+Reddit - r/Jordan,https://www.reddit.com/r/jordan/.rss,Jordan,TRUE,crisis protest
+Reddit - r/Israel,https://www.reddit.com/r/Israel/.rss,Israel,TRUE,attack terror security conflict missile
+Reddit - r/Palestine,https://www.reddit.com/r/Palestine/.rss,Palestine,TRUE,conflict violence attack
+Reddit - r/SaudiArabia,https://www.reddit.com/r/saudiarabia/.rss,Saudi Arabia,TRUE,attack crisis
+Reddit - r/UAE,https://www.reddit.com/r/dubai/.rss,United Arab Emirates,TRUE,crisis emergency
+Reddit - r/Egypt,https://www.reddit.com/r/Egypt/.rss,Egypt,TRUE,terror attack crisis
+Reddit - r/Morocco,https://www.reddit.com/r/Morocco/.rss,Morocco,TRUE,earthquake protest
+Reddit - r/Algeria,https://www.reddit.com/r/algeria/.rss,Algeria,TRUE,protest violence
+Reddit - r/Tunisia,https://www.reddit.com/r/Tunisia/.rss,Tunisia,TRUE,protest crisis
+Reddit - r/Libya,https://www.reddit.com/r/Libya/.rss,Libya,TRUE,conflict violence war
+Reddit - r/SouthAfrica,https://www.reddit.com/r/southafrica/.rss,South Africa,TRUE,violence crime protest
+Reddit - r/Nigeria,https://www.reddit.com/r/Nigeria/.rss,Nigeria,TRUE,terror kidnapping violence
+Reddit - r/Kenya,https://www.reddit.com/r/Kenya/.rss,Kenya,TRUE,terror attack violence
+Reddit - r/Ethiopia,https://www.reddit.com/r/Ethiopia/.rss,Ethiopia,TRUE,conflict violence war
+Reddit - r/Somalia,https://www.reddit.com/r/Somalia/.rss,Somalia,TRUE,terror attack violence
+Reddit - r/Australia,https://www.reddit.com/r/australia/.rss,Australia,TRUE,bushfire flood cyclone
+Reddit - r/Sydney,https://www.reddit.com/r/sydney/.rss,Australia,TRUE,fire emergency
+Reddit - r/Melbourne,https://www.reddit.com/r/melbourne/.rss,Australia,TRUE,emergency crime
+Reddit - r/NewZealand,https://www.reddit.com/r/newzealand/.rss,New Zealand,TRUE,earthquake volcano
+Reddit - r/aviation,https://www.reddit.com/r/aviation/.rss,Global,TRUE,crash incident emergency accident
+Reddit - r/AirCrashInvestigation,https://www.reddit.com/r/AirCrashInvestigation/.rss,Global,TRUE,crash incident emergency
+Reddit - r/Coronavirus,https://www.reddit.com/r/Coronavirus/.rss,Global,TRUE,outbreak lockdown restriction
+Reddit - r/COVID19,https://www.reddit.com/r/COVID19/.rss,Global,TRUE,outbreak pandemic lockdown
+Reddit - r/Epidemiology,https://www.reddit.com/r/epidemiology/.rss,Global,TRUE,outbreak disease epidemic
+Reddit - r/PublicHealth,https://www.reddit.com/r/publichealth/.rss,Global,TRUE,outbreak disease emergency
+Reddit - r/TrueCrime,https://www.reddit.com/r/TrueCrime/.rss,Global,TRUE,murder attack violence
+Reddit - r/weather,https://www.reddit.com/r/weather/.rss,Global,TRUE,hurricane tornado storm flood
+Reddit - r/TropicalWeather,https://www.reddit.com/r/TropicalWeather/.rss,Global,TRUE,hurricane cyclone typhoon
+Reddit - r/Earthquake,https://www.reddit.com/r/earthquake/.rss,Global,TRUE,earthquake tremor seismic
+Reddit - r/volcanoes,https://www.reddit.com/r/volcanoes/.rss,Global,TRUE,eruption volcano emergency
+Reddit - r/environment,https://www.reddit.com/r/environment/.rss,Global,TRUE,pollution disaster oil spill
+Reddit - r/climate,https://www.reddit.com/r/climate/.rss,Global,TRUE,disaster flood drought
+Reddit - r/wildfire,https://www.reddit.com/r/Wildfire/.rss,Global,TRUE,fire wildfire evacuation
+Reddit - r/PrepperIntel,https://www.reddit.com/r/PrepperIntel/.rss,Global,TRUE,crisis emergency disaster
+Reddit - r/collapse,https://www.reddit.com/r/collapse/.rss,Global,TRUE,crisis disaster emergency
+Reddit - r/ConflictNews,https://www.reddit.com/r/ConflictNews/.rss,Global,TRUE,war conflict attack
+Reddit - r/syriancivilwar,https://www.reddit.com/r/syriancivilwar/.rss,Syria,TRUE,war conflict attack
+Reddit - r/YemeniCrisis,https://www.reddit.com/r/YemeniCrisis/.rss,Yemen,TRUE,war conflict humanitarian

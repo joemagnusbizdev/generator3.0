@@ -67,17 +67,27 @@ export function SourceBulkUpload({ onUploadComplete, accessToken }: SourceBulkUp
       console.log('Uploading', sources.length, 'sources to backend...');
       console.log('Sources data:', JSON.stringify(sources, null, 2));
       
-      const result = await bulkUploadSources(sources, accessToken);
+      const result: any = await bulkUploadSources(sources, accessToken);
       
       console.log('Upload result:', result);
       
       if (result.ok) {
-        const message = `Successfully uploaded ${result.count} sources!`;
+        const parts: string[] = [];
+        if (typeof result.inserted === 'number') parts.push(`${result.inserted} inserted`);
+        if (typeof result.updated === 'number') parts.push(`${result.updated} updated`);
+        if (Array.isArray(result.rejected) && result.rejected.length > 0) parts.push(`${result.rejected.length} rejected`);
+        const message = parts.length ? `Bulk upload complete: ${parts.join(' · ')}` : `Successfully uploaded ${result.count} sources!`;
         setSuccess(message);
         setPreview([]);
         fileInput.value = '';
         console.log('Upload successful!');
-        onUploadComplete?.(result.count);
+        onUploadComplete?.(result.count ?? (result.inserted ?? 0) + (result.updated ?? 0));
+        
+        if (Array.isArray(result.rejected) && result.rejected.length > 0) {
+          const sample = result.rejected.slice(0, 10).map((r: any) => `- ${r.name} (${r.url}) — ${r.reason || 'rejected'}`).join('\n');
+          console.warn('Some sources were rejected due to reachability issues:', result.rejected);
+          setError(`Rejected ${result.rejected.length} source(s) due to reachability issues.\n\nExamples:\n${sample}`);
+        }
       } else {
         throw new Error(result.error || 'Upload failed - no error message');
       }

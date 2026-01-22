@@ -4,7 +4,7 @@
  * Creates alerts with all fields needed for healthy WordPress export:
  * - title (required) - Specific incident title, not boilerplate
  * - country (required) - For WP export and geo context
- * - location (required) - Specific location within country
+ * - mainland (required) - Continent/region for WordPress (Africa, Antarctica, Asia, Europe, North America, Australia (Oceania), South America)
  * - summary (required) - 2-3 sentences, concrete what/where
  * - recommendations (required) - 4-6 practical bullet points
  * - sources (recommended) - 1-3 URLs with optional titles
@@ -14,6 +14,7 @@
  * - dates - event_start_date, event_end_date
  */
 import React, { useState, useCallback, useMemo } from 'react';
+import GeoJSONGeneratorModal from './GeoJSONGeneratorModal';
 import { apiPostJson } from '../lib/utils/api';
 import { colors, styles, combine } from '../styles/inline';
 import { buttons, cards, forms, typography, badges } from '../styles/designSystem';
@@ -32,13 +33,13 @@ interface SourceInput {
 interface AlertFormData {
   title: string;
   country: string;
-  region: string;
+  mainland: string;
   location: string;
   summary: string;
   recommendations: string[];
   sources: SourceInput[];
   severity: Severity;
-  event_type: string;
+  event_type: string; // doubles as intelligence_topics for ACF
   geoJSON: string; // Mandatory GeoJSON string
   geo_scope: string;
   latitude: string;
@@ -132,7 +133,7 @@ const COUNTRIES = [
 const initialFormData: AlertFormData = {
   title: '',
   country: '',
-  region: '',
+  mainland: '',
   location: '',
   summary: '',
   recommendations: ['', '', '', ''],
@@ -158,6 +159,7 @@ export default function AlertCreateInline({
   onAlertCreated,
 }: AlertCreateInlineProps): JSX.Element | null {
   const [formData, setFormData] = useState<AlertFormData>(initialFormData);
+  const [showGeoModal, setShowGeoModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -182,9 +184,12 @@ export default function AlertCreateInline({
     if (!formData.title.trim()) errors.push('Title is required');
     if (formData.title.length < 10) errors.push('Title should be at least 10 characters');
     if (!formData.country) errors.push('Country is required');
-    if (!formData.location.trim()) errors.push('Location is required');
+    if (!formData.mainland.trim()) errors.push('Mainland is required');
+    if (!formData.location.trim()) errors.push('City/Location is required');
     if (!formData.summary.trim()) errors.push('Summary is required');
     if (formData.summary.length < 50) errors.push('Summary should be at least 50 characters');
+    if (!formData.event_start_date) errors.push('Event start date is required');
+    if (!formData.event_end_date) errors.push('Event end date is required');
     
     const validAdvice = formData.recommendations.filter(a => a.trim());
     if (validAdvice.length < 2) errors.push('At least 2 recommendations items are required');
@@ -200,10 +205,8 @@ export default function AlertCreateInline({
       }
     }
 
-    // GeoJSON validation (MANDATORY)
-    if (!formData.geoJSON.trim()) {
-      errors.push('GeoJSON is required. Provide a valid GeoJSON FeatureCollection, Feature, or geometry object.');
-    } else {
+    // GeoJSON validation (OPTIONAL for manual alerts - can be added later in review queue)
+    if (formData.geoJSON.trim()) {
       try {
         JSON.parse(formData.geoJSON);
       } catch {
@@ -211,8 +214,8 @@ export default function AlertCreateInline({
       }
     }
 
-    // Geo validation (optional)
-    if (formData.latitude && formData.longitude) {
+    // Validate coordinates if provided (optional, but must be valid if present)
+    if (formData.latitude.trim() || formData.longitude.trim()) {
       const lat = parseFloat(formData.latitude);
       const lng = parseFloat(formData.longitude);
       if (isNaN(lat) || lat < -90 || lat > 90) errors.push('Latitude must be between -90 and 90');
@@ -306,23 +309,26 @@ export default function AlertCreateInline({
     setSuccess(null);
 
     try {
-      // Build the alert payload - ONLY include fields in database schema
+      // Build the alert payload - include all fields needed for WordPress export
       const recommendationsText = formData.recommendations
         .filter(a => a.trim())
         .map((a, i) => `${i + 1}. ${a.trim()}`)
         .join('\n');
 
+      const cleanSummary = formData.summary.trim();
       const payload: Record<string, any> = {
         status: 'draft',
         title: formData.title.trim(),
-        country: formData.country,
-        region: formData.region.trim() || null,
+        country: formData.country.trim(),
+        mainland: formData.mainland.trim() || null,
+        region: formData.mainland.trim() || null,
         location: formData.location.trim(),
-        summary: recommendationsText 
-          ? `${formData.summary.trim()}\n\n**Traveler Recommendations:**\n${recommendationsText}`
-          : formData.summary.trim(),
-        // Note: polygon, geo_scope, latitude, longitude, radius_km are WordPress-only fields
-        // They are NOT stored in the Supabase alerts table
+        summary: cleanSummary,
+        description: cleanSummary, // explicit for ACF - use summary as description
+        recommendations: formData.recommendations
+          .filter(a => a.trim())
+          .map((a, i) => `${i + 1}. ${a.trim()}`)
+          .join('\n') || '',
         sources: formData.sources
           .filter(s => s.url.trim())
           .map(s => ({
@@ -331,14 +337,31 @@ export default function AlertCreateInline({
           })),
         severity: formData.severity,
         event_type: formData.event_type || null,
+        intelligence_topics: formData.event_type || null,
+        latitude: formData.latitude.trim() || null,
+        longitude: formData.longitude.trim() || null,
+        radius: formData.radius_km ? parseFloat(formData.radius_km) : null,
       };
 
-      // Add dates if provided (store as ISO date strings, database converts to DATE type)
+      // Add dates if provided
       if (formData.event_start_date) {
         payload.event_start_date = new Date(formData.event_start_date).toISOString().split('T')[0];
       }
       if (formData.event_end_date) {
         payload.event_end_date = new Date(formData.event_end_date).toISOString().split('T')[0];
+      }
+
+      // GeoJSON is OPTIONAL - only include if user pasted one
+      if (formData.geoJSON.trim()) {
+        try {
+          const geoJsonObject = JSON.parse(formData.geoJSON);
+          payload.geo_json = geoJsonObject;
+          payload.geojson = JSON.stringify(geoJsonObject);
+          console.log('[Alert Create] Added optional GeoJSON to payload');
+        } catch (err) {
+          console.warn('[Alert Create] Failed to parse optional GeoJSON:', err);
+          // Continue without GeoJSON - not required for manual alerts
+        }
       }
 
       const result = await apiPostJson<{ ok: boolean; alert?: any; error?: string }>(
@@ -382,12 +405,13 @@ export default function AlertCreateInline({
       const payload: Record<string, any> = {
         status: 'draft',
         title: formData.title.trim(),
-        country: formData.country,
-        region: formData.region.trim() || null,
+        country: formData.country.trim(),
+        mainland: formData.mainland.trim() || null,
+        region: formData.mainland.trim() || null,
         location: formData.location.trim(),
-        summary: recommendationsText 
-          ? `${formData.summary.trim()}\n\n**Traveler Recommendations:**\n${recommendationsText}`
-          : formData.summary.trim(),
+        summary: formData.summary.trim(),  // Clean summary, no recommendations
+        description: formData.summary.trim(),  // Same as summary for ACF
+        recommendations: recommendationsText || null,  // Separate field
         sources: formData.sources
           .filter(s => s.url.trim())
           .map(s => ({
@@ -396,6 +420,10 @@ export default function AlertCreateInline({
           })),
         severity: formData.severity,
         event_type: formData.event_type || null,
+        intelligence_topics: formData.event_type || null,  // For ACF normalization
+        latitude: formData.latitude.trim() || null,
+        longitude: formData.longitude.trim() || null,
+        radius: formData.radius_km ? parseFloat(formData.radius_km) : null,
       };
 
       // Add dates if provided
@@ -404,6 +432,24 @@ export default function AlertCreateInline({
       }
       if (formData.event_end_date) {
         payload.event_end_date = new Date(formData.event_end_date).toISOString().split('T')[0];
+      }
+
+      // Use pasted GeoJSON (required for manual alerts - no auto-generation)
+      let geoJsonObject = null;
+      if (formData.geoJSON.trim()) {
+        try {
+          geoJsonObject = JSON.parse(formData.geoJSON);
+          console.log('[Alert Create] Parsed pasted GeoJSON for publish');
+        } catch {
+          console.warn('GeoJSON parse failed during submit (should be caught by validation)');
+        }
+      }
+
+      // Populate BOTH geo_json (JSONB) and geojson (TEXT) fields for WordPress compatibility
+      if (geoJsonObject) {
+        payload.geo_json = geoJsonObject;
+        payload.geojson = JSON.stringify(geoJsonObject);
+        console.log('[Alert Create] Added polygon to payload for publish');
       }
 
       const createResult = await apiPostJson<{ ok: boolean; alert?: any; error?: string }>(
@@ -417,7 +463,7 @@ export default function AlertCreateInline({
       }
 
       // Then publish to WordPress
-      const publishResult = await apiPostJson<{ ok: boolean; error?: string }>(
+      const publishResult = await apiPostJson<{ ok: boolean; error?: string; message?: string; wordpress_error_text?: string }>(
         `/alerts/${createResult.alert.id}/publish`,
         {},
         accessToken
@@ -428,7 +474,21 @@ export default function AlertCreateInline({
         onAlertCreated?.(createResult.alert);
         resetForm();
       } else {
-        throw new Error(publishResult.error || 'Failed to publish to WordPress');
+        // Build detailed error message
+        const errorParts = [];
+        if (publishResult.error) errorParts.push(publishResult.error);
+        if (publishResult.message) errorParts.push(publishResult.message);
+        if (publishResult.wordpress_error_text) {
+          try {
+            const wpError = JSON.parse(publishResult.wordpress_error_text);
+            if (wpError.message) errorParts.push(`WordPress: ${wpError.message}`);
+            if (wpError.code) errorParts.push(`Code: ${wpError.code}`);
+          } catch {
+            errorParts.push(`WordPress: ${publishResult.wordpress_error_text.substring(0, 200)}`);
+          }
+        }
+        const finalError = errorParts.length > 0 ? errorParts.join('\n') : 'Failed to publish to WordPress';
+        throw new Error(finalError);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to post alert';
@@ -516,9 +576,14 @@ export default function AlertCreateInline({
       ]);
     }
 
+    // Ensure polygon is explicitly closed (first point repeated as last)
+    if (coords.length && (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1])) {
+      coords.push(coords[0]);
+    }
+
     return {
       type: 'Feature',
-      properties: { shape: 'circle', radiusKm },
+      properties: {},
       geometry: { type: 'Polygon', coordinates: [coords] },
     };
   }
@@ -656,7 +721,8 @@ export default function AlertCreateInline({
   function renderPreview(): JSX.Element {
     const previewHtml = `
       <p><strong>Country:</strong> ${formData.country || '(not set)'}</p>
-      ${formData.location ? `<p><strong>Location:</strong> ${formData.location}</p>` : ''}
+      ${formData.mainland ? `<p><strong>Mainland:</strong> ${formData.mainland}</p>` : ''}
+      ${formData.location ? `<p><strong>City/Location:</strong> ${formData.location}</p>` : ''}
       ${formData.summary ? `<p>${formData.summary}</p>` : ''}
       ${formData.recommendations.filter(a => a.trim()).length > 0 
         ? `<h3>recommendations</h3><ul>${formData.recommendations.filter(a => a.trim()).map(a => `<li>${a}</li>`).join('')}</ul>` 
@@ -765,29 +831,38 @@ export default function AlertCreateInline({
                 ))}
               </select>
             </div>
-
-            <div style={fieldStyle}>
-              <label style={labelStyle}>Region</label>
-              <input
-                type="text"
-                value={formData.region}
-                onChange={e => updateField('region', e.target.value)}
-                style={inputStyle}
-                placeholder="e.g., Northern Province"
-              />
-            </div>
           </div>
 
           <div style={fieldStyle}>
             <label style={labelStyle}>
-              Location <span style={requiredStyle}>*</span>
+              Mainland <span style={requiredStyle}>*</span>
+            </label>
+            <select
+              value={formData.mainland}
+              onChange={e => updateField('mainland', e.target.value)}
+              style={selectStyle}
+            >
+              <option value="">Select mainland...</option>
+              <option value="Africa">Africa</option>
+              <option value="Antarctica">Antarctica</option>
+              <option value="Asia">Asia</option>
+              <option value="Europe">Europe</option>
+              <option value="North America">North America</option>
+              <option value="Australia (Oceania)">Australia (Oceania)</option>
+              <option value="South America">South America</option>
+            </select>
+          </div>
+
+          <div style={fieldStyle}>
+            <label style={labelStyle}>
+              City/Location <span style={requiredStyle}>*</span>
             </label>
             <input
               type="text"
               value={formData.location}
               onChange={e => updateField('location', e.target.value)}
               style={inputStyle}
-              placeholder="Specific location (e.g., 'Central District, Capital City')"
+              placeholder="Specific location (e.g., 'Tel Aviv', 'Haifa', 'Jerusalem')"
             />
           </div>
 
@@ -969,11 +1044,22 @@ export default function AlertCreateInline({
         {/* Geo Section */}
         <div style={sectionStyle}>
           <h3 style={sectionTitleStyle}>🗺 Geographic Data</h3>
-          
           <div style={fieldStyle}>
             <label style={labelStyle}>
               GeoJSON <span style={requiredStyle}>*</span>
             </label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+              <button
+                type="button"
+                style={{ ...buttons.secondary, padding: '6px 12px', fontSize: 13 }}
+                onClick={() => setShowGeoModal(true)}
+              >
+                Open GeoJSON Generator
+              </button>
+              <span style={{ fontSize: 12, color: '#888' }}>
+                Draw polygon, copy, and paste below
+              </span>
+            </div>
             <textarea
               value={formData.geoJSON}
               onChange={e => updateField('geoJSON', e.target.value)}
@@ -986,9 +1072,15 @@ export default function AlertCreateInline({
               rows={8}
             />
             <div style={helpTextStyle}>
-              <strong>Required.</strong> Valid GeoJSON object (Point, Polygon, MultiPolygon, FeatureCollection, or Feature). Use tools like geojson.io to generate.
+              <strong>Required.</strong> Valid GeoJSON object (Polygon/FeatureCollection for ACF). Use the generator for easy drawing.
             </div>
           </div>
+          {showGeoModal && (
+            <GeoJSONGeneratorModal
+              mapboxToken={accessToken || ''}
+              onClose={() => setShowGeoModal(false)}
+            />
+          )}
           
           <div style={gridStyle}>
             <div style={fieldStyle}>

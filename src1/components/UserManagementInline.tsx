@@ -496,7 +496,6 @@ export function UserManagementInline({
                   <th style={thStyle}>User</th>
                   <th style={thStyle}>Role</th>
                   <th style={thStyle}>Created</th>
-                  <th style={thStyle}>Last Sign In</th>
                   <th style={{ ...thStyle, textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
@@ -538,11 +537,6 @@ export function UserManagementInline({
                       {user.created_at
                         ? new Date(user.created_at).toLocaleDateString()
                         : '-'}
-                    </td>
-                    <td style={tdStyle}>
-                      {user.last_sign_in_at
-                        ? new Date(user.last_sign_in_at).toLocaleDateString()
-                        : 'Never'}
                     </td>
                     <td style={{ ...tdStyle, textAlign: 'right' }}>
                       <button

@@ -3,9 +3,10 @@ import React, { useEffect, useState } from "react";
 import GeoJsonPreview from "./GeoJsonPreview";
 import MAGNUS_COLORS from "../styles/magnus-colors";
 
-/* =========================
-   Types
-========================= */
+
+// =========================
+// Types
+// =========================
 
 export type PermissionSet = {
   canReview: boolean;
@@ -16,44 +17,67 @@ export type PermissionSet = {
   canEditAlerts: boolean;
 };
 
-type Props = {
-  permissions: PermissionSet;
-};
-
 export interface Alert {
   id: string;
   title: string;
   summary: string;
+  description?: string;
   recommendations?: string;
-
   location: string;
   country: string;
   region?: string;
-
+  mainland?: string;
+  intelligence_topics?: string;
   event_type?: string;
   severity: "critical" | "warning" | "caution" | "informative";
   status: string;
-
+  latitude?: string;
+  longitude?: string;
+  radius?: number | null;
   source_url?: string;
   article_url?: string;
-  sources?: string;
-
+  sources?: any;
   event_start_date?: string;
   event_end_date?: string;
-
+  geo_json?: any;
   geojson?: any;
-
   ai_generated?: boolean;
+  confidence_score?: number;  // Factal-style confidence (0.0-1.0)
   created_at: string;
 }
 
-/* =========================
-   Config
-========================= */
-
 import { getApiUrl } from "../lib/supabase/api";
 
+/* =========================
+  Config
+========================= */
+
 const API_BASE = getApiUrl("");
+
+const MAINLAND_OPTIONS = [
+  "",
+  "Africa",
+  "Antarctica",
+  "Asia",
+  "Europe",
+  "North America",
+  "Australia (Oceania)",
+  "South America",
+];
+
+const INTELLIGENCE_TOPIC_OPTIONS = [
+  "",
+  "Armed Conflict", "Air Incidents", "Air Raid Sirens", "Avalanches", "Bomb Threats",
+  "Building Collapses", "Chemical Weapons", "Coronavirus", "Drought", "Earthquakes",
+  "Elections", "Evacuations", "Explosions", "Fires", "Floods", "Health", "Heat Waves",
+  "Internet Outages", "Kidnappings", "Landslides", "Lockdowns", "Nuclear Weapons",
+  "Outbreaks", "Police Shootings", "Power Outages", "Protests", "Civil Unrest",
+  "Rail Incidents", "Road Incidents", "Robberies", "Shootings", "Stabbings",
+  "Strike Actions", "Suspicious Packages", "Terrorism", "Traffic", "Transportation Incidents",
+  "Tornadoes", "Tropical Cyclones", "Tsunamis", "Volcanoes", "Wildland Fires",
+  "Water Quality", "Winter Storms", "Severe Weather", "Security", "Safety",
+  "Flight Disruptions", "Gas Leaks", "Pro-Palestinian Protest",
+];
 
 const SEVERITY_META: Record<
   Alert["severity"],
@@ -85,21 +109,161 @@ function formatDateRange(a: Alert) {
   // Format event dates
   const start = a.event_start_date || "";
   const end = a.event_end_date || "";
-  let eventDates = "Ongoing";
-  if (start && end) eventDates = `${new Date(start).toLocaleString()} to ${new Date(end).toLocaleString()}`;
-  else if (start && !end) eventDates = `${new Date(start).toLocaleString()} (ongoing)`;
-  else if (!start && end) eventDates = `until ${new Date(end).toLocaleString()}`;
-  
-  // Format alert creation date
-  const createdAt = a.created_at ? new Date(a.created_at).toLocaleString() : "Unknown";
-  
-  return `Event: ${eventDates} | Alert Created: ${createdAt}`;
+
+  if (start && end) {
+    return `${new Date(start).toLocaleDateString()} - ${new Date(end).toLocaleDateString()}`;
+  } else if (start) {
+    return `From ${new Date(start).toLocaleDateString()}`;
+  } else if (end) {
+    return `Until ${new Date(end).toLocaleDateString()}`;
+  }
+  return "No dates specified";
+}
+
+// Confidence Score Badge Component (Factal-style)
+function ConfidenceBadge({ score }: { score: number }) {
+  let category: string;
+  let bgColor: string;
+  let textColor: string;
+  let emoji: string;
+
+  if (score < 0.4) {
+    category = "Noise";
+    bgColor = "#f3f4f6"; // light gray
+    textColor = "#6b7280"; // dark gray
+    emoji = "❌";
+  } else if (score < 0.6) {
+    category = "Early Signal";
+    bgColor = "#fef3c7"; // light amber
+    textColor = "#92400e"; // dark amber
+    emoji = "🔶";
+  } else if (score < 0.7) {
+    category = "Review";
+    bgColor = "#dbeafe"; // light blue
+    textColor = "#1e40af"; // dark blue
+    emoji = "👁️";
+  } else if (score < 0.85) {
+    category = "Publish";
+    bgColor = "#dcfce7"; // light green
+    textColor = "#166534"; // dark green
+    emoji = "✓";
+  } else {
+    category = "Verified";
+    bgColor = "#86efac"; // bright green
+    textColor = "#15803d"; // darker green
+    emoji = "✅";
+  }
+
+  return (
+    <span
+      className="text-xs font-semibold px-2 py-1 rounded whitespace-nowrap"
+      style={{ backgroundColor: bgColor, color: textColor }}
+      title={`Confidence: ${(score * 100).toFixed(1)}%`}
+    >
+      {emoji} {(score * 100).toFixed(0)}% {category}
+    </span>
+  );
+}
+
+// Normalize recommendations to a clean string list regardless of storage format (array, JSON string, CSV, or free text)
+function normalizeRecommendations(raw?: string | string[] | null): string[] {
+  if (!raw) return [];
+
+  // If already an array, normalize items
+  if (Array.isArray(raw)) {
+    return raw
+      .map((item) => (typeof item === "string" ? item : String(item || "")).trim())
+      .filter(Boolean);
+  }
+
+  const text = raw.trim();
+  if (!text) return [];
+
+  // Try JSON arrays first
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item) => (typeof item === "string" ? item : String(item || "")).trim())
+        .filter(Boolean);
+    }
+    if (Array.isArray((parsed as any)?.recommendations)) {
+      return (parsed as any).recommendations
+        .map((item: any) => (typeof item === "string" ? item : String(item || "")).trim())
+        .filter(Boolean);
+    }
+  } catch {
+    // not JSON
+  }
+
+  // Split on newlines or commas
+  const fromLines = text
+    .split(/\r?\n|,/)
+    .map((line) => line.replace(/^[-*\d\.\)\s]+/, "").trim())
+    .filter(Boolean);
+  if (fromLines.length > 1) return fromLines;
+
+  // Fallback: try to extract numbered segments like "1. foo 2. bar"
+  const numbered: string[] = [];
+  const regex = /(\d+[\.\)]\s*)([^\d]+)/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const item = (match[2] || "").trim();
+    if (item) numbered.push(item);
+  }
+  if (numbered.length > 0) return numbered;
+
+  // Last resort: single item
+  return [text];
+}
+
+function parseGeoJsonValue(value: any): any | null {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function normalizeSources(raw: any): { url?: string; title?: string }[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw as any[];
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function trimOrNull(value: any): string | null {
+  const t = typeof value === "string" ? value.trim() : String(value ?? "").trim();
+  return t ? t : null;
+}
+
+function numberOrNull(value: any): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 function whatsappTemplate(a: Alert) {
   const s = SEVERITY_META[a.severity];
-  const topic = (a.event_type || "General").trim();
-  const sources = a.article_url || a.source_url || "";
+  const topic = (a.intelligence_topics || a.event_type || "Security").trim();
+  const sourceItems = normalizeSources(a.sources);
+  const sources = a.article_url || a.source_url || sourceItems.map((x) => x.url || x.title || "").filter(Boolean).join("\n");
+  const recs = normalizeRecommendations(a.recommendations);
+  const recBlock = recs.length
+    ? `*Recommended Actions:*\n${recs.map((r, i) => `${i + 1}. ${r}`).join("\n")}\n\n`
+    : "";
 
   return `🚨 *TRAVEL ALERT* 🚨
 
@@ -111,17 +275,17 @@ ${a.region ? `*Region:* ${a.region}\n` : ''}*Event Type:* ${topic}
 *Details:*
 ${a.summary}
 
-${a.recommendations ? `*Recommended Actions:*\n${a.recommendations}\n\n` : ''}*Sources:*
-${sources || "Internal Intelligence"}
-
-━━━━━━━━━━━━━━━━━━━━
-Generated by MAGNUS Alert System
-`.trim();
+${recBlock}*Sources:*
+${sources || "Internal Intelligence"}`.trim();
 }
 
 /* =========================
    Component
 ========================= */
+
+type Props = {
+  permissions: PermissionSet;
+};
 
 export default function AlertReviewQueueInline({ permissions }: Props) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -129,8 +293,14 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
   const [editing, setEditing] = useState<Record<string, boolean>>({});
   const [drafts, setDrafts] = useState<Record<string, Partial<Alert>>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [editingRecommendationsId, setEditingRecommendationsId] = useState<string | null>(null);
+  const [editRecommendations, setEditRecommendations] = useState("");
+  const [editingGeoJsonId, setEditingGeoJsonId] = useState<string | null>(null);
+  const [editGeoJson, setEditGeoJson] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const { startScour, isScouring, accessToken } = useScour() as any;
 
   useEffect(() => {
     if (!permissions.canReview) return;
@@ -151,12 +321,53 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
       setLoading(false); // Don't show loading spinner on refresh, only on initial load
       setError(null);
       const res = await fetch(`${API_BASE}/alerts/review`);
-      if (!res.ok) throw new Error(`Failed to load alerts (${res.status})`);
+      if (!res.ok) {
+        // Try to read error message from response body
+        try {
+          const errorData = await res.json();
+          throw new Error(errorData?.error || `Failed to load alerts (${res.status})`);
+        } catch {
+          throw new Error(`Failed to load alerts (${res.status})`);
+        }
+      }
       const data = await res.json();
       setAlerts(Array.isArray(data.alerts) ? data.alerts : []);
     } catch (e: any) {
       setError(e?.message || "Failed to load alerts");
     }
+  }
+
+  function buildPatchFromDraft(draft: Partial<Alert>): Record<string, any> {
+    const patch: Record<string, any> = {};
+
+    const textFields: (keyof Alert)[] = [
+      "title",
+      "summary",
+      "description",
+      "location",
+      "country",
+      "region",
+      "event_type",
+      "intelligence_topics",
+      "mainland",
+      "recommendations",
+    ];
+
+    textFields.forEach((key) => {
+      if (draft[key] !== undefined) {
+        const cleaned = trimOrNull(draft[key]);
+        patch[key] = cleaned;
+      }
+    });
+
+    if (draft.latitude !== undefined) patch.latitude = trimOrNull(draft.latitude);
+    if (draft.longitude !== undefined) patch.longitude = trimOrNull(draft.longitude);
+    if (draft.radius !== undefined) patch.radius = numberOrNull(draft.radius);
+    if (draft.event_start_date !== undefined) patch.event_start_date = draft.event_start_date || null;
+    if (draft.event_end_date !== undefined) patch.event_end_date = draft.event_end_date || null;
+    if (draft.sources !== undefined) patch.sources = draft.sources;
+
+    return patch;
   }
 
   function startEdit(a: Alert) {
@@ -172,19 +383,43 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
     const patch = drafts[id];
     if (!patch) return;
 
-    await fetch(`${API_BASE}/alerts/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    });
+    const cleaned = buildPatchFromDraft(patch);
 
-    setAlerts((a) => a.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    try {
+      const res = await fetch(`${API_BASE}/alerts/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cleaned),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || `Failed to save alert ${id}`);
+      }
+    } catch (err: any) {
+      alert(`Save failed: ${err?.message || err}`);
+      return;
+    }
+
+    setAlerts((a) => a.map((x) => (x.id === id ? { ...x, ...cleaned } : x)));
     setEditing((e) => ({ ...e, [id]: false }));
   }
 
   async function approve(id: string) {
-    await fetch(`${API_BASE}/alerts/${id}/approve`, { method: "POST" });
-    setAlerts((a) => a.filter((x) => x.id !== id));
+    try {
+      const res = await fetch(`${API_BASE}/alerts/${id}/approve`, { method: "POST" });
+      const data = await res.json();
+      
+      if (!data.ok) {
+        const errorMsg = data.error || data.message || 'Failed to approve alert';
+        alert(`❌ Error:\n\n${errorMsg}`);
+        return;
+      }
+      
+      setAlerts((a) => a.filter((x) => x.id !== id));
+    } catch (err: any) {
+      alert(`❌ Error: ${err.message}`);
+    }
   }
 
   async function dismiss(id: string) {
@@ -247,11 +482,7 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
     );
   }
 
-
-
-const { startScour, isScouring, accessToken } = useScour() as any;
-
-return (
+  return (
   <div className="space-y-4">
     {/* Run Scour (context-driven, single trigger) */}
     {permissions.canScour && (
@@ -292,10 +523,13 @@ return (
 
     {/* Alerts */}
     {alerts.map((a) => {
-      const meta = SEVERITY_META[a.severity];
+      const severity = (drafts[a.id]?.severity as Alert["severity"]) || a.severity;
+      const meta = SEVERITY_META[severity];
       const open = !!expanded[a.id];
       const edit = !!editing[a.id];
       const d = (drafts[a.id] || a) as Alert;
+      const geojson = parseGeoJsonValue(d.geo_json ?? d.geojson);
+      const sourcesList = normalizeSources(d.sources);
 
       return (
         <div key={a.id} className="border-2 rounded-lg bg-white shadow-md overflow-hidden" style={{ borderColor: MAGNUS_COLORS.border }}>
@@ -318,14 +552,32 @@ return (
                 <div className="flex-1">
                   <h3 className="text-lg font-bold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>{a.title}</h3>
                   <div className="flex gap-2 items-center flex-wrap">
-                  <span
-                    className={`text-sm font-semibold px-3 py-1 rounded-full ${meta.color}`}
-                    style={{ backgroundColor: meta.bgColor }}
-                  >
-                    {meta.emoji} {meta.label}
-                  </span>
-                  <span className="text-sm font-medium" style={{ color: MAGNUS_COLORS.secondaryText }}>📍 {a.location}, {a.country}</span>
-                  <span className="text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>🕐 {formatDateRange(a)}</span>
+                  {edit ? (
+                    <select
+                      value={severity}
+                      onChange={(e) => setDrafts((d) => ({ ...d, [a.id]: { ...d[a.id], severity: e.target.value as Alert["severity"] } }))}
+                      className="text-sm px-2 py-1 border rounded"
+                      style={{ borderColor: MAGNUS_COLORS.border }}
+                    >
+                      <option value="critical">CRITICAL</option>
+                      <option value="warning">WARNING</option>
+                      <option value="caution">CAUTION</option>
+                      <option value="informative">INFO</option>
+                    </select>
+                  ) : (
+                    <span
+                      className={`text-sm font-semibold px-3 py-1 rounded-full ${meta.color}`}
+                      style={{ backgroundColor: meta.bgColor }}
+                    >
+                      {meta.emoji} {meta.label}
+                    </span>
+                  )}
+                  {/* Confidence Score Badge */}
+                  {a.confidence_score !== undefined && (
+                    <ConfidenceBadge score={a.confidence_score} />
+                  )}
+                  <span className="text-sm font-medium" style={{ color: MAGNUS_COLORS.secondaryText }}>📍 {d.location}, {d.country}</span>
+                  <span className="text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>🕐 {formatDateRange(d)}</span>
                   </div>
                 </div>
               </div>
@@ -341,13 +593,53 @@ return (
             </div>
 
             {/* Summary - Always Visible */}
-            <div className="text-sm leading-relaxed mb-4" style={{ color: MAGNUS_COLORS.secondaryText }}>
-              {a.summary}
-            </div>
+            {editing[a.id] ? (
+              <textarea
+                value={drafts[a.id]?.summary || a.summary}
+                onChange={(e) => setDrafts((d) => ({ ...d, [a.id]: { ...d[a.id], summary: e.target.value } }))}
+                className="w-full p-2 border rounded text-sm mb-4"
+                rows={3}
+              />
+            ) : (
+              <div className="text-sm leading-relaxed mb-4" style={{ color: MAGNUS_COLORS.secondaryText }}>
+                {d.summary}
+              </div>
+            )}
 
             {/* Quick Actions - Always Visible */}
             <div className="flex gap-2 flex-wrap">
-              {permissions.canApproveAndPost && (
+              {permissions.canEditAlerts && (
+                <>
+                  {editing[a.id] ? (
+                    <>
+                      <button
+                        onClick={() => saveEdit(a.id)}
+                        className="text-white px-3 py-2 rounded font-semibold text-sm transition hover:opacity-90"
+                        style={{ backgroundColor: MAGNUS_COLORS.deepGreen }}
+                      >
+                        ✓ Save
+                      </button>
+                      <button
+                        onClick={() => cancelEdit(a.id)}
+                        className="text-white px-3 py-2 rounded font-semibold text-sm transition hover:opacity-90"
+                        style={{ backgroundColor: MAGNUS_COLORS.orange }}
+                      >
+                        ✕ Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => startEdit(a)}
+                      className="text-white px-3 py-2 rounded font-semibold text-sm transition hover:opacity-90"
+                      style={{ backgroundColor: MAGNUS_COLORS.deepGreen }}
+                    >
+                      ✎ Edit
+                    </button>
+                  )}
+                </>
+              )}
+
+              {permissions.canApproveAndPost && !editing[a.id] && (
                 <button
                   onClick={() => approve(a.id)}
                   className="text-white px-4 py-2 rounded font-semibold text-sm transition hover:opacity-90"
@@ -357,7 +649,7 @@ return (
                 </button>
               )}
 
-              {permissions.canDismiss && (
+              {permissions.canDismiss && !editing[a.id] && (
                 <button
                   onClick={() => dismiss(a.id)}
                   className="text-white px-4 py-2 rounded font-semibold text-sm transition hover:opacity-90"
@@ -369,7 +661,7 @@ return (
 
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(whatsappTemplate(a));
+                  navigator.clipboard.writeText(whatsappTemplate(d));
                   window.alert("✓ Copied WhatsApp alert");
                 }}
                 className="text-white px-4 py-2 rounded font-semibold text-sm transition hover:opacity-90"
@@ -392,7 +684,7 @@ return (
 
           {/* Expanded Content */}
           {open && (
-            <div className="p-6 space-y-4 bg-white">
+            <div className="p-4 space-y-2 bg-white">
               {a.region && (
                 <div>
                   <h4 className="font-semibold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>Region</h4>
@@ -400,32 +692,335 @@ return (
                 </div>
               )}
 
-              {a.geojson && (
-                <div>
-                  <h4 className="font-semibold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>📍 Map</h4>
-                  <GeoJsonPreview geojson={a.geojson} />
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <h4 className="font-semibold" style={{ color: MAGNUS_COLORS.darkGreen }}>ACF Classification</h4>
+                  <div className="space-y-2 text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>
+                    <div>
+                      <span className="font-semibold">Mainland:</span>{" "}
+                      {edit ? (
+                        <select
+                          value={d.mainland || ""}
+                          onChange={(e) => setDrafts((draft) => ({ ...draft, [a.id]: { ...draft[a.id], mainland: e.target.value || null } }))}
+                          className="border rounded px-2 py-1 text-sm"
+                          style={{ borderColor: MAGNUS_COLORS.border }}
+                        >
+                          {MAINLAND_OPTIONS.map((opt) => (
+                            <option key={opt || "blank"} value={opt}>{opt || ""}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span>{d.mainland || "—"}</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="font-semibold">Intelligence Topics:</span>{" "}
+                      {edit ? (
+                        <select
+                          value={d.intelligence_topics || ""}
+                          onChange={(e) => setDrafts((draft) => ({ ...draft, [a.id]: { ...draft[a.id], intelligence_topics: e.target.value || null } }))}
+                          className="border rounded px-2 py-1 text-sm"
+                          style={{ borderColor: MAGNUS_COLORS.border }}
+                        >
+                          {INTELLIGENCE_TOPIC_OPTIONS.map((opt) => (
+                            <option key={opt || "blank"} value={opt}>{opt || ""}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span>{d.intelligence_topics || d.event_type || "—"}</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="font-semibold">Event Type:</span>{" "}
+                      {edit ? (
+                        <input
+                          value={d.event_type || ""}
+                          onChange={(e) => setDrafts((draft) => ({ ...draft, [a.id]: { ...draft[a.id], event_type: e.target.value } }))}
+                          className="border rounded px-2 py-1 text-sm"
+                          style={{ borderColor: MAGNUS_COLORS.border }}
+                        />
+                      ) : (
+                        <span>{d.event_type || "—"}</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              )}
 
-              {a.event_type && (
-                <div>
-                  <h4 className="font-semibold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>Event Type</h4>
-                  <p style={{ color: MAGNUS_COLORS.secondaryText }}>{a.event_type}</p>
+                <div className="space-y-2">
+                  <h4 className="font-semibold" style={{ color: MAGNUS_COLORS.darkGreen }}>Location Details</h4>
+                  <div className="space-y-2 text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>
+                    <div>
+                      <span className="font-semibold">Location:</span>{" "}
+                      {edit ? (
+                        <input
+                          value={d.location || ""}
+                          onChange={(e) => setDrafts((draft) => ({ ...draft, [a.id]: { ...draft[a.id], location: e.target.value } }))}
+                          className="border rounded px-2 py-1 text-sm"
+                          style={{ borderColor: MAGNUS_COLORS.border }}
+                        />
+                      ) : (
+                        <span>{d.location}</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="font-semibold">Country:</span>{" "}
+                      {edit ? (
+                        <input
+                          value={d.country || ""}
+                          onChange={(e) => setDrafts((draft) => ({ ...draft, [a.id]: { ...draft[a.id], country: e.target.value } }))}
+                          className="border rounded px-2 py-1 text-sm"
+                          style={{ borderColor: MAGNUS_COLORS.border }}
+                        />
+                      ) : (
+                        <span>{d.country}</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="font-semibold">Latitude / Longitude:</span>{" "}
+                      {edit ? (
+                        <span className="flex gap-2">
+                          <input
+                            value={d.latitude || ""}
+                            onChange={(e) => setDrafts((draft) => ({ ...draft, [a.id]: { ...draft[a.id], latitude: e.target.value } }))}
+                            className="border rounded px-2 py-1 text-sm"
+                            style={{ borderColor: MAGNUS_COLORS.border }}
+                            placeholder="lat"
+                          />
+                          <input
+                            value={d.longitude || ""}
+                            onChange={(e) => setDrafts((draft) => ({ ...draft, [a.id]: { ...draft[a.id], longitude: e.target.value } }))}
+                            className="border rounded px-2 py-1 text-sm"
+                            style={{ borderColor: MAGNUS_COLORS.border }}
+                            placeholder="lon"
+                          />
+                        </span>
+                      ) : (
+                        <span>{[d.latitude, d.longitude].filter(Boolean).join(", ") || "—"}</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="font-semibold">Radius (km):</span>{" "}
+                      {edit ? (
+                        <input
+                          type="number"
+                          value={d.radius ?? ""}
+                          onChange={(e) => setDrafts((draft) => ({ ...draft, [a.id]: { ...draft[a.id], radius: e.target.value ? parseFloat(e.target.value) : null } }))}
+                          className="border rounded px-2 py-1 text-sm"
+                          style={{ borderColor: MAGNUS_COLORS.border }}
+                          min="0"
+                          step="0.1"
+                        />
+                      ) : (
+                        <span>{d.radius ?? "—"}</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              )}
+              </div>
 
-              {a.recommendations && (
+              <div>
+                <h4 className="font-semibold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>Timeline</h4>
+                {edit ? (
+                  <div className="grid md:grid-cols-2 gap-3 text-sm">
+                    <label className="flex flex-col gap-1">
+                      <span className="font-semibold" style={{ color: MAGNUS_COLORS.secondaryText }}>Start</span>
+                      <input
+                        type="date"
+                        value={(d.event_start_date || "").split("T")[0]}
+                        onChange={(e) => setDrafts((draft) => ({ ...draft, [a.id]: { ...draft[a.id], event_start_date: e.target.value } }))}
+                        className="border rounded px-2 py-1"
+                        style={{ borderColor: MAGNUS_COLORS.border }}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="font-semibold" style={{ color: MAGNUS_COLORS.secondaryText }}>End</span>
+                      <input
+                        type="date"
+                        value={(d.event_end_date || "").split("T")[0]}
+                        onChange={(e) => setDrafts((draft) => ({ ...draft, [a.id]: { ...draft[a.id], event_end_date: e.target.value } }))}
+                        className="border rounded px-2 py-1"
+                        style={{ borderColor: MAGNUS_COLORS.border }}
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <p className="text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>{formatDateRange(d)}</p>
+                )}
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-semibold text-base" style={{ color: MAGNUS_COLORS.darkGreen }}>📍 Map / GeoJSON</h4>
+                  {permissions.canEditAlerts && editingGeoJsonId !== a.id && (
+                    <button
+                      onClick={() => {
+                        setEditingGeoJsonId(a.id);
+                        if (a.geo_json) {
+                          setEditGeoJson(typeof a.geo_json === 'string' ? a.geo_json : JSON.stringify(a.geo_json, null, 2));
+                        } else {
+                          setEditGeoJson('{\n  "type": "Feature",\n  "geometry": {\n    "type": "Polygon",\n    "coordinates": [[[0,0],[1,0],[1,1],[0,1],[0,0]]]\n  },\n  "properties": {}\n}');
+                        }
+                      }}
+                      className="text-xs px-2 py-1 rounded hover:bg-gray-100"
+                      style={{ color: MAGNUS_COLORS.deepGreen }}
+                    >
+                      ✏️ Edit
+                    </button>
+                  )}
+                </div>
+
+                {editingGeoJsonId === a.id ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={editGeoJson}
+                      onChange={(e) => setEditGeoJson(e.target.value)}
+                      className="w-full p-2 border rounded font-mono text-xs"
+                      rows={10}
+                      placeholder='{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[lon,lat]...]]},"properties":{}}'
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={async () => {
+                          try {
+                            const parsed = JSON.parse(editGeoJson);
+                            const geoJsonString = JSON.stringify(parsed);
+                            const updated = { ...a, geo_json: parsed, geojson: geoJsonString };
+                            await fetch(`${API_BASE}/alerts/${a.id}`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ 
+                                geo_json: parsed,
+                                geojson: geoJsonString
+                              }),
+                            });
+                            setAlerts(alerts.map(x => x.id === a.id ? updated : x));
+                            setEditingGeoJsonId(null);
+                          } catch (e) {
+                            alert('Invalid GeoJSON: ' + (e as Error).message);
+                          }
+                        }}
+                        className="px-3 py-1 rounded text-white font-semibold"
+                        style={{ backgroundColor: MAGNUS_COLORS.deepGreen }}
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setEditingGeoJsonId(null)}
+                        className="px-3 py-1 rounded border"
+                        style={{ color: MAGNUS_COLORS.secondaryText }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  geojson ? (
+                    <GeoJsonPreview geojson={geojson} />
+                  ) : (
+                    <div className="text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>
+                      No GeoJSON set. Click Edit to add a polygon.
+                    </div>
+                  )
+                )}
+              </div>
+
+              <div>
+                <h4 className="font-semibold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>Description</h4>
+                {edit ? (
+                  <textarea
+                    value={d.description || ""}
+                    onChange={(e) => setDrafts((draft) => ({ ...draft, [a.id]: { ...draft[a.id], description: e.target.value } }))}
+                    className="w-full p-2 border rounded text-sm"
+                    style={{ borderColor: MAGNUS_COLORS.border }}
+                    rows={3}
+                  />
+                ) : (
+                  <p className="text-sm leading-relaxed" style={{ color: MAGNUS_COLORS.secondaryText }}>
+                    {d.description || "—"}
+                  </p>
+                )}
+              </div>
+
+              {d.recommendations && (
                 <div className="p-4 rounded" style={{ backgroundColor: MAGNUS_COLORS.offWhite, borderLeft: `4px solid ${MAGNUS_COLORS.deepGreen}` }}>
-                  <h4 className="font-semibold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>🎯 Traveler Recommendations</h4>
-                  <p className="whitespace-pre-wrap" style={{ color: MAGNUS_COLORS.secondaryText }}>{a.recommendations}</p>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-semibold text-base" style={{ color: MAGNUS_COLORS.darkGreen }}>🎯 Traveler Recommendations</h4>
+                    {permissions.canEditAlerts && editingRecommendationsId !== a.id && (
+                      <button
+                        onClick={() => {
+                          setEditingRecommendationsId(a.id);
+                          setEditRecommendations(d.recommendations || "");
+                        }}
+                        className="text-xs font-semibold hover:opacity-80 transition"
+                        style={{ color: MAGNUS_COLORS.deepGreen }}
+                      >
+                        ✏️ Edit
+                      </button>
+                    )}
+                  </div>
+
+                  {editingRecommendationsId === a.id ? (
+                    <div className="space-y-2">
+                      <textarea
+                        value={editRecommendations}
+                        onChange={(e) => setEditRecommendations(e.target.value)}
+                        className="w-full border rounded p-2 text-sm"
+                        rows={6}
+                        placeholder="Enter recommendations, one per line&#10;1. First recommendation&#10;2. Second recommendation"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            const updated = drafts[a.id] || {};
+                            updated.recommendations = editRecommendations;
+                            setDrafts({ ...drafts, [a.id]: updated });
+                            setEditingRecommendationsId(null);
+                          }}
+                          className="text-xs px-3 py-1 rounded font-semibold text-white hover:opacity-90 transition"
+                          style={{ backgroundColor: MAGNUS_COLORS.deepGreen }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingRecommendationsId(null)}
+                          className="text-xs px-3 py-1 rounded font-semibold hover:opacity-80 transition"
+                          style={{ color: MAGNUS_COLORS.secondaryText }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {normalizeRecommendations(d.recommendations).length > 0 ? (
+                        <ol className="space-y-2 ml-4 list-decimal">
+                          {normalizeRecommendations(d.recommendations)
+                            .slice(0, 4)
+                            .map((item: string, i: number) => (
+                              <li key={i} className="text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>
+                                {item}
+                              </li>
+                            ))}
+                        </ol>
+                      ) : (
+                        <p className="text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>{d.recommendations}</p>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
 
-              {(a.source_url || a.article_url) && (
+              {(a.source_url || a.article_url || sourcesList.length > 0) && (
                 <div>
                   <h4 className="font-semibold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>Sources</h4>
                   <div className="space-y-1">
-                    {a.sources && <p style={{ color: MAGNUS_COLORS.secondaryText }}>Source: {a.sources}</p>}
+                    {sourcesList.length > 0 && (
+                      <ul className="list-disc ml-4 text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>
+                        {sourcesList.map((s, idx) => (
+                          <li key={idx}>{s.title || s.url || JSON.stringify(s)}</li>
+                        ))}
+                      </ul>
+                    )}
                     {a.article_url && (
                       <a
                         href={a.article_url}
@@ -452,19 +1047,14 @@ return (
                 </div>
               )}
 
-              {a.geojson && (
-                <div>
-                  <h4 className="font-semibold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>Map</h4>
-                  <GeoJsonPreview geojson={a.geojson} />
-                </div>
-              )}
+              {/* Map inset shown above; avoid duplicate rendering */}
 
               {/* Internal Metadata - Not exported to WhatsApp/WordPress */}
               <div className="p-3 rounded border-l-4" style={{ backgroundColor: MAGNUS_COLORS.offWhite, borderLeftColor: MAGNUS_COLORS.secondaryText }}>
                 <p className="text-xs font-semibold mb-2" style={{ color: MAGNUS_COLORS.secondaryText }}>⚙ Internal - Not Shared</p>
                 <div className="space-y-1 text-sm">
                   <div style={{ color: MAGNUS_COLORS.secondaryText }}>
-                    <span className="font-medium">Event Time:</span> {formatEventTime(a)}
+                    <span className="font-medium">Event Time:</span> {formatEventTime(d)}
                   </div>
                   <div style={{ color: MAGNUS_COLORS.secondaryText }}>
                     <span className="font-medium">Alert Created:</span> {new Date(a.created_at).toLocaleString()}
@@ -485,5 +1075,6 @@ return (
 
 
 }
+
 
 

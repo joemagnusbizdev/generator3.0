@@ -21,6 +21,7 @@ export { default as AnalyticsDashboardInline } from './AnalyticsDashboardInline'
 export { default as SourceManagerInline } from './SourceManagerInline';
 export { SourceTable } from './SourceTable';
 export type { Source } from './SourceTable';
+export { OPMLImport } from './OPMLImport';
 
 // Trends
 export { default as TrendsView } from './TrendsView';

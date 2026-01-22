@@ -126,10 +126,10 @@ const ANALYST_PERMISSIONS: PermissionSet = {
   canExportTrends: true,
   canDeleteTrends: true,
   
-  // Analytics - NO ACCESS
-  canAccessAnalytics: false,
-  canViewDetailedStats: false,
-  canExportAnalytics: false,
+  // Analytics - FULL ACCESS (analyst+ can access analytics)
+  canAccessAnalytics: true,
+  canViewDetailedStats: true,
+  canExportAnalytics: true,
   
   // User Management - NO ACCESS
   canManageUsers: false,
@@ -241,8 +241,8 @@ export function getRoleLabel(role: Role): string {
 export function getRoleDescription(role: Role): string {
   const descriptions: Record<Role, string> = {
     operator: 'Core operations: create, scour, review, post, delete, dismiss alerts and manage trends.',
-    analyst: 'All operator permissions plus source management (add, edit, delete sources).',
-    admin: 'Full system access including analytics dashboard and user management.',
+    analyst: 'All operator permissions plus source management and analytics dashboard.',
+    admin: 'Full system access including user management and system settings.',
   };
   return descriptions[role] || '';
 }

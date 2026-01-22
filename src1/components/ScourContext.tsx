@@ -20,6 +20,7 @@ export interface ScourJob {
   ai_engaged?: boolean;
   currentSource?: string;
   currentActivity?: string;
+  activityLog?: Array<{ time: string; message: string }>;
 }
 
 export interface ScourStartOpts {

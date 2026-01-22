@@ -2,6 +2,7 @@
 import { apiFetchJson, apiPatchJson, apiPostJson } from "../lib/utils/api";
 import { useScour } from "./ScourContext";
 import { SourceBulkUpload } from "./SourceBulkUpload";
+import { OPMLImport } from "./OPMLImport";
 import ScourStatusBarInline from "./ScourStatusBarInline";
 import { AutoScourSettings } from "./AutoScourSettings";
 import MAGNUS_COLORS from "../styles/magnus-colors";
@@ -48,8 +49,12 @@ const SourceManagerInline: React.FC<Props> = ({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [total, setTotal] = useState(0);
+  const [enabledTotal, setEnabledTotal] = useState(0);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newSource, setNewSource] = useState({ name: "", url: "", country: "" });
+  const [addingSource, setAddingSource] = useState(false);
 
-  const { isScouring, startScour } = useScour();
+  const { isScouring, startScour, stopScour } = useScour();
 
   const canManage = permissions?.canManageSources !== false;
   const canScour = permissions?.canScour !== false;
@@ -61,13 +66,15 @@ const SourceManagerInline: React.FC<Props> = ({
   async function loadSources() {
     try {
       setLoading(true);
+      const searchParam = search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
       const res = await apiFetchJson<{ ok: boolean; sources: Source[]; total: number; page: number; pageSize: number }>(
-        `/analytics/sources?page=${page}&pageSize=${pageSize}`,
+        `/analytics/sources?page=${page}&pageSize=${pageSize}${searchParam}`,
         accessToken
       );
       if (res.ok) {
         setSources(res.sources || []);
         setTotal(res.total || 0);
+        setEnabledTotal((res as any).stats?.enabled || 0);
       } else {
         setSources([]);
       }
@@ -80,37 +87,35 @@ const SourceManagerInline: React.FC<Props> = ({
 
   useEffect(() => {
     loadSources();
-  }, [accessToken, page, pageSize]);
+  }, [accessToken, page, pageSize, search]);
+
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    if (search.trim()) {
+      setPage(1);
+    }
+  }, [search]);
 
   /* =========================
      Search / Filter
   ========================= */
 
-  const filteredSources = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return sources;
-
-    return sources.filter((s) =>
-      [s.name, s.url, s.country]
-        .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(q))
-    );
-  }, [sources, search]);
+  // Remove client-side filtering since search is now server-side
+  const filteredSources = sources;
 
   /* =========================
      Scour
   ========================= */
 
   async function runScour() {
-    const enabled = filteredSources.filter((s) => s.enabled);
-
-    if (!enabled.length) {
-      alert("No enabled sources match the current filter");
+    // Use global enabledTotal to reflect all enabled sources, not just filtered
+    if (enabledTotal === 0) {
+      alert("No enabled sources available to scour");
       return;
     }
 
+    // Start scour with no sourceIds to use all enabled sources globally
     await startScour(accessToken, {
-      sourceIds: enabled.map((s) => s.id),
       daysBack: 14,
     });
   }
@@ -149,6 +154,30 @@ const SourceManagerInline: React.FC<Props> = ({
     loadSources();
   }
 
+  async function addSingleSource() {
+    if (!newSource.url.trim()) {
+      alert("URL is required");
+      return;
+    }
+
+    setAddingSource(true);
+    try {
+      const res = await apiPostJson("/sources", newSource, accessToken) as any;
+      if (res.ok) {
+        setNewSource({ name: "", url: "", country: "" });
+        setShowAddForm(false);
+        loadSources();
+        alert(`Source ${res.action === 'updated' ? 'updated' : 'added'} successfully!`);
+      } else {
+        alert(`Error: ${res.error || 'Failed to add source'}`);
+      }
+    } catch (e: any) {
+      alert(`Error: ${e.message}`);
+    } finally {
+      setAddingSource(false);
+    }
+  }
+
   /* =========================
      Render
   ========================= */
@@ -160,12 +189,93 @@ const SourceManagerInline: React.FC<Props> = ({
         <AutoScourSettings accessToken={accessToken} isAdmin />
       )}
 
+      {/* OPML Import */}
+      {canManage && (
+        <OPMLImport accessToken={accessToken} onImportComplete={loadSources} />
+      )}
+
       {/* Bulk Upload */}
       {canManage && (
         <SourceBulkUpload
           accessToken={accessToken}
           onUploadComplete={loadSources}
         />
+      )}
+
+      {/* Single Source Add */}
+      {canManage && (
+        <div className="border rounded-lg p-4" style={{ backgroundColor: MAGNUS_COLORS.offWhite, borderColor: MAGNUS_COLORS.deepGreen }}>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold" style={{ color: MAGNUS_COLORS.darkGreen }}>
+              ➕ Add Individual Source
+            </h3>
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="text-sm px-3 py-1 rounded"
+              style={{ 
+                backgroundColor: showAddForm ? MAGNUS_COLORS.caution : MAGNUS_COLORS.deepGreen,
+                color: 'white'
+              }}
+            >
+              {showAddForm ? 'Cancel' : 'Add Source'}
+            </button>
+          </div>
+          
+          {showAddForm && (
+            <div className="space-y-3 mt-3">
+              <div>
+                <label className="block text-sm font-medium mb-1" style={{ color: MAGNUS_COLORS.darkGreen }}>
+                  Source URL <span style={{ color: MAGNUS_COLORS.critical }}>*</span>
+                </label>
+                <input
+                  type="url"
+                  value={newSource.url}
+                  onChange={(e) => setNewSource({ ...newSource, url: e.target.value })}
+                  placeholder="https://example.com/rss"
+                  className="w-full px-3 py-2 border rounded"
+                  style={{ borderColor: MAGNUS_COLORS.deepGreen }}
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1" style={{ color: MAGNUS_COLORS.darkGreen }}>
+                    Source Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newSource.name}
+                    onChange={(e) => setNewSource({ ...newSource, name: e.target.value })}
+                    placeholder="News Source Name"
+                    className="w-full px-3 py-2 border rounded"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1" style={{ color: MAGNUS_COLORS.darkGreen }}>
+                    Country
+                  </label>
+                  <input
+                    type="text"
+                    value={newSource.country}
+                    onChange={(e) => setNewSource({ ...newSource, country: e.target.value })}
+                    placeholder="e.g., US, UK, FR"
+                    className="w-full px-3 py-2 border rounded"
+                  />
+                </div>
+              </div>
+              
+              <button
+                onClick={addSingleSource}
+                disabled={addingSource || !newSource.url.trim()}
+                className="px-4 py-2 rounded text-white font-semibold disabled:opacity-50"
+                style={{ backgroundColor: MAGNUS_COLORS.deepGreen }}
+              >
+                {addingSource ? 'Adding...' : 'Add Source'}
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Scour Status */}
@@ -182,6 +292,16 @@ const SourceManagerInline: React.FC<Props> = ({
           {isScouring ? "Scouring…" : "Run Scour"}
         </button>
 
+        {isScouring && (
+          <button
+            onClick={stopScour}
+            className="px-3 py-1 rounded text-white font-semibold transition hover:opacity-90"
+            style={{ backgroundColor: MAGNUS_COLORS.orange }}
+          >
+            ⊘ Stop Scour
+          </button>
+        )}
+
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -190,10 +310,7 @@ const SourceManagerInline: React.FC<Props> = ({
         />
 
         <span className="text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>
-          {
-            filteredSources.filter((s) => s.enabled).length
-          }{" "}
-          / {filteredSources.length} enabled
+          {enabledTotal} / {total} enabled
         </span>
       </div>
 
@@ -301,34 +418,66 @@ const SourceManagerInline: React.FC<Props> = ({
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center gap-3 mt-3">
+      <div className="flex items-center gap-3 mt-3 flex-wrap">
+        <button
+          onClick={() => setPage(1)}
+          disabled={page <= 1}
+          className="px-3 py-1 rounded font-semibold transition hover:opacity-90 disabled:opacity-50 text-xs"
+          style={{ backgroundColor: MAGNUS_COLORS.offWhite, color: MAGNUS_COLORS.darkGreen }}
+          title="First page"
+        >
+          ⏮ First
+        </button>
         <button
           onClick={() => setPage((p) => Math.max(1, p - 1))}
           disabled={page <= 1}
-          className="px-3 py-1 rounded font-semibold transition hover:opacity-90 disabled:opacity-50"
+          className="px-3 py-1 rounded font-semibold transition hover:opacity-90 disabled:opacity-50 text-xs"
           style={{ backgroundColor: MAGNUS_COLORS.offWhite, color: MAGNUS_COLORS.darkGreen }}
         >
-          Prev
+          ⏪ Prev
         </button>
-        <span className="text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>Page {page}</span>
+        <span className="text-xs" style={{ color: MAGNUS_COLORS.secondaryText }}>
+          Page <strong>{page}</strong> of <strong>{Math.ceil(total / pageSize)}</strong>
+        </span>
         <button
           onClick={() => setPage((p) => (p * pageSize < total ? p + 1 : p))}
           disabled={page * pageSize >= total}
-          className="px-3 py-1 rounded font-semibold transition hover:opacity-90 disabled:opacity-50"
+          className="px-3 py-1 rounded font-semibold transition hover:opacity-90 disabled:opacity-50 text-xs"
           style={{ backgroundColor: MAGNUS_COLORS.offWhite, color: MAGNUS_COLORS.darkGreen }}
         >
-          Next
+          Next ⏩
         </button>
-        <span className="text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>Total: {total}</span>
+        <button
+          onClick={() => setPage(Math.ceil(total / pageSize))}
+          disabled={page >= Math.ceil(total / pageSize)}
+          className="px-3 py-1 rounded font-semibold transition hover:opacity-90 disabled:opacity-50 text-xs"
+          style={{ backgroundColor: MAGNUS_COLORS.offWhite, color: MAGNUS_COLORS.darkGreen }}
+          title="Last page"
+        >
+          Last ⏭
+        </button>
+        <span className="text-xs" style={{ color: MAGNUS_COLORS.secondaryText }}>
+          Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of <strong>{total}</strong>
+        </span>
         <select
           value={pageSize}
-          onChange={(e) => setPageSize(parseInt(e.target.value, 10))}
-          className="border px-2 py-1 rounded text-sm"
+          onChange={(e) => { setPageSize(parseInt(e.target.value, 10)); setPage(1); }}
+          className="border px-2 py-1 rounded text-xs"
+          title="Items per page"
         >
           {[25, 50, 100].map((n) => (
             <option key={n} value={n}>{n}/page</option>
           ))}
         </select>
+        <button
+          onClick={loadSources}
+          disabled={loading}
+          className="px-3 py-1 rounded font-semibold transition hover:opacity-90 disabled:opacity-50 text-xs"
+          style={{ backgroundColor: MAGNUS_COLORS.caution, color: 'white' }}
+          title="Refresh source list and counts"
+        >
+          🔄 Sync
+        </button>
       </div>
     </div>
   );

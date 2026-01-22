@@ -29,23 +29,26 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // Permissions
 // -------------------------
 function getPermissions(role: Role) {
-  // App-wide permissions
+  // OPERATOR: review, create, scour, approve, post, delete, dismiss, trends
+  // ANALYST: all operator + sources + analytics
+  // ADMIN: all analyst + user management
+  
   const base = {
-    canReview: role !== "operator",
-    canCreate: true,
-    canManageSources: role === "admin",
-    canScour: role !== "operator",
-    canAccessAnalytics: role !== "operator",
-    canManageUsers: role === "admin",
+    canReview: true,                                    // All roles can review
+    canCreate: true,                                    // All roles can create
+    canManageSources: role === "analyst" || role === "admin",  // Analyst+
+    canScour: true,                                     // All roles can scour
+    canAccessAnalytics: role === "analyst" || role === "admin", // Analyst+
+    canManageUsers: role === "admin",                   // Admin only
   };
 
   // AlertReviewQueueInline expects these additional keys:
   return {
     ...base,
-    canApproveAndPost: role === "admin" || role === "analyst",
-    canDismiss: role !== "operator",
-    canDelete: role === "admin",
-    canEditAlerts: role !== "operator",
+    canApproveAndPost: true,                            // All roles can approve/post
+    canDismiss: true,                                   // All roles can dismiss
+    canDelete: true,                                    // All roles can delete
+    canEditAlerts: true,                                // All roles can edit
   };
 }
 
@@ -111,6 +114,8 @@ export default function App(): JSX.Element {
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
         <div className="w-full max-w-md bg-white border rounded-lg p-6 shadow-sm">
           <div className="text-lg font-semibold mb-2">MAGNUS Intelligence</div>
+          <div className="text-sm text-gray-600">MAGNUS ATLAS</div>
+          <div className="text-xs text-gray-500 mb-4">Analysis and Threat Location based Alert System</div>
           <div className="text-sm text-gray-600 mb-4">Sign in to continue.</div>
           <Auth
             supabaseClient={supabase}
