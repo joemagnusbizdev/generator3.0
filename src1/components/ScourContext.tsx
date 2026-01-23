@@ -21,6 +21,10 @@ export interface ScourJob {
   currentSource?: string;
   currentActivity?: string;
   activityLog?: Array<{ time: string; message: string }>;
+  aiActive?: boolean;
+  braveActive?: boolean;
+  extractActive?: boolean;
+  dupeCheckActive?: boolean;
 }
 
 export interface ScourStartOpts {

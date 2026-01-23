@@ -5,5 +5,8 @@
   "framework": "vite",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "ignoreBuildStep": [
+    "supabase/functions/**"
   ]
 }

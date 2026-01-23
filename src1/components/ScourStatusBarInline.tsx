@@ -22,13 +22,23 @@ export default function ScourStatusBarInline() {
     }
   }, [scourJob?.activityLog]);
 
-  // Parse current activity to determine component status
+  // Use explicit backend flags if present, fallback to log parsing
   const getComponentStatus = () => {
+    if (scourJob) {
+      // Prefer explicit flags from backend
+      const ai = typeof scourJob.aiActive === 'boolean' ? scourJob.aiActive : undefined;
+      const brave = typeof scourJob.braveActive === 'boolean' ? scourJob.braveActive : undefined;
+      const extraction = typeof scourJob.extractActive === 'boolean' ? scourJob.extractActive : undefined;
+      const dupe = typeof scourJob.dupeCheckActive === 'boolean' ? scourJob.dupeCheckActive : undefined;
+      // If all are defined, use them
+      if ([ai, brave, extraction, dupe].every(v => typeof v === 'boolean')) {
+        return { ai, brave, extraction, dupe };
+      }
+    }
+    // Fallback: parse activity/logs
     if (!scourJob?.currentActivity) return { ai: false, brave: false, extraction: false, dupe: false };
-    
     const activity = scourJob.currentActivity.toLowerCase();
     const recentLogs = scourJob.activityLog?.slice(-5).map(e => e.message.toLowerCase()).join(' ') || '';
-    
     return {
       ai: activity.includes('ai') || activity.includes('🤖') || recentLogs.includes('ai analyzing'),
       brave: activity.includes('brave') || activity.includes('🔎') || recentLogs.includes('brave search'),

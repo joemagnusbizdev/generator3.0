@@ -42,8 +42,7 @@ const COUNTRY_COORDS: Record<string, [number, number]> = {
   'Thailand': [100.9925, 15.8700],
   'Philippines': [121.7740, 12.8797],
   'South Korea': [127.0780, 37.5665],
-  'France': [2.3522, 48.8566],
-  'Germany': [13.4050, 52.5200],
+  // Removed duplicate 'France' and 'Germany' entries
   'Netherlands': [5.2913, 52.1326],
 };
 
@@ -1535,29 +1534,28 @@ Return ONLY valid JSON array, no markdown formatting, no explanatory text.`;
         id: crypto.randomUUID(),
         title: alert.title,
         summary: alert.summary,
-        description: alert.summary || '',  // ACF field
+        description: alert.summary || '',
         location: alert.location,
         country: alert.country,
         region: alert.region,
-        mainland: alert.mainland || null,  // ACF field
-        intelligence_topics: normalizeIntelligenceTopicsForACF(alert.eventType),  // ACF field
+        mainland: alert.mainland || null,
+        intelligence_topics: normalizeIntelligenceTopicsForACF(alert.eventType),
         event_type: alert.eventType || alert.event_type,
         severity,
-        status: 'draft' as const,
+        status: 'draft',
         source_url,
         article_url: source_url,
         sources: sourceName,
         event_start_date: alert.eventStartDate || alert.event_start_date,
         event_end_date: alert.eventEndDate || alert.event_end_date,
-        latitude: lat ? String(lat) : null,  // ACF field (as string)
-        longitude: lon ? String(lon) : null,  // ACF field (as string)
-        radius: radiusKm || null,  // ACF field
-        geojson: geoJSON ? JSON.stringify(geoJSON) : null,  // ACF polygon field (stringified GeoJSON)
-        recommendations: alert.recommendations || alert.mitigation || '',  // ACF field
+        latitude: typeof lat === 'number' && !isNaN(lat) ? lat : undefined,
+        longitude: typeof lon === 'number' && !isNaN(lon) ? lon : undefined,
+        radiusKm: radiusKm || undefined,
+        geoJSON: geoJSON,
+        recommendations: alert.recommendations || alert.mitigation || '',
         ai_generated: true,
         ai_model: 'gpt-4o-mini',
         ai_confidence: 0.85,
-        geo_json: geoJSON,
         generation_metadata: JSON.stringify({
           extracted_at: now,
           source_name: sourceName,
@@ -1636,22 +1634,25 @@ async function runScourWorker(config: ScourConfig): Promise<{
 
   // Activity log helper - adds timestamped entry to job status
   const activityLog: Array<{ time: string; message: string }> = [];
-  const logActivity = async (message: string) => {
-    const entry = { time: new Date().toISOString(), message };
-    activityLog.push(entry);
-    // Keep only last 10 entries to avoid bloat
-    if (activityLog.length > 10) activityLog.shift();
-    
+  // Helper to update job status with optional flags
+  const setJobStatus = async (fields: Record<string, any>) => {
     try {
       const currentJob = await getKV(`scour_job:${config.jobId}`) || {};
       await setKV(`scour_job:${config.jobId}`, {
         ...currentJob,
-        activityLog: activityLog.slice(), // Clone array
+        ...fields,
         updated_at: new Date().toISOString(),
       });
     } catch (e) {
       // Non-critical: log update failed
     }
+  };
+
+  const logActivity = async (message: string, flags?: Record<string, boolean>) => {
+    const entry = { time: new Date().toISOString(), message };
+    activityLog.push(entry);
+    if (activityLog.length > 10) activityLog.shift();
+    await setJobStatus({ activityLog: activityLog.slice(), ...(flags || {}) });
   };
 
   console.log(`\n?? Starting scour ${config.jobId} with ${config.sourceIds.length} sources`);
@@ -1732,10 +1733,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
         stats.processed++;
 
         console.log(`\n?? [${stats.processed}/${config.sourceIds.length}] Processing: ${source.name}`);
-        await logActivity(`📰 Scouring: ${source.name}`);
-
-        // Update status: Starting source
-        await setKV(`scour_job:${config.jobId}`, {
+        await logActivity(`📰 Scouring: ${source.name}`, { aiActive: false, braveActive: false, extractActive: false, dupeCheckActive: false });
+        await setJobStatus({
           id: config.jobId,
           status: 'running',
           total: config.sourceIds.length,
@@ -1745,9 +1744,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
           errorCount: stats.errors.length,
           currentSource: source.name,
           currentActivity: 'Fetching content',
-          activityLog: activityLog.slice(),
-          updated_at: new Date().toISOString(),
-        }).catch(() => {});
+          aiActive: false, braveActive: false, extractActive: false, dupeCheckActive: false,
+        });
 
         let content = '';
         let articleUrl: string | null = null;
@@ -1756,8 +1754,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
         
         // Try Brave Search first if configured
         if (config.braveApiKey && source.query) {
-          await logActivity(`🔎 Brave searching: "${source.query.slice(0, 40)}..."`);
-          await setKV(`scour_job:${config.jobId}`, {
+          await logActivity(`🔎 Brave searching: "${source.query.slice(0, 40)}..."`, { braveActive: true });
+          await setJobStatus({
             id: config.jobId,
             status: 'running',
             total: config.sourceIds.length,
@@ -1767,9 +1765,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
             errorCount: stats.errors.length,
             currentSource: source.name,
             currentActivity: '🔎 Brave Search',
-            activityLog: activityLog.slice(),
-            updated_at: new Date().toISOString(),
-          }).catch(() => {});
+            braveActive: true,
+          });
           console.log(`  ?? Brave Search ? "${source.query}"`);
           const br = await fetchWithBraveSearch(source.query, config.braveApiKey);
           content = br.content;
@@ -1783,8 +1780,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
         
         // Fall back to scraping if Brave didn't provide enough content
         if (!content || content.length < 100) {
-          await logActivity(`🌐 Web scraping ${source.name}...`);
-          await setKV(`scour_job:${config.jobId}`, {
+          await logActivity(`🌐 Web scraping ${source.name}...`, { extractActive: true });
+          await setJobStatus({
             id: config.jobId,
             status: 'running',
             total: config.sourceIds.length,
@@ -1794,9 +1791,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
             errorCount: stats.errors.length,
             currentSource: source.name,
             currentActivity: '🌐 Web scraping',
-            activityLog: activityLog.slice(),
-            updated_at: new Date().toISOString(),
-          }).catch(() => {});
+            extractActive: true,
+          });
           console.log(`  ?? Scraping source: ${source.url}`);
           const scraped = await scrapeUrl(source.url);
           if (scraped && scraped.length >= 100) {
@@ -1933,8 +1929,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
             continue;
           }
 
-          await logActivity(`🤖 AI analyzing content...`);
-          await setKV(`scour_job:${config.jobId}`, {
+          await logActivity(`🤖 AI analyzing content...`, { aiActive: true });
+          await setJobStatus({
             id: config.jobId,
             status: 'running',
             total: config.sourceIds.length,
@@ -1944,9 +1940,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
             errorCount: stats.errors.length,
             currentSource: source.name,
             currentActivity: '🤖 AI analyzing content',
-            activityLog: activityLog.slice(),
-            updated_at: new Date().toISOString(),
-          }).catch(() => {});
+            aiActive: true,
+          });
           console.log(`  ?? OpenAI Analysis ? Extracting alerts (${config.openaiKey ? 'API ready' : 'NO API KEY'})...`);
           try {
             extractedAlerts = await extractAlertsWithAI(
@@ -1975,7 +1970,7 @@ async function runScourWorker(config: ScourConfig): Promise<{
         for (const alert of extractedAlerts) {
           let isDuplicate = false;
 
-          await setKV(`scour_job:${config.jobId}`, {
+          await setJobStatus({
             id: config.jobId,
             status: 'running',
             total: config.sourceIds.length,
@@ -1985,9 +1980,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
             errorCount: stats.errors.length,
             currentSource: source.name,
             currentActivity: `🔍 Checking: ${alert.title.slice(0, 40)}...`,
-            activityLog: activityLog.slice(),
-            updated_at: new Date().toISOString(),
-          }).catch(() => {});
+            dupeCheckActive: true,
+          });
 
           console.log(`    ?? Checking: "${alert.title}" (${alert.location}, ${alert.country})`);
 
@@ -2073,7 +2067,7 @@ async function runScourWorker(config: ScourConfig): Promise<{
         }
 
         // Update status after completing this source
-        await setKV(`scour_job:${config.jobId}`, {
+        await setJobStatus({
           id: config.jobId,
           status: 'running',
           total: config.sourceIds.length,
@@ -2083,9 +2077,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
           errorCount: stats.errors.length,
           currentSource: source.name,
           currentActivity: `✅ Completed: ${source.name}`,
-          activityLog: activityLog.slice(),
-          updated_at: new Date().toISOString(),
-        }).catch(() => {});
+          aiActive: false, braveActive: false, extractActive: false, dupeCheckActive: false,
+        });
 
       } catch (sourceErr: any) {
         stats.errors.push(`Source error: ${sourceErr.message}`);
@@ -2099,8 +2092,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
           created: stats.created,
           duplicatesSkipped: stats.duplicates,
           errorCount: stats.errors.length,
-          currentSource: source.name,
-          currentActivity: `❌ Error: ${source.name}`,
+          currentSource: sourceId || '',
+          currentActivity: `❌ Error: ${sourceId || 'Unknown source'}`,
           activityLog: activityLog.slice(),
           updated_at: new Date().toISOString(),
         }).catch(() => {});
