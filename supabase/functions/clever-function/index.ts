@@ -898,7 +898,11 @@ async function parseUSGSAtom(xml: string, source: any): Promise<Alert[]> {
     const link = parseAttr('link', 'href', e) || source.url;
     const updated = parseText('updated', e) || now;
     const point = parseText('georss:point', e) || parseText('point', e) || '';
-    const mag = magnitudeFromTitle(title);
+    let mag = magnitudeFromTitle(title);
+    if (mag === null) {
+      const summaryText = parseText('summary', e) || parseText('description', e) || parseText('content', e) || '';
+      mag = magnitudeFromTitle(summaryText);
+    }
     if (mag === null || mag < 5.5) continue; // enforce threshold
     const [latStr, lonStr] = point.split(/\\s+/);
     const lat = latStr ? parseFloat(latStr) : undefined;
@@ -1683,7 +1687,7 @@ async function runScourWorker(config: ScourConfig): Promise<{
           stats.errors.push(`Source ${sourceId} not found`);
           await logActivity(`⚠️ Source ${sourceId} not found - skipping`);
           stats.processed++; // Increment even for skipped sources
-          
+
           // Update status for skipped source
           await setKV(`scour_job:${config.jobId}`, {
             id: config.jobId,
@@ -1698,7 +1702,29 @@ async function runScourWorker(config: ScourConfig): Promise<{
             activityLog: activityLog.slice(),
             updated_at: new Date().toISOString(),
           }).catch(() => {});
-          
+
+          continue;
+        }
+
+        // Safety: skip sources that exist but are disabled in the DB
+        if (source.enabled === false) {
+          await logActivity(`⚠️ Source disabled: ${source.name || sourceId} - skipping`);
+          stats.processed++;
+
+          await setKV(`scour_job:${config.jobId}`, {
+            id: config.jobId,
+            status: 'running',
+            total: config.sourceIds.length,
+            processed: stats.processed,
+            created: stats.created,
+            duplicatesSkipped: stats.duplicates,
+            errorCount: stats.errors.length,
+            currentSource: source.name || `Source ${sourceId}`,
+            currentActivity: `⚠️ Skipped: Disabled`,
+            activityLog: activityLog.slice(),
+            updated_at: new Date().toISOString(),
+          }).catch(() => {});
+
           continue;
         }
 

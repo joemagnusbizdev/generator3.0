@@ -1,6 +1,7 @@
 ﻿import { useScour } from "./ScourContext";
 import React, { useEffect, useState } from "react";
 import GeoJsonPreview from "./GeoJsonPreview";
+import GeoJSONGeneratorModal from "./GeoJSONGeneratorModal";
 import MAGNUS_COLORS from "../styles/magnus-colors";
 
 
@@ -299,6 +300,7 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
   const [editGeoJson, setEditGeoJson] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showGeoModal, setShowGeoModal] = useState(false);
 
   const { startScour, isScouring, accessToken } = useScour() as any;
 
@@ -871,6 +873,16 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
 
                 {editingGeoJsonId === a.id ? (
                   <div className="space-y-2">
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <button
+                        onClick={() => setShowGeoModal(true)}
+                        className="text-xs px-2 py-1 rounded hover:bg-gray-100"
+                        style={{ color: MAGNUS_COLORS.deepGreen }}
+                      >
+                        Open GeoJSON Generator
+                      </button>
+                      <span style={{ fontSize: 12, color: MAGNUS_COLORS.secondaryText }}>Draw polygon, copy, and paste below</span>
+                    </div>
                     <textarea
                       value={editGeoJson}
                       onChange={(e) => setEditGeoJson(e.target.value)}
@@ -912,6 +924,11 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
                         Cancel
                       </button>
                     </div>
+                      <GeoJSONGeneratorModal
+                        mapboxToken={import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || 'pk.eyJ1IjoiZXhhbXBsZSIsImEiOiJjbGV4YW1wbGUifQ.example'}
+                        onClose={() => setShowGeoModal(false)}
+                      />
+                    )}
                   </div>
                 ) : (
                   geojson ? (
