@@ -3551,17 +3551,28 @@ Return recommendations in plain text format, organized by category if helpful.`;
             console.log(`  Fetching enabled sources...`);
             const allSources: Source[] = await querySupabaseRest(`/sources?enabled=eq.true&select=*&limit=1000`) || [];
             console.log(`  Found ${allSources.length} enabled sources in database`);
+            console.log(`  Received sourceIds from request: ${sourceIds.length}`);
             
             if (!Array.isArray(allSources)) {
               console.error(`✗ allSources is not an array:`, typeof allSources, allSources);
               return;
             }
             
+            // Use database sources (enabled=true) if more than what was passed
+            // This handles the case where frontend sends old list or incomplete list
+            let sourcesToProcess = sourceIds;
+            if (allSources.length > sourceIds.length) {
+              console.log(`  NOTE: Database has ${allSources.length} enabled sources, using those instead of ${sourceIds.length} passed`);
+              sourcesToProcess = allSources.map(s => s.id);
+            }
+            console.log(`  Will process ${sourcesToProcess.length} sources`);
+            
             // ONLY update total on first run (when processed is still 0)
             // This prevents flashing when status is polled
-            if (currentJob.processed === 0 && currentJob.total !== sourceIds.length) {
-              console.log(`  First run: setting total to ${sourceIds.length}`);
-              currentJob.total = sourceIds.length;
+            if (currentJob.processed === 0 && currentJob.total !== sourcesToProcess.length) {
+              console.log(`  First run: updating total from ${currentJob.total} to ${sourcesToProcess.length}`);
+              currentJob.total = sourcesToProcess.length;
+              currentJob.sourceIds = sourcesToProcess;
               await setKV(`scour_job:${jobId}`, currentJob);
             }
             
@@ -3736,7 +3747,7 @@ Return recommendations in plain text format, organized by category if helpful.`;
             // Track which sources we've already processed to avoid duplicates
             const processedIds = new Set(currentJob.processedIds || []);
             
-            for (const sourceId of sourceIds) {
+            for (const sourceId of sourcesToProcess) {
               // Skip if already processed
               if (processedIds.has(sourceId)) {
                 console.log(`  ⊘ Skipping already-processed source ${sourceId}`);
