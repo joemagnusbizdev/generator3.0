@@ -44,6 +44,7 @@ export interface Alert {
   geojson?: any;
   ai_generated?: boolean;
   confidence_score?: number;  // Factal-style confidence (0.0-1.0)
+  source_query_used?: string;
   created_at: string;
 }
 
@@ -696,7 +697,6 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
 
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <h4 className="font-semibold" style={{ color: MAGNUS_COLORS.darkGreen }}>ACF Classification</h4>
                   <div className="space-y-2 text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>
                     <div>
                       <span className="font-semibold">Mainland:</span>{" "}
@@ -872,64 +872,76 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
                 </div>
 
                 {editingGeoJsonId === a.id ? (
-                  <div className="space-y-2">
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <button
-                        onClick={() => setShowGeoModal(true)}
-                        className="text-xs px-2 py-1 rounded hover:bg-gray-100"
-                        style={{ color: MAGNUS_COLORS.deepGreen }}
-                      >
-                        Open GeoJSON Generator
-                      </button>
-                      <span style={{ fontSize: 12, color: MAGNUS_COLORS.secondaryText }}>Draw polygon, copy, and paste below</span>
+                  <>
+                    <div className="space-y-2">
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                        <button
+                          type="button"
+                          onClick={() => setShowGeoModal(true)}
+                          style={{ 
+                            padding: '6px 12px', 
+                            fontSize: 13,
+                            backgroundColor: '#f0f0f0',
+                            border: '1px solid #ccc',
+                            borderRadius: 4,
+                            cursor: 'pointer',
+                            color: MAGNUS_COLORS.deepGreen,
+                            fontWeight: 500
+                          }}
+                        >
+                          Open GeoJSON Generator
+                        </button>
+                        <span style={{ fontSize: 12, color: MAGNUS_COLORS.secondaryText }}>Draw polygon, copy, and paste below</span>
+                      </div>
+                      <textarea
+                        value={editGeoJson}
+                        onChange={(e) => setEditGeoJson(e.target.value)}
+                        className="w-full p-2 border rounded font-mono text-xs"
+                        rows={10}
+                        placeholder='{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[lon,lat]...]]},"properties":{}}'
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={async () => {
+                            try {
+                              const parsed = JSON.parse(editGeoJson);
+                              const geoJsonString = JSON.stringify(parsed);
+                              const updated = { ...a, geo_json: parsed, geojson: geoJsonString };
+                              await fetch(`${API_BASE}/alerts/${a.id}`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ 
+                                  geo_json: parsed,
+                                  geojson: geoJsonString
+                                }),
+                              });
+                              setAlerts(alerts.map(x => x.id === a.id ? updated : x));
+                              setEditingGeoJsonId(null);
+                            } catch (e) {
+                              alert('Invalid GeoJSON: ' + (e as Error).message);
+                            }
+                          }}
+                          className="px-3 py-1 rounded text-white font-semibold"
+                          style={{ backgroundColor: MAGNUS_COLORS.deepGreen }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingGeoJsonId(null)}
+                          className="px-3 py-1 rounded border"
+                          style={{ color: MAGNUS_COLORS.secondaryText }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
-                    <textarea
-                      value={editGeoJson}
-                      onChange={(e) => setEditGeoJson(e.target.value)}
-                      className="w-full p-2 border rounded font-mono text-xs"
-                      rows={10}
-                      placeholder='{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[lon,lat]...]]},"properties":{}}'
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={async () => {
-                          try {
-                            const parsed = JSON.parse(editGeoJson);
-                            const geoJsonString = JSON.stringify(parsed);
-                            const updated = { ...a, geo_json: parsed, geojson: geoJsonString };
-                            await fetch(`${API_BASE}/alerts/${a.id}`, {
-                              method: "PATCH",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ 
-                                geo_json: parsed,
-                                geojson: geoJsonString
-                              }),
-                            });
-                            setAlerts(alerts.map(x => x.id === a.id ? updated : x));
-                            setEditingGeoJsonId(null);
-                          } catch (e) {
-                            alert('Invalid GeoJSON: ' + (e as Error).message);
-                          }
-                        }}
-                        className="px-3 py-1 rounded text-white font-semibold"
-                        style={{ backgroundColor: MAGNUS_COLORS.deepGreen }}
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={() => setEditingGeoJsonId(null)}
-                        className="px-3 py-1 rounded border"
-                        style={{ color: MAGNUS_COLORS.secondaryText }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
+                    {showGeoModal && (
                       <GeoJSONGeneratorModal
                         mapboxToken={import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || 'pk.eyJ1IjoiZXhhbXBsZSIsImEiOiJjbGV4YW1wbGUifQ.example'}
                         onClose={() => setShowGeoModal(false)}
                       />
                     )}
-                  </div>
+                  </>
                 ) : (
                   geojson ? (
                     <GeoJsonPreview geojson={geojson} />
@@ -1043,24 +1055,19 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
                         href={a.article_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="hover:underline block"
-                        style={{ color: MAGNUS_COLORS.deepGreen }}
+                        className="text-blue-600 hover:underline text-sm"
                       >
-                        📄 Article Link
-                      </a>
-                    )}
-                    {a.source_url && (
-                      <a
-                        href={a.source_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="hover:underline block"
-                        style={{ color: MAGNUS_COLORS.deepGreen }}
-                      >
-                        🔗 Source Link
+                        📄 View Article
                       </a>
                     )}
                   </div>
+                </div>
+              )}
+
+              {a.source_query_used && (
+                <div>
+                  <h4 className="font-semibold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>Source Query Used</h4>
+                  <p className="text-sm italic" style={{ color: MAGNUS_COLORS.secondaryText }}>"{a.source_query_used}"</p>
                 </div>
               )}
 

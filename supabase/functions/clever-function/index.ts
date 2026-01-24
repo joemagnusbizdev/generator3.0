@@ -1278,123 +1278,71 @@ async function extractAlertsWithAI(
   config: ScourConfig
 ): Promise<Alert[]> {
   const currentDate = new Date().toISOString().split('T')[0];
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - config.daysBack);
-  const cutoffStr = cutoffDate.toISOString().split('T')[0];
 
-  const existingAlertsStr = existingAlerts.slice(0, 50).map(a => 
-    `- ${a.title} (${a.location}, ${a.country}) [${a.status}]`
-  ).join('\n');
+  const systemPrompt = `You are a travel intelligence analyst. Extract ANYTHING that could reasonably affect someone traveling to, from, or within a location.
 
-  const systemPrompt = `You are MAGNUS travel safety intelligence analyst. Current date: ${currentDate}.
+INCLUDE ALERTS FOR:
+- Natural disasters: earthquakes, floods, hurricanes, typhoons, wildfires, volcanic eruptions, severe storms
+- Weather: extreme heat/cold, monsoons, heavy snow, dangerous wind, unusual/hazardous conditions
+- Transportation disruptions: airport closures, flight cancellations, strikes, road blockades, traffic chaos, port closures
+- Infrastructure failures: power outages, water shortages, internet outages, bridge/road collapses
+- Health crises: disease outbreaks, pandemics, medical facility closures, epidemics
+- Political/civil unrest: protests, riots, civil unrest, political instability, government changes, coups
+- Security threats: terrorism, attacks, violence, gang activity, crime waves, civil conflict
+- Border/immigration: border closures, visa suspensions, travel bans, entry restrictions
+- Major event cancellations: festivals, conferences, events cancelled
+- Economic disruption: currency crises, market crashes affecting travel
+- Environmental hazards: pollution, contamination, hazardous conditions
+- Evacuations or emergency warnings
 
-CRITICAL RULES - ONLY EXTRACT TRAVEL SAFETY ALERTS:
-1. ONLY extract events from ${cutoffStr} onwards (last ${config.daysBack} days)
-2. REJECT any event from 2023 or earlier
-3. DO NOT create alerts similar to these existing ones:
-${existingAlertsStr}
+REJECT ONLY:
+- Entertainment/sports news without safety impact
+- Celebrity news or gossip
+- Business/corporate news without travel impact
+- Technology releases or product launches
+- Positive tourism promotions
 
-STRICT REJECT - DO NOT EXTRACT ANY OF THESE:
-- Arts, entertainment, culture, music, film, theater, fashion, lifestyle
-- Sports events, games, tournaments, athlete news, team announcements
-- Science discoveries, research, academic papers, space exploration (unless direct safety impact)
-- Business news, corporate earnings, stock markets, mergers, company announcements
-- Technology product launches, app releases, gadget reviews
-- Celebrity news, personal stories, human interest stories without safety relevance
-- Political speeches, election campaigns, policy debates (unless causing unrest/violence)
-- Historical anniversaries, memorials, commemorations
-- General tourism promotion, destination marketing, travel tips
-- Food reviews, restaurant openings, culinary trends
-- Real estate, property markets, construction projects (unless collapse/safety incident)
-- Education news, school openings, academic calendars
-- GLOBAL HEADLINE NEWS - reject all general world news, international politics, diplomacy
+CRITICAL: Be INCLUSIVE not exclusive. If an event MIGHT affect travelers, extract it.
 
-ONLY EXTRACT ALERTS FOR EVENTS THAT DIRECTLY IMPACT TRAVELER SAFETY AND SECURITY:
+EXAMPLE OUTPUT (for a flooding alert in Nigeria):
+[{
+  "title": "Flash Flooding Alert - Lagos State",
+  "summary": "Heavy rainfall causing severe flooding across Lagos metropolitan area affecting transportation and infrastructure",
+  "country": "Nigeria",
+  "location": "Lagos",
+  "latitude": 6.5244,
+  "longitude": 3.3792,
+  "severity": "warning",
+  "eventType": "Severe Weather",
+  "geoJSON": {"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[3.3792,6.5244]},"properties":{"name":"Lagos flooding","severity":"warning"}}]},
+  "recommendations": "Avoid low-lying areas, check flight status, use alternative transport routes"
+}]
 
-PRIORITY EVENTS (Always Extract - Must Impact Travelers):
-- Natural disasters: earthquakes, tsunamis, hurricanes, typhoons, floods, wildfires, volcanic eruptions
-- Severe weather: extreme heat/cold, heavy snow, dangerous storms, monsoons
-- Infrastructure failures: power outages, water shortages, bridge/road collapses
-- Transportation disruptions: airport closures, flight cancellations, train strikes, road blockades
-- Health emergencies: disease outbreaks, medical facility closures, public health alerts
-- Political instability: coups, government collapses, mass protests, civil unrest, riots
-- Security incidents: terrorist attacks, mass shootings, bombings, kidnappings
-- Armed conflict: war zones, active combat, airstrikes, military operations, border conflicts
-- Border issues: border closures, visa suspensions, entry restrictions, deportations
-- Crime waves: increased violence, gang activity, tourist targeting, safety warnings
-- Aviation incidents: plane crashes, airport attacks, airspace closures
-- Maritime incidents: port closures, piracy, ferry disasters, cruise ship emergencies
-- Hate crimes and discrimination: targeted violence, xenophobic attacks, religious persecution
-- Event cancellations: major festivals/conferences cancelled due to safety concerns
-- Evacuations: mass evacuations, embassy warnings to leave, travel bans
+REQUIREMENTS:
+- country: MUST be specific (no "Global", "Worldwide", "International")
+- location: MUST be specific city/region
+- latitude/longitude: REQUIRED decimal degrees (real coordinates for the location)
+- severity: Use critical|warning|caution|informative
+- eventType: Use category from INCLUDE list (e.g., "Severe Weather", "Political Unrest", "Transportation Disruption")
+- geoJSON: Point feature with coordinates (minimal but valid)
+- recommendations: Practical travel advice
 
-SECONDARY (Only if they create travel safety risks):
-- Major government policy changes affecting visitors
-- Currency crises or economic instability
-- Food/water safety alerts
-- Environmental hazards (pollution, radiation, toxic spills)
-- Wildlife hazards (animal attacks, disease-carrying insects)
-- Infrastructure strikes (utilities, communications, transport workers)
+If NO travel-affecting events found, return: []
 
-REJECT ALL OTHER CONTENT - If it's not a direct threat to traveler safety, DO NOT create an alert.
-
-OUTPUT: JSON array of alerts with these MANDATORY fields:
-{
-  "severity": "critical"|"warning"|"caution"|"informative",
-  "country": "SPECIFIC country name (NEVER use 'Global', 'Worldwide', 'International' - list affected countries as separate alerts or use specific regions)",
-  "eventType": "MUST be one of: Armed Conflict, Air Incidents, Air Raid Sirens, Avalanches, Bomb Threats, Building Collapses, Chemical Weapons, Coronavirus, Drought, Earthquakes, Elections, Evacuations, Explosions, Fires, Floods, Health, Heat Waves, Internet Outages, Kidnappings, Landslides, Lockdowns, Nuclear Weapons, Outbreaks, Police Shootings, Power Outages, Protests, Civil Unrest, Rail Incidents, Road Incidents, Robberies, Shootings, Stabbings, Strike Actions, Suspicious Packages, Terrorism, Traffic, Transportation Incidents, Tornadoes, Tropical Cyclones, Tsunamis, Volcanoes, Wildland Fires, Water Quality, Winter Storms, Severe Weather, Security, Safety, Flight Disruptions, Gas Leaks, Pro-Palestinian Protest",
-  "title": "Clear, specific alert headline",
-  "location": "SPECIFIC city/location (NEVER generic like 'Various locations' - be specific: 'Cairo', 'Tokyo', or 'Mexico City to Cancun' if multiple specific places)",
-  "latitude": decimal degrees (REQUIRED - must be specific coordinate, not null),
-  "longitude": decimal degrees (REQUIRED - must be specific coordinate, not null),
-  "radiusKm": "Estimated radius of impact in kilometers (local/small area: 5-20, city: 20-50, regional: 50-200, national: 200-500, multinational: 500+)",
-  "region": "Broader regional context",
-  "geoScope": "local"|"city"|"regional"|"national"|"multinational",
-  "geoJSON": {REQUIRED GeoJSON object: FeatureCollection with polygon or point features covering the affected area. Example: {"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[-73.935242,40.730610],[-73.935242,40.780610],[-73.885242,40.780610],[-73.885242,40.730610],[-73.935242,40.730610]]]},"properties":{"name":"Affected Area"}}]}. MUST be valid GeoJSON or alert will be rejected.},
-  "summary": "What happened, when, where, current status - 2-3 sentences under 150 words",
-  "recommendations": "Specific, actionable advice for travelers - what to do/avoid",
-  "mitigation": "Safety precautions, official guidance, and protective measures",
-  "secondaryImpacts": ["predicted downstream effect 1", "effect 2"],
-  "eventStartDate": "2026-01-14T12:00:00Z",
-  "eventEndDate": "2026-01-17T12:00:00Z"
-}
-
-SEVERITY GUIDELINES:
-- CRITICAL: Imminent danger to life, active conflict, major disasters, urgent evacuations
-- WARNING: Significant risk, developing situations, protests turning violent, serious disruptions
-- CAUTION: Elevated risk, ongoing monitoring needed, minor disruptions, heightened security
-- INFORMATIVE: Awareness advisories, resolved situations, general travel considerations
-
-CRITICAL REQUIREMENTS:
-- COUNTRY: MUST be specific country name. REJECT any alert with 'Global', 'Worldwide', 'International', or 'Multiple'. If event affects multiple countries, create separate alerts per country.
-- LOCATION: MUST be specific city or region name. REJECT vague locations like 'Various locations' or 'Nationwide'. If nationwide, use capital city + radius. For multi-city events, list specific cities.
-- LATITUDE/LONGITUDE: REQUIRED and MUST NOT be null. Provide decimal degrees for the affected area's center.
-- GEOJSON: REQUIRED for all alerts. Must be valid GeoJSON FeatureCollection with polygon(s) or point(s) covering affected area. No null values.
-
-CRITICAL DATES:
-- eventEndDate: Critical=72h from start, Warning=48h, Caution=36h, Informative=24h (adjust based on event duration if specified)
-- Format: ISO 8601 timestamp
-
-REJECT CRITERIA - DO NOT INCLUDE ALERTS WITH:
-- country = "Global", "Worldwide", "International", "Multiple", null, or undefined
-- location = null, undefined, vague descriptions like "Various locations"
-- latitude or longitude = null, undefined, 0, or missing
-- geoJSON = null, undefined, invalid JSON, or missing
-- Content about: arts, sports, entertainment, business, science, technology, celebrity news, culture, lifestyle, food, real estate, education (unless direct safety impact)
-- If any of these are missing, skip the alert entirely
-
-If NO travel-safety-relevant events are found, return an empty array: []
-
-Return ONLY valid JSON array, no markdown formatting, no explanatory text.`;
+Return ONLY JSON array, no explanation, no markdown.`;
 
   try {
-    console.log(`?? OpenAI API ? Calling gpt-4o-mini (API key: ${config.openaiKey ? config.openaiKey.slice(0, 8) + '...' : 'MISSING'})`);
+    console.log(`\n🔍 EXTRACTING ALERTS - Starting AI extraction`);
+    console.log(`   Source: ${sourceName}`);
+    console.log(`   Content: ${content.length} chars`);
+    console.log(`   Prompt length: ${systemPrompt.length} chars`);
     
     if (!config.openaiKey) {
-      console.error('? OpenAI API key is missing - cannot extract alerts');
+      console.error('❌ OpenAI API key missing');
       return [];
     }
 
+    console.log(`🤖 Calling OpenAI gpt-4o-mini...`);
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -1422,33 +1370,59 @@ Return ONLY valid JSON array, no markdown formatting, no explanatory text.`;
     const data = await response.json();
     const aiResponse = data.choices[0]?.message?.content || '[]';
     
-    console.log(`? OpenAI returned response (${aiResponse.length} chars)`);
-    console.log(`   Preview: ${aiResponse.slice(0, 200)}`);
+    console.log(`\n✅ OpenAI responded (${aiResponse.length} chars)`);
+    if (aiResponse.length > 100) {
+      console.log(`   Response preview: ${aiResponse.slice(0, 200)}`);
+    } else {
+      console.log(`   Full response: ${aiResponse}`);
+    }
 
     let alerts: any[] = [];
     try {
       const cleaned = aiResponse.trim().replace(/^```json\s*/,'').replace(/\s*```$/,'');
       alerts = JSON.parse(cleaned);
-    } catch {
+      console.log(`\n📊 PARSED: ${alerts.length} items detected from AI`);
+      if (alerts.length > 0) {
+        console.log(`   First item keys: ${Object.keys(alerts[0]).join(', ')}`);
+        console.log(`   Sample: title="${alerts[0].title}", country="${alerts[0].country}", location="${alerts[0].location}"`);
+      }
+    } catch (e) {
+      console.error(`❌ JSON parse error: ${e}`);
       try {
         const match = aiResponse.match(/\[[\s\S]*\]/);
         if (match) {
           alerts = JSON.parse(match[0]);
+          console.log(`\n📊 PARSED (via fallback regex): ${alerts.length} items detected`);
+        } else {
+          console.log(`❌ No JSON array found in response`);
         }
-      } catch (e) {
-        console.error('? Failed to parse AI response:', e);
+      } catch (e2) {
+        console.error(`❌ Fallback parse also failed: ${e2}`);
         return [];
       }
     }
 
     if (!Array.isArray(alerts)) {
-      console.warn(`? AI response is not an array, got: ${typeof alerts}`);
+      console.error(`❌ AI response is not an array, got: ${typeof alerts}`);
+      console.error(`   Value: ${JSON.stringify(alerts).slice(0, 200)}`);
       return [];
     }
 
-    // VALIDATION: Filter out alerts that don't meet mandatory requirements
+    console.log(`✅ Raw AI response: ${alerts.length} items detected`);
+    if (alerts.length > 0) {
+      console.log(`   First item keys: ${Object.keys(alerts[0]).join(', ')}`);
+      console.log(`   First item: ${JSON.stringify(alerts[0]).slice(0, 200)}`);
+    }
+
+    console.log(`\n🔎 VALIDATING: Checking ${alerts.length} items from AI...`);
+    // VALIDATION: Filter out alerts that don't meet CRITICAL mandatory requirements
     const validAlerts = alerts.filter((alert: any) => {
       const issues: string[] = [];
+      
+      // Check title - MUST exist
+      if (!alert.title || alert.title.trim() === '') {
+        issues.push(`Missing title`);
+      }
       
       // Check country - MUST NOT be Global/Worldwide/International/Multiple
       const country = alert.country?.trim().toLowerCase() || '';
@@ -1457,48 +1431,57 @@ Return ONLY valid JSON array, no markdown formatting, no explanatory text.`;
         issues.push(`Invalid country: "${alert.country}"`);
       }
       
-      // Check location - MUST be specific
+      // Check location - MUST be specific (but be lenient with what "specific" means)
       const location = alert.location?.trim().toLowerCase() || '';
-      const invalidLocations = ['various', 'various locations', 'multiple locations', 'nationwide', 'countrywide', 'unknown'];
+      const invalidLocations = ['various', 'various locations', 'multiple locations', 'unknown', ''];
       if (!alert.location || invalidLocations.includes(location)) {
         issues.push(`Invalid location: "${alert.location}"`);
       }
       
-      // Check coordinates - MUST NOT be null/undefined/zero
+      // Check coordinates - MUST be valid numbers (allow 0,0 as last resort)
       const lat = parseFloat(alert.latitude ?? 'NaN');
       const lon = parseFloat(alert.longitude ?? 'NaN');
-      if (isNaN(lat) || isNaN(lon) || lat === 0 && lon === 0) {
+      if (isNaN(lat) || isNaN(lon)) {
         issues.push(`Invalid coordinates: lat=${alert.latitude}, lon=${alert.longitude}`);
       }
       
-      // Check geoJSON - MUST be present and valid
-      if (!alert.geoJSON) {
-        issues.push('Missing geoJSON');
-      } else {
+      // geoJSON is optional - we'll generate it if missing
+      if (alert.geoJSON) {
         try {
           const gj = typeof alert.geoJSON === 'string' ? JSON.parse(alert.geoJSON) : alert.geoJSON;
-          if (!gj.type || !gj.features) {
-            issues.push('Invalid geoJSON structure');
+          if (gj && !gj.type) {
+            console.warn(`⚠️  geoJSON present but might be malformed for "${alert.title}": ${JSON.stringify(gj).slice(0, 100)}`);
           }
         } catch (e) {
-          issues.push('geoJSON parse error');
+          console.warn(`⚠️  geoJSON parse error for "${alert.title}", will generate fallback: ${e}`);
+          // Don't reject - we'll generate fallback
         }
       }
       
-      // Check eventType - MUST be one of the valid ACF enum values (will be normalized if not)
-      // Note: We normalize invalid values, so just log a warning if it's very wrong
+      // Check eventType - should exist but we can normalize it
       if (!alert.eventType || alert.eventType.trim() === '') {
-        issues.push(`Missing eventType`);
+        console.warn(`⚠️  Alert "${alert.title}" missing eventType, will default to "General"`);
+        // Don't reject - we'll set a default
       }
       
       if (issues.length > 0) {
-        console.warn(`? Filtering out alert "${alert.title}": ${issues.join(', ')}`);
+        console.log(`   ❌ REJECT: "${alert.title}" - ${issues.join(', ')}`);
         return false;
       }
+      console.log(`   ✅ ACCEPT: "${alert.title}" (${alert.location}, ${alert.country})`);
       return true;
     });
+    
+    if (validAlerts.length < alerts.length) {
+      console.log(`\n📊 VALIDATION RESULT: ${validAlerts.length}/${alerts.length} passed`);
+    } else {
+      console.log(`\n✅ ALL ${validAlerts.length} items passed validation`);
+    }
 
     if (validAlerts.length < alerts.length) {
+      const filtered = alerts.length - validAlerts.length;
+      console.log(`\n📊 Validation results: ${validAlerts.length} valid, ${filtered} rejected for validation issues`);
+    }    if (validAlerts.length < alerts.length) {
       console.log(`? Filtered ${alerts.length} alerts → ${validAlerts.length} valid (${alerts.length - validAlerts.length} rejected for missing required fields)`);
     }
 
@@ -2165,36 +2148,46 @@ function nowIso() {
 
 async function querySupabaseRest(endpoint: string, options: RequestInit = {}) {
   const url = `${supabaseUrl}/rest/v1${endpoint}`;
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      "Authorization": `Bearer ${serviceKey}`,
-      "apikey": serviceKey,
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Supabase error ${response.status}: ${text}`);
-  }
-
-  const contentType = response.headers.get('content-type');
-  const text = await response.text();
   
-  // Handle empty responses
-  if (!text || text.trim() === '') {
-    console.warn(`Empty response from ${endpoint}`);
-    return null;
-  }
+  // Add 15 second timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
   
-  // Parse JSON with better error handling
   try {
-    return JSON.parse(text);
-  } catch (e) {
-    console.error(`Failed to parse response from ${endpoint}: ${text.slice(0, 200)}`);
-    throw new Error(`Failed to parse JSON from ${endpoint}: ${e}`);
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        "Authorization": `Bearer ${serviceKey}`,
+        "apikey": serviceKey,
+        "Content-Type": "application/json",
+        ...options.headers,
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Supabase error ${response.status}: ${text}`);
+    }
+
+    const contentType = response.headers.get('content-type');
+    const text = await response.text();
+    
+    // Handle empty responses
+    if (!text || text.trim() === '') {
+      console.warn(`Empty response from ${endpoint}`);
+      return null;
+    }
+    
+    // Parse JSON with better error handling
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      console.error(`Failed to parse response from ${endpoint}: ${text.slice(0, 200)}`);
+      throw new Error(`Failed to parse JSON from ${endpoint}: ${e}`);
+    }
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -2217,8 +2210,10 @@ async function getKV(key: string) {
       console.log(`⚠️ KV GET empty result: ${key}`);
       return null;
     }
-    console.log(`✓ KV GET: ${key}`);
-    return result[0]?.value ?? null;
+    let value = result[0]?.value ?? null;
+    // value is already a JSONB object from Supabase, no parsing needed
+    console.log(`✓ KV GET: ${key}`, value ? `(${typeof value})` : '');
+    return value;
   } catch (e: any) {
     console.error(`✗ KV GET ERROR: ${key}`, e?.message || e);
     return null;
@@ -2226,29 +2221,36 @@ async function getKV(key: string) {
 }
 
 async function setKV(key: string, value: any) {
-  const data = { key, value, updated_at: nowIso() };
+  // value column is JSONB, so send object/array directly, not stringified
+  const data = { 
+    key, 
+    value: value,
+    updated_at: nowIso() 
+  };
   try {
-    const patchRes = await querySupabaseRest(`/app_kv?key=eq.${encodeURIComponent(key)}`, {
-      method: "PATCH",
+    // Try DELETE first to avoid PATCH/POST conflict
+    try {
+      await querySupabaseRest(`/app_kv?key=eq.${encodeURIComponent(key)}`, {
+        method: "DELETE"
+      });
+      console.log(`  KV DELETE done: ${key}`);
+    } catch (e) {
+      // Ignore delete errors (key might not exist)
+    }
+    
+    // Then POST the new value
+    console.log(`  Attempting KV POST: ${key}`);
+    const postRes = await querySupabaseRest("/app_kv", {
+      method: "POST",
       body: JSON.stringify(data),
       headers: { "Prefer": "return=representation" }
     });
-    console.log(`? KV PATCH: ${key}`);
-    return patchRes;
-  } catch (e: any) {
-    console.log(`  KV PATCH failed, trying POST: ${key}`, e?.message);
-    try {
-      const postRes = await querySupabaseRest("/app_kv", {
-        method: "POST",
-        body: JSON.stringify(data),
-        headers: { "Prefer": "return=representation" }
-      });
-      console.log(`? KV POST: ${key}`);
-      return postRes;
-    } catch (e2: any) {
-      console.error(`? KV SAVE FAILED: ${key}`, e2?.message);
-      throw e2;
-    }
+    console.log(`✓ KV POST success: ${key}`, postRes);
+    return postRes;
+  } catch (e2: any) {
+    console.error(`✗ KV SAVE FAILED for ${key}: ${e2?.message}`);
+    console.error(`  Error details:`, e2);
+    throw e2;
   }
 }
 
@@ -3518,63 +3520,433 @@ Return recommendations in plain text format, organized by category if helpful.`;
         created_at: nowIso(),
         updated_at: nowIso(),
         total: sourceIds.length,
+        phase: "main_scour",
+        currentEarlySignalQuery: "0/850",
+        aiActive: false,
+        extractActive: false,
+        braveActive: false,
+        dupeCheckActive: false,
       };
 
       await setKV(`scour_job:${jobId}`, job);
       await setKV("last_scour_job_id", jobId);
       await setKV("last_scoured_timestamp", nowIso());
 
-      // Run scour asynchronously on server - continues even if browser closes or navigates
-      // waitUntil() ensures the background task completes before edge function is terminated
+      // Run scour inline (no external function call to avoid JWT issues)
       console.log(`?? SCOUR JOB CREATED: ${job.total} sources to process`);
-      console.log(`?? Passing Brave API to worker: ${BRAVE_API_KEY ? BRAVE_API_KEY.slice(0, 12) + '...' : 'NOT SET'}`);
+      
       waitUntil(
-        runScourWorker({
-          jobId,
-          sourceIds,
-          daysBack,
-          supabaseUrl,
-          serviceKey,
-          openaiKey: OPENAI_API_KEY!,
-          braveApiKey: BRAVE_API_KEY,
-        }).then(async (stats) => {
-          const finalJob = { ...job, status: "done", ...stats, updated_at: nowIso() };
-          await setKV(`scour_job:${jobId}`, finalJob);
-          console.log(`✓ SCOUR COMPLETED (Server-side): ${jobId}`, stats);
-          console.log(`✓ Brave API available: ${BRAVE_API_KEY ? 'YES' : 'NO'}`);
-          
-          // Trigger early signals if Brave API is configured
-          if (BRAVE_API_KEY) {
-            console.log(`✓ Triggering early-signal Brave queries for job ${jobId}...`);
-            try {
-              const signalRes = await fetch(`${supabaseUrl}/functions/v1/clever-function/scour/early-signals`, {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${serviceKey}`,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ jobId }),
-              });
-              console.log(`✓ Early signals response: ${signalRes.status} ${signalRes.statusText}`);
-              if (!signalRes.ok) {
-                const errText = await signalRes.text().catch(() => 'unknown');
-                console.error(`✗ Early signals endpoint error: ${errText}`);
-              }
-            } catch (e) {
-              console.error(`✗ Early signals fetch failed:`, e);
+        (async () => {
+          try {
+            console.log(`?? Starting inline scour processing for job ${jobId}`);
+            
+            // Fetch all enabled sources
+            console.log(`  Fetching enabled sources...`);
+            const allSources: Source[] = await querySupabaseRest(`/sources?enabled=eq.true&select=*&limit=1000`) || [];
+            console.log(`  Found ${allSources.length} enabled sources`);
+            
+            if (!Array.isArray(allSources)) {
+              console.error(`✗ allSources is not an array:`, typeof allSources, allSources);
+              return;
             }
-          } else {
-            console.warn(`⚠️ Brave API key not available - skipping early signals`);
+            
+            // Load current job state from KV to preserve any existing progress
+            let currentJob = await getKV(`scour_job:${jobId}`);
+            if (!currentJob) {
+              currentJob = { ...job };
+            }
+            
+            console.log(`?? SCOUR STARTING: Loading job from KV`);
+            console.log(`   Job ID: ${jobId}`);
+            console.log(`   Current state: processed=${currentJob.processed || 0}/${currentJob.total}, created=${currentJob.created || 0}`);
+            console.log(`   ProcessedIds: ${JSON.stringify((currentJob.processedIds || []).slice(0, 5))}${(currentJob.processedIds || []).length > 5 ? '...' : ''}`);
+            
+            let stats = {
+              processed: currentJob.processed || 0,
+              created: currentJob.created || 0,
+              skipped: currentJob.skipped || 0,
+              duplicatesSkipped: currentJob.duplicatesSkipped || 0,
+              errorCount: currentJob.errorCount || 0,
+              errors: [] as string[],
+            };
+            
+            // Track stats in KV after each update to prevent resets
+            const updateJobStats = async (updates: any = {}) => {
+              stats = { ...stats, ...updates };
+              const minStats = {
+                processed: Math.max(stats.processed, currentJob.processed || 0),
+                created: Math.max(stats.created, currentJob.created || 0),
+                skipped: Math.max(stats.skipped, currentJob.skipped || 0),
+                duplicatesSkipped: Math.max(stats.duplicatesSkipped, currentJob.duplicatesSkipped || 0),
+                errorCount: Math.max(stats.errorCount, currentJob.errorCount || 0),
+              };
+              currentJob = { ...currentJob, ...minStats, updated_at: nowIso() };
+              await setKV(`scour_job:${jobId}`, currentJob);
+            };
+            
+            // Load existing alerts for deduplication
+            const sinceDateIso = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString();
+            const existingAlerts: Alert[] = await querySupabaseRest(
+              `/alerts?created_at=gte.${encodeURIComponent(sinceDateIso)}&select=*&limit=200`
+            ) || [];
+            
+            // Process each source
+            console.log(`  Processing sourceIds: [${sourceIds.join(', ')}]`);
+            console.log(`  Current progress: processed=${currentJob.processed || 0}/${currentJob.total}, created=${currentJob.created || 0}`);
+            
+            // Track which sources we've already processed to avoid duplicates
+            const processedIds = new Set(currentJob.processedIds || []);
+            
+            for (const sourceId of sourceIds) {
+              // Skip if already processed
+              if (processedIds.has(sourceId)) {
+                console.log(`  ⊘ Skipping already-processed source ${sourceId}`);
+                continue;
+              }
+              
+              console.log(`\n📋 Starting source processing loop iteration for: ${sourceId}`);
+              console.log(`  Looking for source ${sourceId}...`);
+              const source = allSources.find((s: Source) => s.id === sourceId);
+              
+              if (!source) {
+                console.log(`    ✗ Source ${sourceId} not found in allSources (have ${allSources.length} total)`);
+                if (allSources.length > 0) {
+                  console.log(`    Available IDs: [${allSources.slice(0, 5).map((s: any) => s.id).join(', ')}]`);
+                }
+                stats.errorCount++;
+                await updateJobStats({ errorCount: stats.errorCount });
+                continue;  // IMPORTANT: continue instead of just updating stats
+              }
+              
+              console.log(`    ✓ Found: ${source.name}`);
+              
+              if (!source.enabled) {
+                stats.skipped++;
+                await updateJobStats({ skipped: stats.skipped });
+                console.log(`⊘ Skipped: ${source.name} (disabled)`);
+                continue;
+              }
+              
+              stats.processed++;
+              
+              // Update progress in KV every source
+              await updateJobStats({ processed: stats.processed, currentSourceName: source.name });
+              
+              console.log(`📰 Processing [${stats.processed}/${sourceIds.length}]: ${source.name}`);
+              
+              try {
+                // Set activity flags ON while processing
+                currentJob.braveActive = true;
+                currentJob.aiActive = true;
+                currentJob.extractActive = true;
+                currentJob.dupeCheckActive = true;
+                currentJob.updated_at = nowIso();
+                await setKV(`scour_job:${jobId}`, currentJob);
+                
+                // Fetch content (Brave API or scraping)
+                let content = '';
+                try {
+                  if (BRAVE_API_KEY && source.query) {
+                    const promise = fetchWithBraveSearch(source.query, BRAVE_API_KEY);
+                    const timeoutPromise = new Promise((_, reject) => 
+                      setTimeout(() => reject(new Error('Brave API timeout')), 10000)
+                    );
+                    const br = await Promise.race([promise, timeoutPromise]) as any;
+                    content = br.content;
+                  }
+                  
+                  if (!content || content.length < 500) {
+                    const promise = scrapeUrl(source.url);
+                    const timeoutPromise = new Promise((_, reject) => 
+                      setTimeout(() => reject(new Error('Scrape timeout')), 10000)
+                    );
+                    const scraped = await Promise.race([promise, timeoutPromise]) as string;
+                    if (scraped?.length >= 500) content = scraped;
+                  }
+                } catch (fetchErr: any) {
+                  console.warn(`  ⚠️ Content fetch error: ${fetchErr?.message || fetchErr}`);
+                }
+                
+                if (!content || content.length < 500) {
+                  console.log(`✗ No sufficient content from ${source.name}`);
+                  stats.errorCount++;
+                  currentJob.braveActive = false;
+                  currentJob.aiActive = false;
+                  currentJob.extractActive = false;
+                  currentJob.dupeCheckActive = false;
+                  currentJob.updated_at = nowIso();
+                  await setKV(`scour_job:${jobId}`, currentJob);
+                  continue;
+                }
+                
+                // Extract alerts with AI
+                let alerts: Alert[] = [];
+                try {
+                  const promise = extractAlertsWithAI(
+                    content, 
+                    source.url, 
+                    source.name, 
+                    existingAlerts,
+                    { 
+                      supabaseUrl, 
+                      serviceKey, 
+                      openaiKey: OPENAI_API_KEY!, 
+                      jobId, 
+                      sourceIds, 
+                      daysBack 
+                    }
+                  );
+                  const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('AI extraction timeout')), 30000)
+                  );
+                  alerts = await Promise.race([promise, timeoutPromise]) as Alert[];
+                  console.log(`  ✓ AI extraction returned ${alerts.length} alerts from ${source.name}`);
+                } catch (aiErr: any) {
+                  console.warn(`  ⚠️ AI extraction error on ${source.name}: ${aiErr?.message || aiErr}`);
+                  alerts = [];
+                }
+                
+                // Check duplicates and save valid alerts
+                for (const alert of alerts) {
+                  // Improved dedup: check title + location + country for better accuracy
+                  const isDupe = existingAlerts.some(e => {
+                    const titleMatch = e.title?.toLowerCase().includes(alert.title.toLowerCase().slice(0, 30));
+                    const locationMatch = e.location?.toLowerCase() === alert.location?.toLowerCase() && 
+                                         e.country?.toLowerCase() === alert.country?.toLowerCase();
+                    return titleMatch && locationMatch;
+                  });
+                  
+                  if (!isDupe) {
+                    try {
+                      console.log(`    ✓ Creating new alert: "${alert.title}" in ${alert.location}, ${alert.country}`);
+                      
+                      // Normalize alert object for database (convert camelCase to snake_case)
+                      const alertForDb = {
+                        ...alert,
+                        geo_json: alert.geoJSON || alert.geo_json || null,  // Map geoJSON to geo_json
+                        event_type: alert.eventType || alert.event_type,     // Map eventType to event_type
+                        intelligence_topics: alert.intelligence_topics,
+                        ai_generated: true,
+                        created_at: nowIso(),
+                        status: 'draft',
+                      };
+                      // Remove camelCase versions to avoid Supabase errors
+                      delete (alertForDb as any).geoJSON;
+                      delete (alertForDb as any).eventType;
+                      
+                      await querySupabaseRest(`/alerts`, {
+                        method: 'POST',
+                        body: JSON.stringify(alertForDb),
+                      });
+                      stats.created++;
+                      existingAlerts.push(alert);
+                      console.log(`✓ Created: ${alert.title}`);
+                      await updateJobStats({ created: stats.created });
+                    } catch (e: any) {
+                      console.warn(`    ✗ Failed to save alert "${alert.title}": ${e.message}`);
+                      stats.errorCount++;
+                      stats.errors.push(`Failed to save: ${e.message}`);
+                    }
+                  } else {
+                    console.log(`    ⊘ Skipping duplicate alert: "${alert.title}"`);
+                    stats.duplicatesSkipped++;
+                    await updateJobStats({ duplicatesSkipped: stats.duplicatesSkipped });
+                  }
+                }
+                
+                // Mark source as processed and turn off all activity flags
+                stats.processed++;
+                processedIds.add(sourceId);
+                currentJob.processedIds = Array.from(processedIds);
+                currentJob.braveActive = false;
+                currentJob.aiActive = false;
+                currentJob.extractActive = false;
+                currentJob.dupeCheckActive = false;
+                currentJob.updated_at = nowIso();
+                await updateJobStats({ processed: stats.processed });
+                await setKV(`scour_job:${jobId}`, currentJob);
+              } catch (e: any) {
+                stats.errorCount++;
+                stats.processed++;
+                stats.errors.push(`Source error: ${e.message}`);
+                console.log(`✗ Error: ${e.message}`);
+                // Mark source as processed even on error, turn off flags
+                processedIds.add(sourceId);
+                currentJob.processedIds = Array.from(processedIds);
+                currentJob.braveActive = false;
+                currentJob.aiActive = false;
+                currentJob.extractActive = false;
+                currentJob.dupeCheckActive = false;
+                currentJob.errorCount = Math.max(stats.errorCount, currentJob.errorCount || 0);
+                currentJob.updated_at = nowIso();
+                await updateJobStats({ processed: stats.processed, errorCount: stats.errorCount });
+                await setKV(`scour_job:${jobId}`, currentJob);
+              }
+            }
+            
+            // RUN EARLY SIGNALS (Brave Search queries for proactive detection)
+            if (BRAVE_API_KEY) {
+              console.log(`\n⚡ EARLY SIGNALS: Starting proactive Brave Search queries...`);
+              console.log(`   Brave API Key: ${BRAVE_API_KEY ? BRAVE_API_KEY.slice(0, 12) + '...' : 'NOT SET'}`);
+              currentJob.phase = "early_signals";
+              currentJob.braveActive = true;
+              currentJob.updated_at = nowIso();
+              await setKV(`scour_job:${jobId}`, currentJob);
+              
+              const baseQueries = [
+                "earthquake reported residents say",
+                "aftershock felt this morning",
+                "landslide blocked road",
+                "flash flooding reported",
+                "river overflowed homes evacuated",
+                "wildfire spreading toward town",
+                "volcanic ash advisory issued",
+                "tsunami warning issued locally",
+                "airport closed due to weather",
+                "runway closed after incident",
+                "flights cancelled without notice",
+                "airspace closed temporarily",
+                "border closed without warning",
+                "protests erupted overnight",
+                "riot police deployed downtown",
+                "civil unrest reported",
+                "explosion reported near",
+                "gunfire reported",
+                "bombing reported",
+                "evacuation ordered",
+                "curfew announced tonight",
+                "suspicious package found",
+                "security incident reported",
+                "emergency declared",
+                "state of emergency",
+              ];
+              
+              const countries = [
+                'United States', 'United Kingdom', 'France', 'Germany', 'Spain', 'Italy', 'Brazil', 'Mexico', 'India', 'China', 
+                'Japan', 'Australia', 'South Korea', 'Canada', 'Nigeria', 'Egypt', 'Turkey', 'Russia', 'Ukraine', 'Philippines',
+                'Georgia', 'New Zealand', 'Colombia', 'Peru', 'Chile', 'Argentina', 'Ecuador', 'Costa Rica', 'Thailand', 'Cambodia',
+                'Vietnam', 'Nepal', 'Laos', 'Indonesia'
+              ];
+              
+              console.log(`  Executing ${baseQueries.length * countries.length} early signal queries (${baseQueries.length} queries × ${countries.length} countries)...`);
+              
+              // Execute early signal queries in parallel with progress tracking
+              let completedQueries = 0;
+              const totalQueries = baseQueries.length * countries.length;
+              
+              const earlySignalPromises = baseQueries.flatMap(baseQuery =>
+                countries.map(async (country) => {
+                  const query = `${baseQuery} ${country}`;
+                  try {
+                    completedQueries++;
+                    
+                    // Update progress every 10 queries
+                    if (completedQueries % 10 === 0 || completedQueries === 1) {
+                      currentJob.currentEarlySignalQuery = `${completedQueries}/${totalQueries}`;
+                      currentJob.updated_at = nowIso();
+                      await setKV(`scour_job:${jobId}`, currentJob);
+                    }
+                    
+                    console.log(`  ⚡ Early signal query [${completedQueries}/${totalQueries}]: "${query}"`);
+                    const br = await fetchWithBraveSearch(query, BRAVE_API_KEY);
+                    if (!br.content || br.content.length < 500) {
+                      console.log(`    → No content found (${br.content?.length || 0} chars)`);
+                      return;
+                    }
+                    
+                    // Extract alerts from early signal content
+                    const signalAlerts = await extractAlertsWithAI(
+                      br.content,
+                      br.primaryUrl || query,
+                      `Brave Search: ${query}`,
+                      existingAlerts,
+                      { supabaseUrl, serviceKey, openaiKey: OPENAI_API_KEY!, jobId, sourceIds, daysBack }
+                    );
+                    
+                    if (signalAlerts.length > 0) {
+                      console.log(`    ✓ Found ${signalAlerts.length} alerts from this query`);
+                      
+                      // Save early signal alerts
+                      for (const alert of signalAlerts) {
+                        try {
+                          const alertForDb = {
+                            ...alert,
+                            geo_json: alert.geoJSON || alert.geo_json || null,
+                            event_type: alert.eventType || alert.event_type,
+                            source_query_used: query,  // Track which query generated this alert
+                            ai_generated: true,
+                            created_at: nowIso(),
+                            status: 'draft',
+                          };
+                          delete (alertForDb as any).geoJSON;
+                          delete (alertForDb as any).eventType;
+                          
+                          await querySupabaseRest(`/alerts`, {
+                            method: 'POST',
+                            body: JSON.stringify(alertForDb),
+                          });
+                          stats.created++;
+                          existingAlerts.push(alert);
+                          console.log(`      ✓ Saved: ${alert.title}`);
+                        } catch (saveErr: any) {
+                          console.warn(`      ✗ Failed to save alert: ${saveErr.message}`);
+                          stats.errorCount++;
+                        }
+                      }
+                    }
+                  } catch (queryErr: any) {
+                    console.warn(`    ✗ Query failed: ${queryErr?.message || queryErr}`);
+                  }
+                })
+              );
+              
+              console.log(`  Waiting for ${earlySignalPromises.length} early signal queries to complete...`);
+              await Promise.all(earlySignalPromises);
+              console.log(`✓ Early signals complete (${totalQueries} queries executed)`);
+              
+              currentJob.phase = "finalizing";
+              currentJob.braveActive = false;
+              currentJob.currentEarlySignalQuery = "complete";
+              await updateJobStats({ created: stats.created, errorCount: stats.errorCount });
+            }
+            
+            // Save final job status
+            const finalJob = { 
+              ...currentJob, 
+              status: "done", 
+              phase: "done",
+              ...stats, 
+              braveActive: false, 
+              aiActive: false, 
+              extractActive: false, 
+              dupeCheckActive: false,
+              currentSourceName: '',
+              currentEarlySignalQuery: "complete",
+              updated_at: nowIso() 
+            };
+            await setKV(`scour_job:${jobId}`, finalJob);
+            console.log(`✓ SCOUR COMPLETED: ${jobId}`, JSON.stringify(stats));
+          } catch (e: any) {
+            const err = String(e?.message || e);
+            console.error(`✗ SCOUR ERROR: ${jobId}`, err);
+            const fail = { 
+              ...currentJob, 
+              status: "error", 
+              errorCount: 1, 
+              errors: [err], 
+              braveActive: false,
+              aiActive: false,
+              extractActive: false,
+              dupeCheckActive: false,
+              currentSourceName: '',
+              updated_at: nowIso() 
+            };
+            await setKV(`scour_job:${jobId}`, fail);
           }
-        }).catch(async (e: any) => {
-          const err = String(e?.message || e);
-          const fail = { ...job, status: "error", errorCount: 1, errors: [err], updated_at: nowIso() };
-          await setKV(`scour_job:${jobId}`, fail);
-          console.log(`✗ SCOUR FAILED (Server-side): ${jobId}`, err);
-        })
+        })()
       );
 
-      return json({ ok: true, jobId, total: sourceIds.length, message: `Scour job started with ${sourceIds.length} sources` });
+      return json({ ok: true, jobId, total: sourceIds.length, message: `Scour started` });
     }
 
     // SCOUR � EARLY SIGNALS (POST /scour/early-signals)
@@ -3680,15 +4052,32 @@ Return recommendations in plain text format, organized by category if helpful.`;
 
       if (!jobId) return json({ ok: true, job: null });
 
+      console.log(`? Getting status for job: ${jobId}`);
       const job = await getKV(`scour_job:${jobId}`);
       
       if (job) {
-        console.log(`? Job found: ${jobId}, total=${job.total}, processed=${job.processed}, status=${job.status}`);
-        return json({ ok: true, job });
+        console.log(`✓ Job found in KV: ${jobId}, total=${job.total}, processed=${job.processed}, created=${job.created}, status=${job.status}`);
+        // Return minimal job object for frontend (exclude large errors array)
+        return json({ ok: true, job: {
+          id: job.id,
+          status: job.status,
+          phase: job.phase || "main_scour",
+          currentEarlySignalQuery: job.currentEarlySignalQuery || "0/850",
+          total: job.total,
+          processed: job.processed,
+          created: job.created,
+          duplicatesSkipped: job.duplicatesSkipped || 0,
+          errorCount: job.errorCount || 0,
+          currentSourceName: job.currentSourceName || '',
+          aiActive: job.aiActive || false,
+          extractActive: job.extractActive || false,
+          braveActive: job.braveActive || false,
+          dupeCheckActive: job.dupeCheckActive || false
+        }});
       }
       
       // Job not in KV - query alerts table directly for real results
-      console.log(`?? Job ${jobId} not in KV store, querying alerts table for real results...`);
+      console.log(`⚠️ Job ${jobId} not in KV store, querying alerts table...`);
       try {
         // Query alerts created recently (last 30 minutes to catch current scour)
         const timeWindow = new Date(Date.now() - 30 * 60000).toISOString();
@@ -3699,11 +4088,11 @@ Return recommendations in plain text format, organized by category if helpful.`;
         const totalCreated = Array.isArray(jobAlerts) ? jobAlerts.length : 0;
         const draftCount = Array.isArray(jobAlerts) ? jobAlerts.filter(a => a.status === 'draft').length : 0;
 
-        console.log(`? Found ${totalCreated} alerts from recent scour (${draftCount} draft)`);
+        console.log(`ℹ️ Found ${totalCreated} alerts from recent scour (${draftCount} draft)`);
 
-        // Return job status based on actual alerts found - assume 10 sources for progress calculation
-        const estimatedTotalSources = 10; // Conservative estimate
-        const estimatedProcessed = Math.min(estimatedTotalSources, Math.max(1, Math.round(totalCreated * 1.5)));
+        // Return job status based on actual alerts found
+        const estimatedTotalSources = totalCreated > 0 ? Math.max(totalCreated, 5) : 1;
+        const estimatedProcessed = totalCreated > 0 ? Math.ceil(totalCreated) : 0;
         
         return json({
           ok: true,
@@ -3717,7 +4106,7 @@ Return recommendations in plain text format, organized by category if helpful.`;
             errorCount: 0,
             errors: [],
             currentActivity: totalCreated > 0 
-              ? `?? Found ${totalCreated} alert(s) so far`
+              ? `Found ${totalCreated} alert(s)`
               : "?? Scour in progress"
           }
         });

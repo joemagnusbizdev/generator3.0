@@ -1,2 +1,4 @@
+# Supabase configuration
+
 [functions.clever-function]
 verify_jwt = false

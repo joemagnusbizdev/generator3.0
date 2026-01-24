@@ -8,6 +8,8 @@ import { apiFetchJson, apiPostJson } from "../lib/utils/api";
 export interface ScourJob {
   id: string;
   status: "running" | "done" | "error";
+  phase?: "main_scour" | "early_signals" | "finalizing" | "done";
+  currentEarlySignalQuery?: string;
   total: number;
   processed: number;
   created: number;

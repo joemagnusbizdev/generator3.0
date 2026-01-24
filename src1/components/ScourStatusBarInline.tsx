@@ -101,9 +101,23 @@ export default function ScourStatusBarInline() {
                   )}
                 </div>
                 <div style={{ fontSize: '0.85em', color: MAGNUS_COLORS.secondaryText, whiteSpace: 'nowrap' }}>
-                  {scourJob.processed === scourJob.total ? '✅ Finalizing...' : `${scourJob.total - scourJob.processed} remaining`}
+                  {scourJob.processed === scourJob.total ? '✅ Main sources done' : `${scourJob.total - scourJob.processed} remaining`}
                 </div>
               </div>
+              
+              {/* Phase indicator and early signals progress */}
+              {scourJob.phase === "early_signals" && (
+                <div className="flex items-center justify-between gap-4 p-2 rounded" style={{ backgroundColor: MAGNUS_COLORS.border }}>
+                  <div className="flex items-center gap-3">
+                    <span>⚡ Early Signals:</span>
+                    <strong>{scourJob.currentEarlySignalQuery || '0/850'}</strong>
+                    <span style={{ fontSize: '0.9em', color: MAGNUS_COLORS.secondaryText }}>·</span>
+                    <span style={{ fontSize: '0.9em', color: MAGNUS_COLORS.deepGreen }}>
+                      📊 {scourJob.created} alerts found
+                    </span>
+                  </div>
+                </div>
+              )}
               {scourJob.currentSource && (
                 <div style={{ fontSize: '0.9em', color: MAGNUS_COLORS.secondaryText, fontStyle: 'italic' }}>
                   📰 Current: {scourJob.currentSource}
