@@ -3736,12 +3736,17 @@ Return recommendations in plain text format, organized by category if helpful.`;
               currentJob.braveActive = false;
               currentJob.currentEarlySignalQuery = "complete";
               await updateJobStats({ created: stats.created, errorCount: stats.errorCount });
+            } else {
+              console.log(`\n⚠️  SKIPPING EARLY SIGNALS: Brave API key not configured (BRAVE_API_KEY or BRAVRE_SEARCH_API_KEY)`);
+              // Still set phase correctly even though early signals was skipped
+              currentJob.phase = "main_scour";
+              await setKV(`scour_job:${jobId}`, currentJob);
             }
             
             // ============================================================================
             // PHASE 2: PROCESS MAIN SOURCES (RSS feeds and news sources)
             // ============================================================================
-            console.log(`  Processing sourceIds: [${sourceIds.join(', ')}]`);
+            console.log(`  Processing sourceIds: [${sourcesToProcess.join(', ').slice(0, 100)}...]`);
             console.log(`  Current progress: processed=${currentJob.processed || 0}/${currentJob.total}, created=${currentJob.created || 0}`);
             
             // Track which sources we've already processed to avoid duplicates
