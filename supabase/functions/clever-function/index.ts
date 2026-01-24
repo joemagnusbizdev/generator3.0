@@ -3520,7 +3520,7 @@ Return recommendations in plain text format, organized by category if helpful.`;
         created_at: nowIso(),
         updated_at: nowIso(),
         total: sourceIds.length,
-        phase: "main_scour",
+        phase: "early_signals",
         currentSourceName: '',
         currentEarlySignalQuery: "0/850",
         aiActive: false,
@@ -3534,27 +3534,35 @@ Return recommendations in plain text format, organized by category if helpful.`;
       await setKV("last_scoured_timestamp", nowIso());
 
       // Run scour inline (no external function call to avoid JWT issues)
-      console.log(`?? SCOUR JOB CREATED: ${job.total} sources to process`);
+      console.log(`?? SCOUR JOB CREATED: ${job.total} sources to process (phase: ${job.phase})`);
       
       waitUntil(
         (async () => {
           try {
             console.log(`?? Starting inline scour processing for job ${jobId}`);
             
-            // Fetch all enabled sources
+            // Load current job state from KV to preserve any existing progress
+            let currentJob = await getKV(`scour_job:${jobId}`);
+            if (!currentJob) {
+              currentJob = { ...job };
+            }
+            
+            // Fetch all enabled sources to verify which ones we'll actually process
             console.log(`  Fetching enabled sources...`);
             const allSources: Source[] = await querySupabaseRest(`/sources?enabled=eq.true&select=*&limit=1000`) || [];
-            console.log(`  Found ${allSources.length} enabled sources`);
+            console.log(`  Found ${allSources.length} enabled sources in database`);
             
             if (!Array.isArray(allSources)) {
               console.error(`✗ allSources is not an array:`, typeof allSources, allSources);
               return;
             }
             
-            // Load current job state from KV to preserve any existing progress
-            let currentJob = await getKV(`scour_job:${jobId}`);
-            if (!currentJob) {
-              currentJob = { ...job };
+            // ONLY update total on first run (when processed is still 0)
+            // This prevents flashing when status is polled
+            if (currentJob.processed === 0 && currentJob.total !== sourceIds.length) {
+              console.log(`  First run: setting total to ${sourceIds.length}`);
+              currentJob.total = sourceIds.length;
+              await setKV(`scour_job:${jobId}`, currentJob);
             }
             
             console.log(`?? SCOUR STARTING: Loading job from KV`);
