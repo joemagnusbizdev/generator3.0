@@ -105,12 +105,24 @@ export default function ScourStatusBarInline() {
                 </div>
               </div>
               
-              {/* Phase indicator and early signals progress */}
+              {/* Phase indicator */}
               {scourJob.phase === "early_signals" && (
                 <div className="flex items-center justify-between gap-4 p-2 rounded" style={{ backgroundColor: MAGNUS_COLORS.border }}>
                   <div className="flex items-center gap-3">
                     <span>⚡ Early Signals:</span>
                     <strong>{scourJob.currentEarlySignalQuery || '0/850'}</strong>
+                    <span style={{ fontSize: '0.9em', color: MAGNUS_COLORS.secondaryText }}>·</span>
+                    <span style={{ fontSize: '0.9em', color: MAGNUS_COLORS.deepGreen }}>
+                      📊 {scourJob.created} alerts found
+                    </span>
+                  </div>
+                </div>
+              )}
+              {scourJob.phase === "main_scour" && (
+                <div className="flex items-center justify-between gap-4 p-2 rounded" style={{ backgroundColor: MAGNUS_COLORS.border }}>
+                  <div className="flex items-center gap-3">
+                    <span>📰 Main Sources:</span>
+                    <strong>{scourJob.processed}/{scourJob.total}</strong>
                     <span style={{ fontSize: '0.9em', color: MAGNUS_COLORS.secondaryText }}>·</span>
                     <span style={{ fontSize: '0.9em', color: MAGNUS_COLORS.deepGreen }}>
                       📊 {scourJob.created} alerts found

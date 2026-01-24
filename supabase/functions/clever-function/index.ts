@@ -3521,6 +3521,7 @@ Return recommendations in plain text format, organized by category if helpful.`;
         updated_at: nowIso(),
         total: sourceIds.length,
         phase: "main_scour",
+        currentSourceName: '',
         currentEarlySignalQuery: "0/850",
         aiActive: false,
         extractActive: false,
@@ -3590,7 +3591,137 @@ Return recommendations in plain text format, organized by category if helpful.`;
               `/alerts?created_at=gte.${encodeURIComponent(sinceDateIso)}&select=*&limit=200`
             ) || [];
             
-            // Process each source
+            // ============================================================================
+            // PHASE 1: RUN EARLY SIGNALS FIRST (Brave Search queries for proactive detection)
+            // ============================================================================
+            if (BRAVE_API_KEY) {
+              console.log(`\n⚡ EARLY SIGNALS: Starting proactive Brave Search queries...`);
+              console.log(`   Brave API Key: ${BRAVE_API_KEY ? BRAVE_API_KEY.slice(0, 12) + '...' : 'NOT SET'}`);
+              currentJob.phase = "early_signals";
+              currentJob.braveActive = true;
+              currentJob.updated_at = nowIso();
+              await setKV(`scour_job:${jobId}`, currentJob);
+              
+              const baseQueries = [
+                "earthquake reported residents say",
+                "aftershock felt this morning",
+                "landslide blocked road",
+                "flash flooding reported",
+                "river overflowed homes evacuated",
+                "wildfire spreading toward town",
+                "volcanic ash advisory issued",
+                "tsunami warning issued locally",
+                "airport closed due to weather",
+                "runway closed after incident",
+                "flights cancelled without notice",
+                "airspace closed temporarily",
+                "border closed without warning",
+                "protests erupted overnight",
+                "riot police deployed downtown",
+                "civil unrest reported",
+                "explosion reported near",
+                "gunfire reported",
+                "bombing reported",
+                "evacuation ordered",
+                "curfew announced tonight",
+                "suspicious package found",
+                "security incident reported",
+                "emergency declared",
+                "state of emergency",
+              ];
+              
+              const countries = [
+                'United States', 'United Kingdom', 'France', 'Germany', 'Spain', 'Italy', 'Brazil', 'Mexico', 'India', 'China', 
+                'Japan', 'Australia', 'South Korea', 'Canada', 'Nigeria', 'Egypt', 'Turkey', 'Russia', 'Ukraine', 'Philippines',
+                'Georgia', 'New Zealand', 'Colombia', 'Peru', 'Chile', 'Argentina', 'Ecuador', 'Costa Rica', 'Thailand', 'Cambodia',
+                'Vietnam', 'Nepal', 'Laos', 'Indonesia'
+              ];
+              
+              console.log(`  Executing ${baseQueries.length * countries.length} early signal queries (${baseQueries.length} queries × ${countries.length} countries)...`);
+              
+              // Execute early signal queries in parallel with progress tracking
+              let completedQueries = 0;
+              const totalQueries = baseQueries.length * countries.length;
+              
+              const earlySignalPromises = baseQueries.flatMap(baseQuery =>
+                countries.map(async (country) => {
+                  const query = `${baseQuery} ${country}`;
+                  try {
+                    completedQueries++;
+                    
+                    // Update progress every 10 queries
+                    if (completedQueries % 10 === 0 || completedQueries === 1) {
+                      currentJob.currentEarlySignalQuery = `${completedQueries}/${totalQueries}`;
+                      currentJob.updated_at = nowIso();
+                      await setKV(`scour_job:${jobId}`, currentJob);
+                    }
+                    
+                    console.log(`  ⚡ Early signal query [${completedQueries}/${totalQueries}]: "${query}"`);
+                    const br = await fetchWithBraveSearch(query, BRAVE_API_KEY);
+                    if (!br.content || br.content.length < 500) {
+                      console.log(`    → No content found (${br.content?.length || 0} chars)`);
+                      return;
+                    }
+                    
+                    // Extract alerts from early signal content
+                    const signalAlerts = await extractAlertsWithAI(
+                      br.content,
+                      br.primaryUrl || query,
+                      `Brave Search: ${query}`,
+                      existingAlerts,
+                      { supabaseUrl, serviceKey, openaiKey: OPENAI_API_KEY!, jobId, sourceIds, daysBack }
+                    );
+                    
+                    if (signalAlerts.length > 0) {
+                      console.log(`    ✓ Found ${signalAlerts.length} alerts from this query`);
+                      
+                      // Save early signal alerts
+                      for (const alert of signalAlerts) {
+                        try {
+                          const alertForDb = {
+                            ...alert,
+                            geo_json: alert.geoJSON || alert.geo_json || null,
+                            event_type: alert.eventType || alert.event_type,
+                            source_query_used: query,
+                            ai_generated: true,
+                            created_at: nowIso(),
+                            status: 'draft',
+                          };
+                          delete (alertForDb as any).geoJSON;
+                          delete (alertForDb as any).eventType;
+                          
+                          await querySupabaseRest(`/alerts`, {
+                            method: 'POST',
+                            body: JSON.stringify(alertForDb),
+                          });
+                          stats.created++;
+                          existingAlerts.push(alert);
+                          console.log(`      ✓ Saved: ${alert.title}`);
+                        } catch (saveErr: any) {
+                          console.warn(`      ✗ Failed to save alert: ${saveErr.message}`);
+                          stats.errorCount++;
+                        }
+                      }
+                    }
+                  } catch (queryErr: any) {
+                    console.warn(`    ✗ Query failed: ${queryErr?.message || queryErr}`);
+                  }
+                })
+              );
+              
+              console.log(`  Waiting for ${earlySignalPromises.length} early signal queries to complete...`);
+              await Promise.all(earlySignalPromises);
+              console.log(`✓ Early signals complete (${totalQueries} queries executed)`);
+              
+              currentJob.phase = "main_scour";
+              currentJob.braveActive = false;
+              currentJob.currentEarlySignalQuery = "complete";
+              await updateJobStats({ created: stats.created, errorCount: stats.errorCount });
+            }
+            
+            // ============================================================================
+            // PHASE 2: PROCESS MAIN SOURCES (RSS feeds and news sources)
+            // ============================================================================
             console.log(`  Processing sourceIds: [${sourceIds.join(', ')}]`);
             console.log(`  Current progress: processed=${currentJob.processed || 0}/${currentJob.total}, created=${currentJob.created || 0}`);
             
@@ -3784,133 +3915,9 @@ Return recommendations in plain text format, organized by category if helpful.`;
               }
             }
             
-            // RUN EARLY SIGNALS (Brave Search queries for proactive detection)
-            if (BRAVE_API_KEY) {
-              console.log(`\n⚡ EARLY SIGNALS: Starting proactive Brave Search queries...`);
-              console.log(`   Brave API Key: ${BRAVE_API_KEY ? BRAVE_API_KEY.slice(0, 12) + '...' : 'NOT SET'}`);
-              currentJob.phase = "early_signals";
-              currentJob.braveActive = true;
-              currentJob.updated_at = nowIso();
-              await setKV(`scour_job:${jobId}`, currentJob);
-              
-              const baseQueries = [
-                "earthquake reported residents say",
-                "aftershock felt this morning",
-                "landslide blocked road",
-                "flash flooding reported",
-                "river overflowed homes evacuated",
-                "wildfire spreading toward town",
-                "volcanic ash advisory issued",
-                "tsunami warning issued locally",
-                "airport closed due to weather",
-                "runway closed after incident",
-                "flights cancelled without notice",
-                "airspace closed temporarily",
-                "border closed without warning",
-                "protests erupted overnight",
-                "riot police deployed downtown",
-                "civil unrest reported",
-                "explosion reported near",
-                "gunfire reported",
-                "bombing reported",
-                "evacuation ordered",
-                "curfew announced tonight",
-                "suspicious package found",
-                "security incident reported",
-                "emergency declared",
-                "state of emergency",
-              ];
-              
-              const countries = [
-                'United States', 'United Kingdom', 'France', 'Germany', 'Spain', 'Italy', 'Brazil', 'Mexico', 'India', 'China', 
-                'Japan', 'Australia', 'South Korea', 'Canada', 'Nigeria', 'Egypt', 'Turkey', 'Russia', 'Ukraine', 'Philippines',
-                'Georgia', 'New Zealand', 'Colombia', 'Peru', 'Chile', 'Argentina', 'Ecuador', 'Costa Rica', 'Thailand', 'Cambodia',
-                'Vietnam', 'Nepal', 'Laos', 'Indonesia'
-              ];
-              
-              console.log(`  Executing ${baseQueries.length * countries.length} early signal queries (${baseQueries.length} queries × ${countries.length} countries)...`);
-              
-              // Execute early signal queries in parallel with progress tracking
-              let completedQueries = 0;
-              const totalQueries = baseQueries.length * countries.length;
-              
-              const earlySignalPromises = baseQueries.flatMap(baseQuery =>
-                countries.map(async (country) => {
-                  const query = `${baseQuery} ${country}`;
-                  try {
-                    completedQueries++;
-                    
-                    // Update progress every 10 queries
-                    if (completedQueries % 10 === 0 || completedQueries === 1) {
-                      currentJob.currentEarlySignalQuery = `${completedQueries}/${totalQueries}`;
-                      currentJob.updated_at = nowIso();
-                      await setKV(`scour_job:${jobId}`, currentJob);
-                    }
-                    
-                    console.log(`  ⚡ Early signal query [${completedQueries}/${totalQueries}]: "${query}"`);
-                    const br = await fetchWithBraveSearch(query, BRAVE_API_KEY);
-                    if (!br.content || br.content.length < 500) {
-                      console.log(`    → No content found (${br.content?.length || 0} chars)`);
-                      return;
-                    }
-                    
-                    // Extract alerts from early signal content
-                    const signalAlerts = await extractAlertsWithAI(
-                      br.content,
-                      br.primaryUrl || query,
-                      `Brave Search: ${query}`,
-                      existingAlerts,
-                      { supabaseUrl, serviceKey, openaiKey: OPENAI_API_KEY!, jobId, sourceIds, daysBack }
-                    );
-                    
-                    if (signalAlerts.length > 0) {
-                      console.log(`    ✓ Found ${signalAlerts.length} alerts from this query`);
-                      
-                      // Save early signal alerts
-                      for (const alert of signalAlerts) {
-                        try {
-                          const alertForDb = {
-                            ...alert,
-                            geo_json: alert.geoJSON || alert.geo_json || null,
-                            event_type: alert.eventType || alert.event_type,
-                            source_query_used: query,  // Track which query generated this alert
-                            ai_generated: true,
-                            created_at: nowIso(),
-                            status: 'draft',
-                          };
-                          delete (alertForDb as any).geoJSON;
-                          delete (alertForDb as any).eventType;
-                          
-                          await querySupabaseRest(`/alerts`, {
-                            method: 'POST',
-                            body: JSON.stringify(alertForDb),
-                          });
-                          stats.created++;
-                          existingAlerts.push(alert);
-                          console.log(`      ✓ Saved: ${alert.title}`);
-                        } catch (saveErr: any) {
-                          console.warn(`      ✗ Failed to save alert: ${saveErr.message}`);
-                          stats.errorCount++;
-                        }
-                      }
-                    }
-                  } catch (queryErr: any) {
-                    console.warn(`    ✗ Query failed: ${queryErr?.message || queryErr}`);
-                  }
-                })
-              );
-              
-              console.log(`  Waiting for ${earlySignalPromises.length} early signal queries to complete...`);
-              await Promise.all(earlySignalPromises);
-              console.log(`✓ Early signals complete (${totalQueries} queries executed)`);
-              
-              currentJob.phase = "finalizing";
-              currentJob.braveActive = false;
-              currentJob.currentEarlySignalQuery = "complete";
-              await updateJobStats({ created: stats.created, errorCount: stats.errorCount });
-            }
-            
-            // Save final job status
+            // ============================================================================
+            // FINALIZE JOB
+            // ============================================================================
             const finalJob = { 
               ...currentJob, 
               status: "done", 
@@ -4091,42 +4098,46 @@ Return recommendations in plain text format, organized by category if helpful.`;
         console.log(`ℹ️ Found ${totalCreated} alerts from recent scour (${draftCount} draft)`);
 
         // Return job status based on actual alerts found
-        const estimatedTotalSources = totalCreated > 0 ? Math.max(totalCreated, 5) : 1;
-        const estimatedProcessed = totalCreated > 0 ? Math.ceil(totalCreated) : 0;
+        // NOTE: Don't estimate to 1 - that causes confusing 0/1 display
+        // Use a conservative estimate that looks reasonable
+        const estimatedTotalSources = totalCreated > 0 ? Math.max(totalCreated, 10) : 50;
+        const estimatedProcessed = totalCreated > 0 ? Math.ceil(totalCreated * 0.8) : 0;
         
         return json({
           ok: true,
           job: {
             id: jobId,
-            status: totalCreated > 0 ? "running" : "running",
+            status: "running",
             total: estimatedTotalSources,
             processed: estimatedProcessed,
             created: totalCreated,
             duplicatesSkipped: 0,
             errorCount: 0,
             errors: [],
+            phase: "main_scour",
             currentActivity: totalCreated > 0 
               ? `Found ${totalCreated} alert(s)`
-              : "?? Scour in progress"
+              : "?? Scour in progress (syncing...)"
           }
         });
       } catch (e: any) {
         console.error(`? Error querying alerts:`, e?.message);
       }
       
-      // Fallback: still return running status
+      // Final fallback: return reasonable estimate that doesn't confuse user
       return json({
         ok: true,
         job: { 
           id: jobId, 
           status: "running", 
-          total: 10, // Conservative estimate
-          processed: 1, 
+          total: 50, // Better estimate than 1
+          processed: 0, 
           created: 0, 
           duplicatesSkipped: 0, 
           errorCount: 0, 
           errors: [],
-          currentActivity: "?? Scour in progress"
+          phase: "main_scour",
+          currentActivity: "?? Initializing scour..."
         },
       });
     }
