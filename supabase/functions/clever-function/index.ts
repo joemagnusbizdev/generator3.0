@@ -3613,6 +3613,10 @@ Return recommendations in plain text format, organized by category if helpful.`;
             // ============================================================================
             // PHASE 1: RUN EARLY SIGNALS FIRST (Brave Search queries for proactive detection)
             // ============================================================================
+            console.log(`\n⚡ EARLY SIGNALS PHASE CHECK`);
+            console.log(`   BRAVE_API_KEY is: ${BRAVE_API_KEY ? 'SET ✓' : 'NOT SET ✗'}`);
+            console.log(`   BRAVE_API_KEY value: ${BRAVE_API_KEY ? BRAVE_API_KEY.slice(0, 12) + '...' : 'undefined'}`);
+            
             if (BRAVE_API_KEY) {
               console.log(`\n⚡ EARLY SIGNALS: Starting proactive Brave Search queries...`);
               console.log(`   Brave API Key: ${BRAVE_API_KEY ? BRAVE_API_KEY.slice(0, 12) + '...' : 'NOT SET'}`);
