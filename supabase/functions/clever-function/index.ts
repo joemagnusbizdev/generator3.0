@@ -3481,6 +3481,150 @@ Return recommendations in plain text format, organized by category if helpful.`;
     // - User logs out
     // - Internet connection drops
     // Frontend polls /scour/status to track progress, but the actual work happens server-side
+    
+    // ============================================================================
+    // EARLY SIGNALS HELPER FUNCTIONS
+    // ============================================================================
+    
+    async function fetchWithBraveSearch(query: string, apiKey: string): Promise<{ content: string; primaryUrl: string | null }> {
+      try {
+        const searchUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await fetch(searchUrl, {
+          headers: { 'Accept': 'application/json', 'X-Subscription-Token': apiKey },
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeout);
+        
+        if (!response.ok) throw new Error(`Brave API error: ${response.status}`);
+        
+        const data = await response.json();
+        const results = data.web || [];
+        
+        if (!results.length) return { content: '', primaryUrl: null };
+        
+        let content = results.slice(0, 5).map((r: any) => {
+          return `Title: ${r.title}\nDescription: ${r.description || ''}\n`;
+        }).join('\n');
+        
+        const primaryUrl = results[0]?.url || null;
+        
+        return { content, primaryUrl };
+      } catch (e: any) {
+        console.warn(`Brave search failed for "${query}": ${e.message}`);
+        return { content: '', primaryUrl: null };
+      }
+    }
+
+    async function extractAlertsWithAI(
+      content: string,
+      sourceUrl: string,
+      sourceName: string,
+      existingAlerts: any[],
+      config: any
+    ): Promise<any[]> {
+      if (!OPENAI_API_KEY || content.length < 500) {
+        return [];
+      }
+      
+      try {
+        const prompt = `Extract travel safety alerts from this content. Return JSON array of alerts.
+REQUIREMENTS:
+- Only extract travel safety, security, health, or natural disaster alerts
+- REJECT: sports, entertainment, arts, politics unrelated to travel
+- MANDATORY: valid country name, specific location (not "Global")
+- MANDATORY: latitude/longitude as decimal degrees
+- MANDATORY: valid GeoJSON Feature with polygon/point
+- MANDATORY: eventType from [War, Armed Conflict, Terrorism, Health Crisis, Natural Disaster, Maritime Incident, Environmental, Security Incident, Civil Unrest]
+
+{
+  "title": "specific event title",
+  "summary": "50+ char description",
+  "location": "specific city/region",
+  "country": "valid country name",
+  "region": "state/province or null",
+  "event_type": "category",
+  "severity": "critical|warning|caution|informative",
+  "latitude": number,
+  "longitude": number,
+  "geoJSON": {...GeoJSON Feature...},
+  "recommendations": "travel advice"
+}
+
+CONTENT:
+${content.slice(0, 15000)}`;
+    
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': \`Bearer \${OPENAI_API_KEY}\`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.3,
+            max_tokens: 2000,
+          }),
+        });
+        
+        if (!response.ok) {
+          return [];
+        }
+        
+        const data = await response.json();
+        const text = data.choices?.[0]?.message?.content || '';
+        
+        const jsonMatch = text.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) {
+          return [];
+        }
+        
+        const extracted = JSON.parse(jsonMatch[0]);
+        if (!Array.isArray(extracted)) return [];
+        
+        const alerts = extracted.filter((a: any) => {
+          const isDuplicate = existingAlerts.some(e => 
+            e.title === a.title && 
+            e.location === a.location && 
+            e.country === a.country
+          );
+          return !isDuplicate;
+        }).map((a: any) => ({
+          id: crypto.randomUUID(),
+          title: a.title,
+          summary: a.summary,
+          description: a.summary,
+          location: a.location,
+          country: a.country,
+          region: a.region || null,
+          event_type: a.event_type,
+          severity: a.severity,
+          status: 'draft',
+          source_url: sourceUrl,
+          article_url: sourceUrl,
+          sources: sourceName,
+          latitude: a.latitude,
+          longitude: a.longitude,
+          geo_json: a.geoJSON || null,
+          recommendations: a.recommendations || '',
+          ai_generated: true,
+          ai_confidence: 0.75,
+          source_query_used: a.source_query_used || null,
+          created_at: nowIso(),
+          updated_at: nowIso(),
+        }));
+        
+        return alerts;
+      } catch (e: any) {
+        console.error(`AI extraction error: ${e.message}`);
+        return [];
+      }
+    }
+
     if (path === "/scour-sources" && method === "POST") {
       const body = await req.json().catch(() => ({}));
       const jobId = body.jobId || crypto.randomUUID();
