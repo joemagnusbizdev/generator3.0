@@ -2115,8 +2115,8 @@ async function runScourWorker(config: ScourConfig): Promise<{
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "https://gnobnyzezkuyptuakztf.supabase.co";
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") || Deno.env.get("OPENAI_KEY");
-// Try multiple possible names for the Brave API key (handle typos and variants)
-const BRAVE_API_KEY = Deno.env.get("BRAVRE_SEARCH_API_KEY") || Deno.env.get("BRAVE_API_KEY") || Deno.env.get("BRAVE_SEARCH_API_KEY");
+// Use BRAVRE_SEARCH_API_KEY for Brave Search
+const BRAVE_API_KEY = Deno.env.get("BRAVRE_SEARCH_API_KEY");
 const WP_URL = Deno.env.get("WP_URL");
 const WP_USER = Deno.env.get("WP_USER");
 const WP_APP_PASSWORD = Deno.env.get("WP_APP_PASSWORD");
@@ -2128,6 +2128,18 @@ if (!serviceKey) console.warn("WARNING: SUPABASE_SERVICE_ROLE_KEY not set!");
 console.log(`   OpenAI: ${OPENAI_API_KEY ? 'OK' : 'NOT SET'}`);
 console.log(`   Brave: ${BRAVE_API_KEY ? 'OK' : 'NOT SET'}`);
 console.log(`   WordPress: ${WP_URL ? 'OK' : 'NOT SET'}`);console.log(`   WordPress: ${WP_URL ? '✓' : '✗'}`);
+
+// Debug: Check all Brave-related env vars
+const braveChecks = {
+  "BRAVRE_SEARCH_API_KEY": Deno.env.get("BRAVRE_SEARCH_API_KEY"),
+  "BRAVE_API_KEY": Deno.env.get("BRAVE_API_KEY"),
+  "BRAVE_SEARCH_API_KEY": Deno.env.get("BRAVE_SEARCH_API_KEY"),
+};
+console.log(`🔍 BRAVE ENV VAR DEBUG:`);
+console.log(`   BRAVRE_SEARCH_API_KEY: ${braveChecks["BRAVRE_SEARCH_API_KEY"] ? "SET (" + braveChecks["BRAVRE_SEARCH_API_KEY"].slice(0, 12) + "...)" : "NOT SET"}`);
+console.log(`   BRAVE_API_KEY: ${braveChecks["BRAVE_API_KEY"] ? "SET (" + braveChecks["BRAVE_API_KEY"].slice(0, 12) + "...)" : "NOT SET"}`);
+console.log(`   BRAVE_SEARCH_API_KEY: ${braveChecks["BRAVE_SEARCH_API_KEY"] ? "SET (" + braveChecks["BRAVE_SEARCH_API_KEY"].slice(0, 12) + "...)" : "NOT SET"}`);
+console.log(`   FINAL BRAVE_API_KEY: ${BRAVE_API_KEY ? "SET (" + BRAVE_API_KEY.slice(0, 12) + "...)" : "NOT SET"}`);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -3488,7 +3500,15 @@ Return recommendations in plain text format, organized by category if helpful.`;
     
     async function fetchWithBraveSearch(query: string, apiKey: string): Promise<{ content: string; primaryUrl: string | null }> {
       try {
+        if (!apiKey) {
+          console.error(`    ✗ BRAVE SEARCH FAILED: No API key provided`);
+          return { content: '', primaryUrl: null };
+        }
+        
         const searchUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10`;
+        console.log(`    📡 Calling Brave API: ${searchUrl.split('?')[0]}?q=...`);
+        console.log(`       API Key: ${apiKey ? apiKey.slice(0, 12) + '...' : 'MISSING'}`);
+        
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000);
         
@@ -3499,10 +3519,16 @@ Return recommendations in plain text format, organized by category if helpful.`;
         
         clearTimeout(timeout);
         
-        if (!response.ok) throw new Error(`Brave API error: ${response.status}`);
+        if (!response.ok) {
+          console.error(`    ✗ Brave API error: ${response.status}`);
+          const errorText = await response.text().catch(() => '');
+          console.error(`       Response: ${errorText}`);
+          throw new Error(`Brave API error: ${response.status}`);
+        }
         
         const data = await response.json();
         const results = data.web || [];
+        console.log(`    ✓ Brave returned ${results.length} results`);
         
         if (!results.length) return { content: '', primaryUrl: null };
         
@@ -3514,7 +3540,7 @@ Return recommendations in plain text format, organized by category if helpful.`;
         
         return { content, primaryUrl };
       } catch (e: any) {
-        console.warn(`Brave search failed for "${query}": ${e.message}`);
+        console.warn(`    ✗ Brave search failed for "${query}": ${e.message}`);
         return { content: '', primaryUrl: null };
       }
     }
@@ -3560,7 +3586,7 @@ ${content.slice(0, 15000)}`;
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
-            'Authorization': \`Bearer \${OPENAI_API_KEY}\`,
+            'Authorization': 'Bearer ' + OPENAI_API_KEY,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -3620,7 +3646,7 @@ ${content.slice(0, 15000)}`;
         
         return alerts;
       } catch (e: any) {
-        console.error(`AI extraction error: ${e.message}`);
+        console.error('AI extraction error: ' + e.message);
         return [];
       }
     }
@@ -3760,10 +3786,13 @@ ${content.slice(0, 15000)}`;
             console.log(`\n⚡ EARLY SIGNALS PHASE CHECK`);
             console.log(`   BRAVE_API_KEY is: ${BRAVE_API_KEY ? 'SET ✓' : 'NOT SET ✗'}`);
             console.log(`   BRAVE_API_KEY value: ${BRAVE_API_KEY ? BRAVE_API_KEY.slice(0, 12) + '...' : 'undefined'}`);
+            console.log(`   BRAVE_API_KEY type: ${typeof BRAVE_API_KEY}`);
+            console.log(`   BRAVE_API_KEY length: ${BRAVE_API_KEY ? BRAVE_API_KEY.length : 0}`);
             
-            if (BRAVE_API_KEY) {
+            if (BRAVE_API_KEY && BRAVE_API_KEY.length > 0) {
               console.log(`\n⚡ EARLY SIGNALS: Starting proactive Brave Search queries...`);
               console.log(`   Brave API Key: ${BRAVE_API_KEY ? BRAVE_API_KEY.slice(0, 12) + '...' : 'NOT SET'}`);
+              console.log(`   ✓ Entering early signals block`);
               currentJob.phase = "early_signals";
               currentJob.braveActive = true;
               currentJob.updated_at = nowIso();
