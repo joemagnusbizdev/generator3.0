@@ -302,6 +302,8 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showGeoModal, setShowGeoModal] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
 
   const { startScour, isScouring, accessToken } = useScour() as any;
 
@@ -485,6 +487,17 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
     );
   }
 
+  // Pagination calculations
+  const totalPages = Math.ceil(alerts.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedAlerts = alerts.slice(startIndex, endIndex);
+
+  // Reset to page 1 if current page exceeds total pages
+  if (currentPage > totalPages && totalPages > 0) {
+    setCurrentPage(1);
+  }
+
   return (
   <div className="space-y-4">
     {/* Run Scour (context-driven, single trigger) */}
@@ -524,8 +537,56 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
       </div>
     )}
 
-    {/* Alerts */}
-    {alerts.map((a) => {
+    {/* Pagination and Select All Controls */}
+    {alerts.length > 0 && (
+      <div className="flex justify-between items-center p-3 border rounded mb-4" style={{ backgroundColor: MAGNUS_COLORS.offWhite }}>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              if (selected.size === paginatedAlerts.length) {
+                setSelected(new Set());
+              } else {
+                const allIds = new Set(paginatedAlerts.map(a => a.id));
+                setSelected(allIds);
+              }
+            }}
+            className="px-3 py-1 rounded text-white font-semibold transition"
+            style={{ backgroundColor: MAGNUS_COLORS.darkGreen }}
+          >
+            {selected.size === paginatedAlerts.length && paginatedAlerts.length > 0 ? "Deselect Page" : "Select Page"}
+          </button>
+          <span style={{ color: MAGNUS_COLORS.secondaryText }}>
+            {alerts.length} total alerts
+          </span>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-1 rounded border font-semibold transition disabled:opacity-50"
+            style={{ borderColor: MAGNUS_COLORS.border, color: MAGNUS_COLORS.darkGreen }}
+          >
+            ← Prev
+          </button>
+          <span style={{ color: MAGNUS_COLORS.secondaryText }} className="text-sm">
+            Page {currentPage} of {totalPages}
+          </span>
+          <button
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="px-3 py-1 rounded border font-semibold transition disabled:opacity-50"
+            style={{ borderColor: MAGNUS_COLORS.border, color: MAGNUS_COLORS.darkGreen }}
+          >
+            Next →
+          </button>
+        </div>
+      </div>
+    )}
+
+    {/* Alerts with numbering */}
+    {paginatedAlerts.map((a, index) => {
+      const alertNumber = (currentPage - 1) * itemsPerPage + index + 1;
       const severity = (drafts[a.id]?.severity as Alert["severity"]) || a.severity;
       const meta = SEVERITY_META[severity];
       const open = !!expanded[a.id];
@@ -553,7 +614,12 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
                   className="mt-1"
                 />
                 <div className="flex-1">
-                  <h3 className="text-lg font-bold mb-2" style={{ color: MAGNUS_COLORS.darkGreen }}>{a.title}</h3>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-sm font-semibold px-2 py-1 rounded" style={{ backgroundColor: MAGNUS_COLORS.deepGreen, color: 'white' }}>
+                      #{alertNumber}
+                    </span>
+                    <h3 className="text-lg font-bold" style={{ color: MAGNUS_COLORS.darkGreen }}>{a.title}</h3>
+                  </div>
                   <div className="flex gap-2 items-center flex-wrap">
                   {edit ? (
                     <select
