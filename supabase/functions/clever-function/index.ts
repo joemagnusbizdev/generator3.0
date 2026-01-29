@@ -118,21 +118,6 @@ function isSourceBlocked(source: { name?: string; url?: string }): boolean {
   return false;
 }
 
-                const alertForDb = buildAlertForDb(alert, {
-                  id: source.id,
-                  url: source.url,
-                  name: source.name,
-                });
-  
-  // For critical/warning severity, always expand to at least regional
-  if (severity === 'critical') return 'regional';
-  if (severity === 'warning') return isLocalRegion ? 'regional' : 'national';
-  
-  // For caution/informative, still use city-level as minimum for visibility
-  // (rather than local which would be too small)
-  return isLocalRegion ? 'city' : 'regional';
-}
-
 // Determine radius in km based on severity and scope
 function getRadiusFromSeverity(severity: string, scope: string, eventType?: string): number {
   // Base radius by geoScope - INCREASED for better visibility
@@ -140,8 +125,7 @@ function getRadiusFromSeverity(severity: string, scope: string, eventType?: stri
     'local': 20,        // was 8 - city blocks
     'city': 50,         // was 25 - metro area
     'regional': 150,    // was 75 - multi-state/province
-                  const errText = await saveResponse.text().catch(() => '');
-                  console.warn(`    ✗ Save failed [${saveResponse.status}] ${errText.slice(0, 200)}`);
+    'national': 400,    // was 250 - country
     'multinational': 800,  // was 500 - continental
   };
   
@@ -422,7 +406,14 @@ function formatRecommendationsForACF(recs: string | string[] | null | undefined)
     // Split by newline, bullet, or number patterns
     recArray = recs
       .split(/\n|;/)
-      .map((rec: string) => rec.replace(/^[\d+.•\-*]\s*/, '').trim())
+      .map((rec: string) => {
+        // Remove leading numbers, bullets, etc
+        let cleaned = rec.trim();
+        if (/^[\d+.•\-*]\s/.test(cleaned)) {
+          cleaned = cleaned.substring(cleaned.search(/[^\d+.•\-*\s]/));
+        }
+        return cleaned;
+      })
       .filter((rec: string) => rec.length > 0);
   } else if (Array.isArray(recs)) {
     recArray = recs.map((r: any) => String(r).trim()).filter((r: string) => r.length > 0);
@@ -754,7 +745,16 @@ CRITICAL: Title must be SPECIFIC to ${country}. Examples:
       
       let trendData: any = {};
       try {
-        const cleaned = aiResponse.trim().replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        let cleaned = aiResponse.trim();
+        if (cleaned.startsWith('```json')) {
+          cleaned = cleaned.substring(7);
+        } else if (cleaned.startsWith('```')) {
+          cleaned = cleaned.substring(3);
+        }
+        if (cleaned.endsWith('```')) {
+          cleaned = cleaned.substring(0, cleaned.length - 3);
+        }
+        cleaned = cleaned.trim();
         trendData = JSON.parse(cleaned);
       } catch {
         const match = aiResponse.match(/\{[\s\S]*\}/);
@@ -3000,7 +3000,16 @@ Return ONLY JSON array, no explanation, no markdown.`;
 
     let alerts: any[] = [];
     try {
-      const cleaned = aiResponse.trim().replace(/^```json\s*/,'').replace(/\s*```$/,'');
+      let cleaned = aiResponse.trim();
+      if (cleaned.startsWith('```json')) {
+        cleaned = cleaned.substring(7);
+      } else if (cleaned.startsWith('```')) {
+        cleaned = cleaned.substring(3);
+      }
+      if (cleaned.endsWith('```')) {
+        cleaned = cleaned.substring(0, cleaned.length - 3);
+      }
+      cleaned = cleaned.trim();
       alerts = JSON.parse(cleaned);
       console.log(`\n📊 PARSED: ${alerts.length} items detected from ${model}`);
       if (alerts.length > 0) {
@@ -3210,7 +3219,14 @@ Return ONLY JSON array, no explanation, no markdown.`;
           // Parse string recommendations (numbered list or newline separated)
           recommendedActions = alert.recommendations
             .split(/[\n;]/)
-            .map((rec: string) => rec.replace(/^[\d+.•\-*]\s*/, '').trim())
+            .map((rec: string) => {
+              // Remove leading numbers, bullets, etc
+              let cleaned = rec.trim();
+              if (/^[\d+.•\-*]\s/.test(cleaned)) {
+                cleaned = cleaned.substring(cleaned.search(/[^\d+.•\-*\s]/));
+              }
+              return cleaned;
+            })
             .filter((rec: string) => rec.length > 0 && rec.length < 500);
         }
       }
@@ -4213,7 +4229,11 @@ async function approveAndPublishToWP(id: string) {
           const recLines = parts[1].trim().split('\n').filter((line: string) => line.trim());
           html += `<ol style="margin-left: 20px; margin-bottom: 15px;">`;
           recLines.forEach((line: string) => {
-            const cleanLine = line.replace(/^\d+\.\s*/, '').trim();
+            let cleanLine = line.trim();
+            // Remove leading number and period
+            if (/^\d+\.\s/.test(cleanLine)) {
+              cleanLine = cleanLine.substring(cleanLine.indexOf('.') + 1).trim();
+            }
             if (cleanLine) {
               html += `<li style="margin-bottom: 8px; color: ${secondaryText};">${cleanLine}</li>`;
             }
@@ -7823,7 +7843,16 @@ Format the response as plain text with clear section headers. Include specific, 
                 }
                 let listItem = trimmed.substring(2);
                 // Convert **bold** in list items
-                listItem = listItem.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+                while (listItem.includes('**')) {
+                  const start = listItem.indexOf('**');
+                  const end = listItem.indexOf('**', start + 2);
+                  if (end > start) {
+                    const boldText = listItem.substring(start + 2, end);
+                    listItem = listItem.substring(0, start) + `<strong>${boldText}</strong>` + listItem.substring(end + 2);
+                  } else {
+                    break;
+                  }
+                }
                 htmlLines.push(`  <li>${listItem}</li>`);
                 continue;
               }
@@ -7834,9 +7863,22 @@ Format the response as plain text with clear section headers. Include specific, 
                   htmlLines.push('</ul>');
                   inList = false;
                 }
-                let listItem = trimmed.replace(/^\d+\.\s/, '');
+                // Remove leading number and period
+                let listItem = trimmed.trim();
+                if (/^\d+\.\s/.test(listItem)) {
+                  listItem = listItem.substring(listItem.indexOf('.') + 1).trim();
+                }
                 // Convert **bold** in numbered items
-                listItem = listItem.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+                while (listItem.includes('**')) {
+                  const start = listItem.indexOf('**');
+                  const end = listItem.indexOf('**', start + 2);
+                  if (end > start) {
+                    const boldText = listItem.substring(start + 2, end);
+                    listItem = listItem.substring(0, start) + `<strong>${boldText}</strong>` + listItem.substring(end + 2);
+                  } else {
+                    break;
+                  }
+                }
                 htmlLines.push(`<h2>${listItem}</h2>`);
                 continue;
               }
@@ -7848,10 +7890,29 @@ Format the response as plain text with clear section headers. Include specific, 
               }
               
               // Convert **bold** to <strong>
-              line = trimmed.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+              line = trimmed;
+              while (line.includes('**')) {
+                const start = line.indexOf('**');
+                const end = line.indexOf('**', start + 2);
+                if (end > start) {
+                  const boldText = line.substring(start + 2, end);
+                  line = line.substring(0, start) + `<strong>${boldText}</strong>` + line.substring(end + 2);
+                } else {
+                  break;
+                }
+              }
               
               // Convert *italic* to <em>
-              line = line.replace(/\*(.+?)\*/g, '<em>$1</em>');
+              while (line.includes('*')) {
+                const start = line.indexOf('*');
+                const end = line.indexOf('*', start + 1);
+                if (end > start) {
+                  const italicText = line.substring(start + 1, end);
+                  line = line.substring(0, start) + `<em>${italicText}</em>` + line.substring(end + 1);
+                } else {
+                  break;
+                }
+              }
               
               htmlLines.push(`<p>${line}</p>`);
             }
