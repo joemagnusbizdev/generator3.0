@@ -15,7 +15,7 @@ export default function ScourStatusBarInline() {
       style={{ backgroundColor: MAGNUS_COLORS.offWhite, borderColor: MAGNUS_COLORS.border }}
     >
       <div style={{ color: MAGNUS_COLORS.darkGreen, fontWeight: 'bold' }}>
-        {isScouring ? '🔍 SCOURING IN PROGRESS' : '✓ SCOUR COMPLETE'}
+        {isScouring ? '🔍 SCOURING IN PROGRESS (v2.1)' : '✓ SCOUR COMPLETE (v2.1)'}
       </div>
       
       {scourJob && (
