@@ -11,7 +11,8 @@ export function getApiUrl(endpoint: string): string {
     return "";
   }
   const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-  return `https://${projectId}.supabase.co/functions/v1/${functionName}${path}`;
+  const base = `https://${projectId}.supabase.co/functions/v1/${functionName}`;
+  return endpoint ? `${base}${path}` : base;
 }
 
 /**
