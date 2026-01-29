@@ -53,6 +53,7 @@ const SourceManagerInline: React.FC<Props> = ({
   const [showAddForm, setShowAddForm] = useState(false);
   const [newSource, setNewSource] = useState({ name: "", url: "", country: "" });
   const [addingSource, setAddingSource] = useState(false);
+  const [runningEarlySignals, setRunningEarlySignals] = useState(false);
 
   const { isScouring, startScour, stopScour } = useScour();
 
@@ -120,6 +121,29 @@ const SourceManagerInline: React.FC<Props> = ({
     await startScour(accessToken, {
       daysBack: 14,
     });
+  }
+
+  async function runEarlySignals() {
+    if (runningEarlySignals) return;
+    setRunningEarlySignals(true);
+    try {
+      const res = await apiPostJson<{ ok: boolean; error?: string; message?: string }>(
+        "/scour-early-signals",
+        {},
+        accessToken
+      );
+
+      if (res.ok) {
+        alert(res.message || "Early signals started");
+      } else {
+        alert(`Early signals failed: ${res.error || 'Unknown error'}`);
+      }
+    } catch (e: any) {
+      console.error(`Early signals error:`, e);
+      alert(`Early signals error: ${e.message}`);
+    } finally {
+      setRunningEarlySignals(false);
+    }
   }
 
   // Force stop: Kill all scour jobs via backend endpoint
@@ -324,6 +348,15 @@ const SourceManagerInline: React.FC<Props> = ({
           style={{ backgroundColor: MAGNUS_COLORS.darkGreen }}
         >
           {isScouring ? "Scouring…" : "Run Scour"}
+        </button>
+
+        <button
+          onClick={runEarlySignals}
+          disabled={runningEarlySignals || isScouring}
+          className="px-3 py-1 rounded text-white disabled:opacity-50 font-semibold transition hover:opacity-90"
+          style={{ backgroundColor: MAGNUS_COLORS.deepGreen }}
+        >
+          {runningEarlySignals ? "Early Signals…" : "Run Early Signals"}
         </button>
 
         <button
