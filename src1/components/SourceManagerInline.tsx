@@ -311,7 +311,7 @@ const SourceManagerInline: React.FC<Props> = ({
       )}
 
       {/* Scour Status */}
-      <ScourStatusBarInline accessToken={accessToken} />
+      <ScourStatusBarInline />
 
       {/* Controls */}
       <div className="flex flex-wrap gap-3 items-center">
