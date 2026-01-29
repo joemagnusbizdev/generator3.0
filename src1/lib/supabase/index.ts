@@ -426,6 +426,144 @@ Deno.serve(async (req) => {
       }
 
       const wpAuth = btoa(`${wpUser}:${wpPassword}`);
+      
+      // Helper function to normalize country
+      function normalizeCountry(country: string): string {
+        if (!country || country.toLowerCase() === 'global') return null;
+        const countryMap: Record<string, string> = {
+          'usa': 'United States of America',
+          'uk': 'United Kingdom',
+          'uae': 'United Arab Emirates',
+          'us': 'United States of America',
+        };
+        return countryMap[country.toLowerCase()] || country;
+      }
+      
+      // Helper function to normalize event type to ACF intelligence_topics
+      function normalizeEventType(eventType: string): string {
+        if (!eventType) return 'Security';
+        const eventMap: Record<string, string> = {
+          'general': 'Security',
+          'security': 'Security',
+          'war': 'War',
+          'armed conflict': 'Armed Conflict',
+          'terrorism': 'Terrorism',
+          'health': 'Health Crisis',
+          'natural disaster': 'Natural Disaster',
+          'earthquake': 'Earthquakes',
+          'tsunami': 'Tsunamis',
+          'hurricane': 'Hurricanes',
+          'flood': 'Floods',
+          'aviation': 'Aviation',
+          'maritime': 'Maritime Incident',
+          'environmental': 'Environmental',
+          'civil unrest': 'Civil Unrest',
+          'political': 'Political',
+          'crime': 'Crime',
+          'infrastructure': 'Infrastructure',
+        };
+        return eventMap[eventType.toLowerCase()] || 'Security';
+      }
+      
+      // Helper function to normalize severity to ACF color codes
+      function normalizeSeverityForACF(severity: string): string {
+        if (!severity) return 'yellow';
+        const severityMap: Record<string, string> = {
+          'critical': 'darkred',
+          'severe': 'darkred',
+          'high': 'orange',
+          'warning': 'orange',
+          'medium': 'yellow',
+          'caution': 'yellow',
+          'low': 'green',
+          'info': 'green',
+          'informative': 'green',
+          'green': 'green',
+          'yellow': 'yellow',
+          'orange': 'orange',
+          'red': 'red',
+          'darkred': 'darkred',
+        };
+        return severityMap[severity.toLowerCase()] || 'yellow';
+      }
+      
+      // Build ACF fields
+      const normalizedCountry = normalizeCountry(alert.country);
+      const normalizedTopics = normalizeEventType(alert.event_type);
+      const normalizedSeverity = normalizeSeverityForACF(alert.severity);
+      
+      // Format recommendations if it's a string
+      let formattedRecommendations = alert.generation_metadata?.recommendations || alert.recommendations || '';
+      if (typeof formattedRecommendations === 'string' && formattedRecommendations) {
+        formattedRecommendations = [{ recommendation: formattedRecommendations }];
+      } else if (Array.isArray(formattedRecommendations)) {
+        formattedRecommendations = formattedRecommendations.map(r => 
+          typeof r === 'string' ? { recommendation: r } : r
+        );
+      } else {
+        formattedRecommendations = [];
+      }
+      
+      // Parse GeoJSON if it's a string
+      let geoJsonObj = alert.geo_json;
+      if (typeof geoJsonObj === 'string') {
+        try {
+          geoJsonObj = JSON.parse(geoJsonObj);
+        } catch (e) {
+          geoJsonObj = null;
+        }
+      }
+      const polyText = geoJsonObj ? JSON.stringify(geoJsonObj) : '';
+      
+      // Get continent/mainland from country
+      const continentMap: Record<string, string> = {
+        'Japan': 'Asia',
+        'United States of America': 'North America',
+        'United Kingdom': 'Europe',
+        'United Arab Emirates': 'Asia',
+        'China': 'Asia',
+        'India': 'Asia',
+        'Australia': 'Oceania',
+        'Brazil': 'South America',
+        'Germany': 'Europe',
+        'France': 'Europe',
+        'Russia': 'Europe',
+      };
+      const mainland = continentMap[normalizedCountry] || 'Unknown';
+      
+      // Format timestamps
+      const startIso = alert.event_start_date || new Date().toISOString();
+      const endDate = new Date(alert.event_end_date || new Date().setDate(new Date().getDate() + 7));
+      const endIso = endDate.toISOString();
+      
+      // Parse latitude/longitude
+      const lat = parseFloat(alert.latitude) || null;
+      const lng = parseFloat(alert.longitude) || null;
+      
+      // Build ACF fields object
+      const acfFields: Record<string, any> = {
+        mainland: mainland,
+        intelligence_topics: normalizedTopics,
+        the_location: `${alert.location}, ${normalizedCountry}`,
+        latitude: lat ? String(lat) : '',
+        longitude: lng ? String(lng) : '',
+        radius: alert.generation_metadata?.radiusKm || 25,
+        polygon: polyText,
+        start: startIso,
+        end: endIso,
+        severity: normalizedSeverity,
+        recommendations: formattedRecommendations,
+        sources: alert.source_url || '',
+      };
+      
+      // Only include Country if not null (for non-Global alerts)
+      if (normalizedCountry) {
+        acfFields.Country = normalizedCountry;
+      }
+      
+      // Build content from summary
+      const content = alert.summary || alert.description || '';
+      
       const wpResponse = await fetch(`${wpUrl}/wp-json/wp/v2/posts`, {
         method: "POST",
         headers: {
@@ -434,8 +572,249 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           title: alert.title || "Travel Alert",
-          content: alert.description || "",
+          content: content,
           status: "publish",
+          fields: acfFields,
+        })
+      });
+
+      if (!wpResponse.ok) {
+        const errorText = await wpResponse.text();
+        return new Response(
+          JSON.stringify({ 
+            ok: false, 
+            error: `WordPress error: ${wpResponse.status} - ${errorText}` 
+          }),
+          {
+            status: 500,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            }
+          }
+        );
+      }
+
+      const wpPost = await wpResponse.json();
+
+      const updated = await querySupabase(`/alerts?id=eq.${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ 
+          wordpress_post_id: wpPost.id,
+          wordpress_url: wpPost.link,
+          status: "published",
+          updated_at: new Date().toISOString() 
+        }),
+        headers: {
+          "Prefer": "return=representation"
+        }
+      });
+      
+      return new Response(
+        JSON.stringify({ 
+          ok: true, 
+          alert: updated[0],
+          wordpress_post_id: wpPost.id,
+          wordpress_url: wpPost.link
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          }
+        }
+      );
+    }
+
+    // POST /alerts/:id/publish (alias for /post-to-wp)
+    if (path.includes("/publish") && path.includes("/alerts/") && req.method === "POST") {
+      const parts = path.split("/");
+      const idIndex = parts.findIndex(p => p === "alerts") + 1;
+      const id = parts[idIndex];
+      
+      if (!wpUrl || !wpUser || !wpPassword) {
+        return new Response(
+          JSON.stringify({ 
+            ok: false, 
+            error: "WordPress credentials not configured" 
+          }),
+          {
+            status: 500,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            }
+          }
+        );
+      }
+
+      const alerts = await querySupabase(`/alerts?id=eq.${id}`);
+      const alert = alerts[0];
+
+      if (!alert) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "Alert not found" }),
+          {
+            status: 404,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            }
+          }
+        );
+      }
+
+      const wpAuth = btoa(`${wpUser}:${wpPassword}`);
+      
+      // Helper function to normalize country
+      function normalizeCountry(country: string): string {
+        if (!country || country.toLowerCase() === 'global') return null;
+        const countryMap: Record<string, string> = {
+          'usa': 'United States of America',
+          'uk': 'United Kingdom',
+          'uae': 'United Arab Emirates',
+          'us': 'United States of America',
+        };
+        return countryMap[country.toLowerCase()] || country;
+      }
+      
+      // Helper function to normalize event type to ACF intelligence_topics
+      function normalizeEventType(eventType: string): string {
+        if (!eventType) return 'Security';
+        const eventMap: Record<string, string> = {
+          'general': 'Security',
+          'security': 'Security',
+          'war': 'War',
+          'armed conflict': 'Armed Conflict',
+          'terrorism': 'Terrorism',
+          'health': 'Health Crisis',
+          'natural disaster': 'Natural Disaster',
+          'earthquake': 'Earthquakes',
+          'tsunami': 'Tsunamis',
+          'hurricane': 'Hurricanes',
+          'flood': 'Floods',
+          'aviation': 'Aviation',
+          'maritime': 'Maritime Incident',
+          'environmental': 'Environmental',
+          'civil unrest': 'Civil Unrest',
+          'political': 'Political',
+          'crime': 'Crime',
+          'infrastructure': 'Infrastructure',
+        };
+        return eventMap[eventType.toLowerCase()] || 'Security';
+      }
+      
+      // Helper function to normalize severity to ACF color codes
+      function normalizeSeverityForACF(severity: string): string {
+        if (!severity) return 'yellow';
+        const severityMap: Record<string, string> = {
+          'critical': 'darkred',
+          'severe': 'darkred',
+          'high': 'orange',
+          'warning': 'orange',
+          'medium': 'yellow',
+          'caution': 'yellow',
+          'low': 'green',
+          'info': 'green',
+          'informative': 'green',
+          'green': 'green',
+          'yellow': 'yellow',
+          'orange': 'orange',
+          'red': 'red',
+          'darkred': 'darkred',
+        };
+        return severityMap[severity.toLowerCase()] || 'yellow';
+      }
+      
+      // Build ACF fields
+      const normalizedCountry = normalizeCountry(alert.country);
+      const normalizedTopics = normalizeEventType(alert.event_type);
+      const normalizedSeverity = normalizeSeverityForACF(alert.severity);
+      
+      // Format recommendations if it's a string
+      let formattedRecommendations = alert.generation_metadata?.recommendations || alert.recommendations || '';
+      if (typeof formattedRecommendations === 'string' && formattedRecommendations) {
+        formattedRecommendations = [{ recommendation: formattedRecommendations }];
+      } else if (Array.isArray(formattedRecommendations)) {
+        formattedRecommendations = formattedRecommendations.map(r => 
+          typeof r === 'string' ? { recommendation: r } : r
+        );
+      } else {
+        formattedRecommendations = [];
+      }
+      
+      // Parse GeoJSON if it's a string
+      let geoJsonObj = alert.geo_json;
+      if (typeof geoJsonObj === 'string') {
+        try {
+          geoJsonObj = JSON.parse(geoJsonObj);
+        } catch (e) {
+          geoJsonObj = null;
+        }
+      }
+      const polyText = geoJsonObj ? JSON.stringify(geoJsonObj) : '';
+      
+      // Get continent/mainland from country
+      const continentMap: Record<string, string> = {
+        'Japan': 'Asia',
+        'United States of America': 'North America',
+        'United Kingdom': 'Europe',
+        'United Arab Emirates': 'Asia',
+        'China': 'Asia',
+        'India': 'Asia',
+        'Australia': 'Oceania',
+        'Brazil': 'South America',
+        'Germany': 'Europe',
+        'France': 'Europe',
+        'Russia': 'Europe',
+      };
+      const mainland = continentMap[normalizedCountry] || 'Unknown';
+      
+      // Format timestamps
+      const startIso = alert.event_start_date || new Date().toISOString();
+      const endDate = new Date(alert.event_end_date || new Date().setDate(new Date().getDate() + 7));
+      const endIso = endDate.toISOString();
+      
+      // Parse latitude/longitude
+      const lat = parseFloat(alert.latitude) || null;
+      const lng = parseFloat(alert.longitude) || null;
+      
+      // Build ACF fields object
+      const acfFields: Record<string, any> = {
+        mainland: mainland,
+        intelligence_topics: normalizedTopics,
+        the_location: `${alert.location}, ${normalizedCountry}`,
+        latitude: lat ? String(lat) : '',
+        longitude: lng ? String(lng) : '',
+        radius: alert.generation_metadata?.radiusKm || 25,
+        polygon: polyText,
+        start: startIso,
+        end: endIso,
+        severity: normalizedSeverity,
+        recommendations: formattedRecommendations,
+        sources: alert.source_url || '',
+      };
+      
+      // Only include Country if not null (for non-Global alerts)
+      if (normalizedCountry) {
+        acfFields.Country = normalizedCountry;
+      }
+      
+      // Build content from summary
+      const content = alert.summary || alert.description || '';
+      
+      const wpResponse = await fetch(`${wpUrl}/wp-json/wp/v2/posts`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Basic ${wpAuth}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: alert.title || "Travel Alert",
+          content: content,
+          status: "publish",
+          fields: acfFields,
         })
       });
 

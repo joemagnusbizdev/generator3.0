@@ -162,12 +162,12 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
           return;
         }
 
-        // Update progress
+        // Update progress (accumulate across batches)
         if (batchRes.processed !== undefined) {
-          setScourJob(prev => prev ? { ...prev, processed: batchRes.processed! } : prev);
+          setScourJob(prev => prev ? { ...prev, processed: prev.processed + batchRes.processed! } : prev);
         }
         if (batchRes.created !== undefined) {
-          setScourJob(prev => prev ? { ...prev, created: batchRes.created! } : prev);
+          setScourJob(prev => prev ? { ...prev, created: prev.created + batchRes.created! } : prev);
         }
 
         // Trigger next batch if more remain
