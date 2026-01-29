@@ -158,6 +158,10 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
     if (path.endsWith("/scour-sources-v2") && method === "POST") {
       try {
         const body = await req.json().catch(() => ({}));
+        const jobId = body.jobId || `scour-${crypto.randomUUID()}`;
+        const batchOffset = body.batchOffset || 0;
+        const batchSize = body.batchSize || 10;
+        
         const workerResponse = await fetch(
           `${supabaseUrl}/functions/v1/scour-worker`,
           {
@@ -167,12 +171,17 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
               'Authorization': `Bearer ${serviceKey}`,
               'apikey': serviceKey,
             },
-            body: JSON.stringify(body),
+            body: JSON.stringify({
+              jobId,
+              daysBack: body.daysBack,
+              batchOffset,
+              batchSize,
+            }),
           }
         );
         
         const result = await workerResponse.json();
-        return json(result, workerResponse.status);
+        return json({ ok: true, jobId, ...result }, workerResponse.status);
       } catch (err: any) {
         return json({ ok: false, error: err.message }, 500);
       }
