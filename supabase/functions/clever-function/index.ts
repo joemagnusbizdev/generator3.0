@@ -66,6 +66,29 @@ async function getKV(key: string) {
   }
 }
 
+async function setKV(key: string, value: any) {
+  try {
+    // Try to update first
+    const existing = await getKV(key);
+    if (existing !== null) {
+      await querySupabaseRest(`/app_kv?key=eq.${encodeURIComponent(key)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ value: JSON.stringify(value) }),
+      });
+    } else {
+      // Insert if doesn't exist
+      await querySupabaseRest(`/app_kv`, {
+        method: 'POST',
+        body: JSON.stringify({ key, value: JSON.stringify(value) }),
+      });
+    }
+    return true;
+  } catch (e: any) {
+    console.error(`[KV] Failed to set ${key}:`, e);
+    return false;
+  }
+}
+
 Deno.serve({ skipJwtVerification: true }, async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -206,6 +229,29 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
         
         const result = await workerResponse.json();
         return json(result, workerResponse.status);
+      } catch (err: any) {
+        return json({ ok: false, error: err.message }, 500);
+      }
+    }
+
+    // POST /scour/stop/:jobId
+    if (path.includes("/scour/stop") && method === "POST") {
+      try {
+        const parts = path.split("/");
+        const jobIdIndex = parts.findIndex(p => p === "stop") + 1;
+        const jobId = parts[jobIdIndex];
+
+        if (!jobId) {
+          return json({ ok: false, error: "Job ID required" }, 400);
+        }
+
+        // Set stop flag in KV storage
+        await setKV(`scour-stop-${jobId}`, { stopped: true, at: nowIso() });
+
+        return json({ 
+          ok: true, 
+          message: `Scour job ${jobId} stop requested` 
+        });
       } catch (err: any) {
         return json({ ok: false, error: err.message }, 500);
       }

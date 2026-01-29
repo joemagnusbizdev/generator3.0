@@ -261,10 +261,25 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
     [defaultAccessToken, pollStatus, stopPolling]
   );
 
-  const stopScour = useCallback(() => {
+  const stopScour = useCallback(async () => {
+    // Call backend to set stop flag
+    if (jobId) {
+      try {
+        console.log(`[Scour] Requesting stop for job ${jobId}`);
+        await apiPostJson(
+          `/scour/stop/${jobId}`,
+          {},
+          defaultAccessToken
+        );
+      } catch (e) {
+        console.warn(`[Scour] Failed to notify backend of stop:`, e);
+      }
+    }
+    
+    // Stop frontend polling immediately
     setIsScouring(false);
     stopPolling();
-  }, [stopPolling]);
+  }, [jobId, defaultAccessToken, stopPolling]);
 
   const value: ScourContextType = {
     isScouring,
