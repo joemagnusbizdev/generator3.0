@@ -324,15 +324,13 @@ const SourceManagerInline: React.FC<Props> = ({
           {isScouring ? "Scouring…" : "Run Scour"}
         </button>
 
-        {isScouring && (
-          <button
-            onClick={forceStopScour}
-            className="px-3 py-1 rounded text-white font-semibold transition hover:opacity-90"
-            style={{ backgroundColor: MAGNUS_COLORS.orange }}
-          >
-            ⊗ Force Stop
-          </button>
-        )}
+        <button
+          onClick={forceStopScour}
+          className="px-3 py-1 rounded text-white font-semibold transition hover:opacity-90"
+          style={{ backgroundColor: MAGNUS_COLORS.orange }}
+        >
+          ⊗ Force Stop
+        </button>
 
         <input
           value={search}
