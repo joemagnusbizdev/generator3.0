@@ -2195,6 +2195,47 @@ function checkDuplicateBasic(newAlert: Alert, existingAlert: Alert): boolean {
 // ============================================================================
 // EARLY SIGNALS HELPER FUNCTIONS
 // ============================================================================
+
+// Fetch web search results from Brave Search API
+async function fetchBraveSearchResults(query: string, apiKey: string): Promise<string> {
+  try {
+    const response = await fetch(
+      `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10`,
+      {
+        headers: {
+          'Accept': 'application/json',
+          'X-Subscription-Token': apiKey
+        },
+        signal: AbortSignal.timeout(10000)
+      }
+    );
+
+    if (!response.ok) {
+      console.warn(`  ⚠️ Brave Search API error: ${response.status}`);
+      return '';
+    }
+
+    const data = await response.json();
+    const results = data.web?.results || [];
+    
+    if (results.length === 0) {
+      console.log(`  ℹ️ No Brave results for query`);
+      return '';
+    }
+
+    // Combine title, description, and URL from top results
+    const combinedText = results.slice(0, 10).map((r: any) => {
+      return `${r.title || ''}\n${r.description || ''}\n${r.url || ''}\n`;
+    }).join('\n---\n');
+
+    console.log(`  ✓ Brave Search: ${results.length} results, ${combinedText.length} chars`);
+    return combinedText;
+  } catch (error: any) {
+    console.warn(`  ⚠️ Brave Search failed: ${error.message}`);
+    return '';
+  }
+}
+
 function buildEarlySignalsQueries(): string[] {
   // GLOBAL, COMPREHENSIVE, TRAVELER-FOCUSED early signals
   // Travel-focused = relevant for NON-NATIVES, outsiders visiting the region
@@ -5397,8 +5438,46 @@ Return recommendations in plain text format, organized by category if helpful.`;
             
             const queryPromise = (async () => {
               try {
-                console.log(`  ⚡ QUERY ${queryNum}/${queries.length}`);
+                console.log(`  ⚡ QUERY ${queryNum}/${queries.length}: ${query.slice(0, 80)}...`);
                 
+                // Step 1: Get real-time web results from Brave Search
+                const BRAVE_API_KEY = Deno.env.get('BRAVE_SEARCH_API_KEY');
+                let webContent = '';
+                
+                if (BRAVE_API_KEY) {
+                  webContent = await fetchBraveSearchResults(query, BRAVE_API_KEY);
+                } else {
+                  console.warn(`    ⚠️ BRAVE_SEARCH_API_KEY not configured, skipping web search`);
+                }
+                
+                if (!webContent || webContent.length < 100) {
+                  console.log(`    ℹ️ Insufficient web content, skipping Claude extraction`);
+                  return;
+                }
+                
+                // Step 2: Send web results to Claude for intelligent alert extraction
+                const extractionPrompt = `You are analyzing web search results for travel alerts. Extract ONLY crisis alerts that impact travelers (non-natives visiting the region).
+
+Return ONLY a JSON array of alerts. If no relevant alerts found, return [].
+
+Web search results:
+${webContent.slice(0, 8000)}
+
+Extract alerts as JSON array:
+[{
+  "title": "Event name",
+  "description": "Brief description",
+  "location": "Specific city/region",
+  "country": "Country name",
+  "latitude": 0.0,
+  "longitude": 0.0,
+  "severity": "critical|warning|caution|informative",
+  "event_type": "earthquake|flood|strike|protest|outbreak|etc",
+  "relevance_score": 3
+}]
+
+Return [] if no traveler-relevant alerts found.`;
+
                 const response = await fetchClaudeWithRetry(
                   'https://api.anthropic.com/v1/messages',
                   {
@@ -5412,7 +5491,7 @@ Return recommendations in plain text format, organized by category if helpful.`;
                       model: 'claude-3-haiku-20240307',
                       max_tokens: 2000,
                       temperature: 0,
-                      messages: [{ role: 'user', content: query }],
+                      messages: [{ role: 'user', content: extractionPrompt }],
                     }),
                     signal: AbortSignal.timeout(20000),
                   },
@@ -5423,7 +5502,7 @@ Return recommendations in plain text format, organized by category if helpful.`;
                 if (response.ok) {
                   const data = await response.json();
                   const text = data.content?.[0]?.text || '';
-                  console.log(`    ✓ Got response (${text.length} chars)`);
+                  console.log(`    ✓ Claude response (${text.length} chars)`);
                   job.succeeded++;
                   
                   // Try to extract and save alerts from response
