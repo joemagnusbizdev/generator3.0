@@ -132,6 +132,62 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
     [stopPolling]
   );
 
+  // Helper to trigger next batch of scour
+  const triggerNextBatch = useCallback(
+    async (jobId: string, offset: number, token?: string) => {
+      try {
+        console.log(`[Scour] Triggering batch at offset ${offset}`);
+        
+        const batchRes = await apiPostJson<{
+          ok: boolean;
+          status?: string;
+          hasMoreBatches?: boolean;
+          nextBatchOffset?: number;
+          processed?: number;
+          created?: number;
+          error?: string;
+        }>(
+          "/scour-sources-v2",
+          {
+            jobId,
+            batchOffset: offset
+          },
+          token || defaultAccessToken
+        );
+
+        if (!batchRes.ok) {
+          console.error(`[Scour] Batch failed:`, batchRes);
+          setLastError(batchRes.error || "Batch processing failed");
+          setIsScouring(false);
+          return;
+        }
+
+        // Update progress
+        if (batchRes.processed !== undefined) {
+          setScourJob(prev => prev ? { ...prev, processed: batchRes.processed! } : prev);
+        }
+        if (batchRes.created !== undefined) {
+          setScourJob(prev => prev ? { ...prev, created: batchRes.created! } : prev);
+        }
+
+        // Trigger next batch if more remain
+        if (batchRes.hasMoreBatches && batchRes.nextBatchOffset !== undefined) {
+          console.log(`[Scour] More batches remain, triggering offset ${batchRes.nextBatchOffset}`);
+          setTimeout(() => triggerNextBatch(jobId, batchRes.nextBatchOffset!, token), 1000);
+        } else {
+          console.log(`[Scour] All batches complete!`);
+          setScourJob(prev => prev ? { ...prev, status: "done" } : prev);
+          setIsScouring(false);
+        }
+      } catch (e: any) {
+        console.error(`[Scour] Batch trigger error:`, e);
+        setLastError(e.message || "Failed to trigger next batch");
+        setIsScouring(false);
+      }
+    },
+    [defaultAccessToken]
+  );
+
   const startScour = useCallback(
     async (accessToken?: string, opts?: ScourStartOpts) => {
       const token = accessToken || defaultAccessToken;
@@ -141,31 +197,22 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
         setLastError(null);
         setLastStartedAt(new Date().toISOString());
 
-        let sourceIds = Array.isArray(opts?.sourceIds) ? opts!.sourceIds! : [];
+        console.log(`[Scour] Starting batch-based scour with ${opts?.daysBack || 14} days back`);
 
-        // If none provided, fetch enabled sources
-        if (sourceIds.length === 0) {
-          const sourcesRes = await apiFetchJson<{ ok: boolean; sources?: Array<{ id: string; enabled: boolean }> }>(
-            "/sources?pageSize=1000",
-            token
-          );
-
-          const allSources = sourcesRes.sources || [];
-          const enabled = allSources.filter((s) => s.enabled).map((s) => s.id);
-          sourceIds = enabled;
-          
-          console.log(`[Scour] Fetched sources: total=${allSources.length}, enabled=${enabled.length}`);
-        }
-
-        if (sourceIds.length === 0) {
-          throw new Error(`No enabled sources available to scour (checked sources endpoint)`);
-        }
-
-        console.log(`[Scour] Starting with ${sourceIds.length} sources:`, sourceIds);
-
-        const startRes = await apiPostJson<{ ok: boolean; jobId?: string; total?: number; error?: string; debugInfo?: any }>(
-          "/scour-sources",
-          { sourceIds, daysBack: opts?.daysBack || 14 },
+        const startRes = await apiPostJson<{ 
+          ok: boolean; 
+          jobId?: string; 
+          status?: string;
+          totalSources?: number;
+          hasMoreBatches?: boolean;
+          nextBatchOffset?: number;
+          error?: string;
+        }>(
+          "/scour-sources-v2",
+          { 
+            daysBack: opts?.daysBack || 14,
+            batchOffset: 0  // Start from beginning
+          },
           token
         );
 
@@ -180,13 +227,19 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
         setScourJob({
           id: newJobId,
           status: "running",
-          total: startRes.total || sourceIds.length,
+          total: startRes.totalSources || 0,
           processed: 0,
           created: 0,
           duplicatesSkipped: 0,
           lowConfidenceSkipped: 0,
           errorCount: 0,
         });
+
+        // If more batches remain, trigger next batch
+        if (startRes.hasMoreBatches && startRes.nextBatchOffset !== undefined) {
+          console.log(`[Scour] Batch complete, triggering next batch at offset ${startRes.nextBatchOffset}`);
+          setTimeout(() => triggerNextBatch(newJobId, startRes.nextBatchOffset!, token), 1000);
+        }
 
         stopPolling();
         pollIntervalRef.current = setInterval(() => {
