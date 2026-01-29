@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 console.log("=== Clever Function starting ===");
+console.log("Edge function initialized:");
 
 // ============================================================================
 // GEOJSON & COORDINATE HELPERS
