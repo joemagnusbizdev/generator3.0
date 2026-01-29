@@ -508,12 +508,17 @@ export default function AlertCreateInline({
       // Format for WhatsApp
       const formatDateRange = (start?: string, end?: string): string => {
         if (!start) return '';
-        const startDate = new Date(start);
-        const startStr = startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+        const formatDate = (dateStr: string) => {
+          const d = new Date(dateStr);
+          const day = String(d.getDate()).padStart(2, '0');
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          const year = d.getFullYear();
+          return `${day}/${month}/${year}`;
+        };
+        const startStr = formatDate(start);
         
         if (!end) return startStr;
-        const endDate = new Date(end);
-        const endStr = endDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+        const endStr = formatDate(end);
         
         if (start === end) return startStr;
         return `${startStr} - ${endStr}`;

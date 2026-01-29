@@ -11,24 +11,23 @@ export async function apiFetchJson<T>(
   token?: string,
   options: RequestInit = {}
 ): Promise<T> {
-  if (!token) {
-    console.error('[apiFetchJson] No token provided', { endpoint, token, options });
-    throw new Error('API token required for apiFetchJson');
-  }
-
   const url = getApiUrl(endpoint);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`,
     ...(options.headers as Record<string, string> || {}),
   };
+
+  // Only add Authorization header if token is provided
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
 
   console.log('[apiFetchJson] Request:', { endpoint, url, method: options.method || 'GET', hasToken: !!token });
   const response = await fetch(url, { ...options, headers });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('[apiFetchJson] Error response:', { status: response.status, errorText });
+    console.error('[apiFetchJson] Error response:', { status: response.status, statusText: response.statusText, errorText });
     throw new Error(`API error ${response.status}: ${errorText}`);
   }
 

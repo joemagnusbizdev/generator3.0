@@ -278,8 +278,8 @@ const SourceManagerInline: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Scour Status */}
-      <ScourStatusBarInline />
+      {/* Scour Status - TEMPORARILY REMOVED during rebuild */}
+      {/* <ScourStatusBarInline accessToken={accessToken} /> */}
 
       {/* Controls */}
       <div className="flex flex-wrap gap-3 items-center">

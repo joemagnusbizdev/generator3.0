@@ -477,6 +477,30 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------------
+    // Disable source endpoint (admin)
+    if (path === "/admin/disable-source" && method === "POST") {
+      const body = await req.json();
+      const { sourceName } = body;
+      
+      if (!sourceName) {
+        return json({ ok: false, error: "sourceName required" }, 400);
+      }
+
+      try {
+        const result = await querySupabase(
+          `/sources?name=eq.${encodeURIComponent(sourceName)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ enabled: false }),
+          }
+        );
+        return json({ ok: true, message: `Disabled ${sourceName}`, result });
+      } catch (e) {
+        return json({ ok: false, error: String(e) }, 500);
+      }
+    }
+
+    // ------------------------------------------------------------------
     // FALLTHROUGH
     // ------------------------------------------------------------------
     return json({ ok: false, error: "Not found", path }, 404);
