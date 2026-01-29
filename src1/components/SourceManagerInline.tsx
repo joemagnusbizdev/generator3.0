@@ -108,12 +108,14 @@ const SourceManagerInline: React.FC<Props> = ({
   ========================= */
 
   async function runScour() {
+    console.log(`[UI] Run Scour clicked, enabledTotal=${enabledTotal}`);
     // Use global enabledTotal to reflect all enabled sources, not just filtered
     if (enabledTotal === 0) {
       alert("No enabled sources available to scour");
       return;
     }
 
+    console.log(`[UI] Calling startScour()`);
     // Start scour with no sourceIds to use all enabled sources globally
     await startScour(accessToken, {
       daysBack: 14,
@@ -310,7 +312,7 @@ const SourceManagerInline: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Scour Status */}
+      {/* Scour Status Bar */}
       <ScourStatusBarInline />
 
       {/* Controls */}

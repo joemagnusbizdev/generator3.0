@@ -117,16 +117,11 @@ function isSourceBlocked(source: { name?: string; url?: string }): boolean {
   return false;
 }
 
-// Determine geo scope based on severity and description
-function determineGeoScope(
-  severity: string,
-  country: string,
-  region?: string
-): 'local' | 'city' | 'regional' | 'national' | 'multinational' {
-  // Default to regional for broader impact visibility
-  if (!region) return 'regional';
-  
-  const isLocalRegion = region.length < 50 && !region.includes(',');
+                const alertForDb = buildAlertForDb(alert, {
+                  id: source.id,
+                  url: source.url,
+                  name: source.name,
+                });
   
   // For critical/warning severity, always expand to at least regional
   if (severity === 'critical') return 'regional';
@@ -144,7 +139,8 @@ function getRadiusFromSeverity(severity: string, scope: string, eventType?: stri
     'local': 20,        // was 8 - city blocks
     'city': 50,         // was 25 - metro area
     'regional': 150,    // was 75 - multi-state/province
-    'national': 350,    // was 200 - country-wide
+                  const errText = await saveResponse.text().catch(() => '');
+                  console.warn(`    ✗ Save failed [${saveResponse.status}] ${errText.slice(0, 200)}`);
     'multinational': 800,  // was 500 - continental
   };
   
@@ -322,6 +318,87 @@ function normalizeIntelligenceTopicsForACF(topic: string | null | undefined): st
   
   // Default fallback
   return "Security";
+}
+
+const VALID_MAINLANDS = new Set([
+  'Africa',
+  'Antarctica',
+  'Asia',
+  'Europe',
+  'North America',
+  'Australia (Oceania)',
+  'South America',
+]);
+
+function normalizeMainland(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const v = value.trim();
+  if (VALID_MAINLANDS.has(v)) return v;
+  if (v === 'Oceania') return 'Australia (Oceania)';
+  return null;
+}
+
+function normalizeSeverityForDb(severity: string | null | undefined): 'critical' | 'warning' | 'caution' | 'informative' {
+  const s = (severity || '').trim().toLowerCase();
+  if (s === 'critical' || s === 'warning' || s === 'caution' || s === 'informative') {
+    return s as 'critical' | 'warning' | 'caution' | 'informative';
+  }
+  return 'informative';
+}
+
+function normalizeSourcesForDb(sources: any, fallbackSourceName?: string): any[] {
+  if (Array.isArray(sources)) return sources;
+  if (typeof sources === 'string' && sources.trim()) return [sources.trim()];
+  if (fallbackSourceName) return [fallbackSourceName];
+  return [];
+}
+
+function buildAlertForDb(alert: any, source?: { id?: string; url?: string; name?: string }) {
+  const countryNormalized = normalizeCountryForACF(alert?.country ?? null) ?? alert?.country ?? null;
+  const mainlandNormalized = normalizeMainland(alert?.mainland ?? (countryNormalized ? getContinent(countryNormalized) : null));
+  const intelligenceTopic = normalizeIntelligenceTopicsForACF(
+    alert?.intelligence_topics ?? alert?.event_type ?? alert?.eventType ?? null
+  );
+
+  const recommendations = Array.isArray(alert?.recommendations)
+    ? alert.recommendations.join('\n')
+    : (alert?.recommendations ?? null);
+
+  const geoJsonObj = alert?.geoJSON ?? alert?.geo_json ?? null;
+  const geoJsonText = alert?.geojson ?? (geoJsonObj ? JSON.stringify(geoJsonObj) : null);
+
+  return {
+    title: alert?.title || 'Untitled alert',
+    summary: alert?.summary ?? alert?.eventSummary ?? '',
+    description: alert?.description ?? alert?.eventSummary ?? alert?.summary ?? '',
+    location: alert?.location ?? null,
+    country: countryNormalized,
+    region: alert?.region ?? null,
+    mainland: mainlandNormalized,
+    event_type: alert?.event_type ?? alert?.eventType ?? null,
+    severity: normalizeSeverityForDb(alert?.severity),
+    status: 'draft',
+    source_id: source?.id ?? null,
+    source_url: alert?.source_url ?? source?.url ?? null,
+    article_url: alert?.article_url ?? null,
+    sources: normalizeSourcesForDb(alert?.sources, source?.name),
+    event_start_date: alert?.event_start_date ?? alert?.eventStartDate ?? null,
+    event_end_date: alert?.event_end_date ?? alert?.eventEndDate ?? null,
+    latitude: alert?.latitude != null ? String(alert.latitude) : null,
+    longitude: alert?.longitude != null ? String(alert.longitude) : null,
+    radius: alert?.radiusKm ?? alert?.radius ?? null,
+    geo_json: geoJsonObj,
+    geojson: geoJsonText,
+    recommendations,
+    intelligence_topics: intelligenceTopic,
+    ai_generated: true,
+    ai_model: alert?.ai_model ?? 'claude-3-haiku-20240307',
+    ai_confidence: alert?.ai_confidence ?? null,
+    confidence_score: alert?.confidence_score ?? null,
+    generation_metadata: alert?.generation_metadata ?? {},
+    created_at: nowIso(),
+    updated_at: nowIso(),
+  };
 }
 
 // Convert recommendations string/array to ACF repeater format (array of objects)
@@ -2418,20 +2495,15 @@ async function extractAlertsWithClaude(
   // Strict prompt that ONLY extracts if content matches our 13 categories
   const systemPrompt = `You are a JSON extraction API. Return ONLY valid JSON. Never include explanations or text.
 
-Extract crisis alerts matching these categories:
-1. Earthquakes (5.0+ magnitude)
-2. Tsunamis, volcanic eruptions, hurricanes, landslides, floods
-3. Severe weather (storms, extreme heat, tornados, heavy snow)
-4. Infrastructure failures (blackouts, water disruption)
-5. Transportation disruptions (roads/airports closed)
-6. Disease outbreaks
-7. Political instability (protests, civil unrest, military action)
-8. Multi-casualty incidents
-9. Terrorist attacks or security threats
-10. Armed conflict
-11. Major transit closures (50+ people affected)
-12. Antisemitic incidents
-13. Pro-Palestinian protests
+Extract travel-relevant crisis alerts from content. Include any event that affects:
+- Safety/Health: Earthquakes, tsunamis, volcanos, hurricanes, floods, tornadoes, landslides, avalanches, extreme weather
+- Disease: Disease outbreaks, pandemics, health emergencies
+- Infrastructure: Power outages, water disruptions, internet outages, major fires
+- Transportation: Airport closures, road closures, rail disruptions, port closures (affecting 50+ people or regions)
+- Security: Terrorism, armed conflict, civil unrest, riots, protests, military activity
+- Utilities: Fuel shortages, gas shortages, supply chain disruptions
+- Environmental: Air quality crises, pollution events, wildfires
+- Other: Any significant event affecting travelers (accidents, emergencies, quarantines)
 
 Return ONLY this JSON structure - no other text:
 [
@@ -2445,7 +2517,7 @@ Return ONLY this JSON structure - no other text:
   }
 ]
 
-Return [] if NO matching alerts found.`;
+Return [] if NO travel-relevant alerts found.`;
 
   const userPrompt = `Extract ONLY alerts matching the 13 categories above. Return ONLY the JSON array.
 
@@ -5591,15 +5663,9 @@ Return [] if no traveler-relevant alerts found.`;
                     const alerts = JSON.parse(text);
                     if (Array.isArray(alerts)) {
                       for (const alert of alerts) {
-                        const alertForDb = {
-                          ...alert,
-                          status: 'draft',
-                          ai_generated: true,
-                          ai_model: 'claude-3-haiku-20240307',
-                          source_name: 'Early Signals',
-                          source_type: 'early_signals',
-                          created_at: nowIso(),
-                        };
+                        const alertForDb = buildAlertForDb(alert, {
+                          name: 'Early Signals',
+                        });
                         
                         try {
                           const saveResponse = await fetch(`${supabaseUrl}/rest/v1/alerts`, {
@@ -5616,6 +5682,9 @@ Return [] if no traveler-relevant alerts found.`;
                           if (saveResponse.ok) {
                             job.created++;
                             console.log(`      ✓ Saved: ${alert.title}`);
+                          } else {
+                            const errText = await saveResponse.text().catch(() => '');
+                            console.warn(`      ✗ Save failed [${saveResponse.status}] ${errText.slice(0, 200)}`);
                           }
                         } catch (e: any) {
                           console.warn(`      ✗ Save failed: ${e.message}`);
@@ -6572,35 +6641,11 @@ Return ONLY the JSON array. If no realistic alerts match, return [];`;
                       console.log(`    ✓ Creating new alert: "${alert.title}" in ${alert.location}, ${alert.country}`);
                       
                       // Build clean alert object with ONLY database fields
-                      const alertForDb: any = {
-                        id: alert.id,
-                        title: alert.title,
-                        summary: alert.summary,
-                        description: alert.description,
-                        location: alert.location,
-                        country: alert.country,
-                        region: alert.region,
-                        mainland: alert.mainland,
-                        event_type: alert.eventType || alert.event_type,
-                        severity: alert.severity,
-                        status: 'draft',
-                        source_url: alert.source_url,
-                        article_url: alert.article_url,
-                        sources: alert.sources || source.name,
-                        event_start_date: alert.event_start_date || alert.eventStartDate,
-                        event_end_date: alert.event_end_date || alert.eventEndDate,
-                        latitude: alert.latitude,
-                        longitude: alert.longitude,
-                        geo_json: alert.geoJSON || alert.geo_json || null,
-                        recommendations: alert.recommendations || null,
-                        ai_generated: true,
-                        ai_model: alert.ai_model,
-                        ai_confidence: alert.ai_confidence,
-                        generation_metadata: alert.generation_metadata,
-                        intelligence_topics: alert.intelligence_topics,
-                        created_at: nowIso(),
-                        updated_at: nowIso(),
-                      };
+                      const alertForDb: any = buildAlertForDb(alert, {
+                        id: source?.id,
+                        url: source?.url,
+                        name: source?.name,
+                      });
                       
                       // Fire alert insert in background without blocking scour progress
                       // This prevents hanging on slow database inserts
@@ -6613,8 +6658,13 @@ Return ONLY the JSON array. If no realistic alerts match, return [];`;
                         },
                         body: JSON.stringify(alertForDb),
                         signal: AbortSignal.timeout(3000),
-                      }).then(() => {
-                        console.log(`✓ Created: ${alert.title}`);
+                      }).then(async (res) => {
+                        if (res.ok) {
+                          console.log(`✓ Created: ${alert.title}`);
+                        } else {
+                          const errText = await res.text().catch(() => '');
+                          console.warn(`    ✗ Insert failed [${res.status}] ${errText.slice(0, 200)}`);
+                        }
                       }).catch((e: any) => {
                         if (e.name === 'AbortError') {
                           console.warn(`    ⏱️ Alert insert timeout (3s) for "${alert.title}"`);

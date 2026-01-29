@@ -224,7 +224,7 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
         const newJobId = startRes.jobId;
         setJobId(newJobId);
 
-        setScourJob({
+        const jobData: ScourJob = {
           id: newJobId,
           status: "running",
           total: startRes.totalSources || 0,
@@ -233,7 +233,10 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
           duplicatesSkipped: 0,
           lowConfidenceSkipped: 0,
           errorCount: 0,
-        });
+        };
+        
+        console.log(`[Scour] Setting scourJob state:`, jobData);
+        setScourJob(jobData);
 
         // If more batches remain, trigger next batch
         if (startRes.hasMoreBatches && startRes.nextBatchOffset !== undefined) {
