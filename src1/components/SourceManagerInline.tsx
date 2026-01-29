@@ -120,33 +120,35 @@ const SourceManagerInline: React.FC<Props> = ({
     });
   }
 
-  // Force stop: Kill all scour jobs in database
+  // Force stop: Kill all scour jobs via backend endpoint
   async function forceStopScour() {
-    if (!confirm("Force stop all running scour jobs? This will clear all job data.")) {
+    if (!confirm("Force stop all running scour jobs?")) {
       return;
     }
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/app_kv?key=like.scour_job:*`, {
-        method: 'DELETE',
+      // Call backend endpoint to force clear all jobs
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/force-stop-scour`, {
+        method: 'POST',
         headers: {
-          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
       });
 
+      const data = await response.json().catch(() => ({}));
+      
       if (response.ok) {
-        console.log('[ForceStop] All scour jobs cleared');
-        stopScour(); // Also stop local polling
-        alert('All scour jobs force stopped');
+        console.log('[ForceStop] Backend cleared jobs:', data);
+        stopScour(); // Stop local polling
+        alert(`✓ Force stopped: ${data.deleted || 'all'} jobs cleared`);
       } else {
-        console.error('[ForceStop] Failed:', response.status);
-        alert('Failed to force stop scour jobs');
+        console.error('[ForceStop] Backend error:', data);
+        alert(`⚠️ Error: ${data.error || 'Unknown error'}`);
       }
     } catch (e: any) {
-      console.error('[ForceStop] Error:', e);
-      alert(`Error: ${e.message}`);
+      console.error('[ForceStop] Request failed:', e);
+      alert(`❌ Error: ${e.message}`);
     }
   }
 

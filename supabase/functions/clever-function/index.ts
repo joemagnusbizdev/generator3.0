@@ -5439,6 +5439,33 @@ Return recommendations in plain text format, organized by category if helpful.`;
       }
     }
     
+    // SCOUR • FORCE STOP (POST /force-stop-scour) - Delete all running scour jobs
+    if (path === "/force-stop-scour" && method === "POST") {
+      try {
+        console.log(`🛑 FORCE STOP - Clearing all scour jobs`);
+        
+        // Get all scour job keys
+        const allKeys = await kv.list({ prefix: "scour_job:" });
+        let deleted = 0;
+        
+        for await (const entry of allKeys) {
+          await kv.delete(entry.key);
+          deleted++;
+        }
+        
+        console.log(`✓ Force stopped: ${deleted} jobs cleared`);
+        
+        return json({
+          ok: true,
+          deleted,
+          message: `Cleared ${deleted} scour job(s)`
+        });
+      } catch (err: any) {
+        console.error(`❌ FORCE STOP ERROR: ${err.message}`);
+        return json({ ok: false, error: err.message }, { status: 500 });
+      }
+    }
+    
     // SCOUR • EARLY SIGNALS (POST /scour-early-signals) - Independent early signals job
     if (path === "/scour-early-signals" && method === "POST") {
       try {
