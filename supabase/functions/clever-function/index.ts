@@ -2196,41 +2196,78 @@ function checkDuplicateBasic(newAlert: Alert, existingAlert: Alert): boolean {
 // EARLY SIGNALS HELPER FUNCTIONS
 // ============================================================================
 function buildEarlySignalsQueries(): string[] {
-  // High-quality, thoughtful early signals queries
-  // Focus: Travel-relevant, timely, appropriate, well-constructed alerts
-  // Strategy: Specific scenarios that directly impact travelers
+  // GLOBAL, COMPREHENSIVE, TRAVELER-FOCUSED early signals
+  // Travel-focused = relevant for NON-NATIVES, outsiders visiting the region
+  // Strategy: ALL disruptions that impact traveler safety, health, and mobility
   const queries = [
-    // EARTHQUAKES & SEISMIC ACTIVITY (High impact for travelers)
-    "What earthquakes (magnitude 5.0+) happened in the last 48 hours? Include location, magnitude, and distance from major cities.",
-    "What earthquake aftershock warnings or tsunami risks exist currently?",
+    // EARTHQUAKES & SEISMIC - Global coverage
+    "What earthquakes (magnitude 5.0+) happened globally in the last 48 hours? Include location, magnitude, depth, and proximity to major cities or tourist areas.",
+    "What tsunami warnings, volcanic eruptions, or major aftershock alerts exist that could impact travelers?",
     
-    // TRAVEL INFRASTRUCTURE (Direct impact on travelers)
-    "What major airports, train stations, or borders have temporary closures in the last 24 hours?",
-    "What highway closures, bridge collapses, or critical road disruptions are happening?",
-    "What flight cancellations or travel bans are being announced by airlines or governments?",
+    // SEVERE WEATHER - Comprehensive weather threats
+    "What hurricanes, typhoons, cyclones, or tropical storms threaten populated regions or travel routes in the next 48 hours?",
+    "What major flooding, flash floods, or monsoon alerts are affecting cities, airports, or highways globally?",
+    "What extreme heatwaves causing health emergencies or heat-related deaths are reported? Include locations and temperatures.",
+    "What severe storms, tornadoes, or damaging wind events are disrupting travel or causing casualties?",
+    "What blizzards, heavy snow, ice storms, or extreme cold warnings exist that could strand travelers?",
+    "What landslides, mudslides, or avalanches have blocked roads or damaged infrastructure?",
     
-    // SEVERE WEATHER (High impact for travelers)
-    "What hurricanes, typhoons, or tropical cyclones pose threats to populated areas in the next 48 hours?",
-    "What extreme weather warnings (flooding, landslides, extreme heat) exist for major cities?",
-    "What volcanic eruptions or ash advisories could impact travel?",
+    // INFRASTRUCTURE & UTILITIES - Power, water, services
+    "What major power outages, blackouts, or electrical grid failures are affecting cities or regions globally?",
+    "What water shortages, water contamination, or utility shutdowns are impacting populated areas?",
+    "What infrastructure collapses (bridges, buildings, dams) or failures were reported in the last 24 hours?",
     
-    // DISEASE & HEALTH EMERGENCIES (Important for travelers)
-    "What disease outbreaks or epidemics are being reported with travel implications?",
-    "What new pandemic-related travel restrictions or health alerts exist?",
-    "What healthcare facility emergencies or critical shortages are reported?",
+    // TRANSPORTATION - Strikes, closures, disruptions
+    "What airport strikes, airline worker strikes, or mass flight cancellations are happening globally?",
+    "What international airports have emergency closures, evacuations, or major operational disruptions?",
+    "What train strikes, railway closures, or mass transit shutdowns are affecting major cities?",
+    "What highway blockades, road closures, or border crossings are blocked or restricted?",
+    "What port strikes, shipping disruptions, or ferry cancellations could affect travelers?",
     
-    // SECURITY & CIVIL UNREST (Critical for traveler safety)
-    "What active armed conflicts, military operations, or major civil unrest is occurring in populated areas?",
-    "What terrorism alerts, bombings, or security incidents are being reported?",
-    "What government-issued travel warnings or emergency declarations are new?",
+    // PROTESTS & CIVIL UNREST - Demonstrations, blockages
+    "What major protests, demonstrations, or civil unrest are blocking airports, train stations, or city centers?",
+    "What general strikes, labor strikes, or nationwide shutdowns are happening in any country?",
+    "What riots, violent protests, or clashes with police are occurring in capital cities or tourist areas?",
     
-    // HUMANITARIAN CRISES (Impacts infrastructure and services)
-    "What refugee crises, mass evacuations, or humanitarian emergencies are unfolding?",
-    "What multi-casualty incidents (accidents, industrial disasters, mass casualty events) are reported?",
+    // SECURITY THREATS - Violence, terrorism, conflict
+    "What armed conflicts, military operations, coups, or civil wars are affecting traveler safety globally?",
+    "What terrorism incidents, bombings, shootings, or attacks on civilians were reported in the last 24 hours?",
+    "What kidnappings, attacks on foreigners, or hostage situations are reported?",
     
-    // VERIFICATION & BREAKING NEWS
-    "What major incidents or emergencies were just verified by Reuters, AP, or other major news agencies in the last 12 hours?",
-    "What unexpected emergencies or natural disasters disrupted daily life in major cities in the last 24 hours?"
+    // DISEASE & HEALTH - Outbreaks, pandemics, health emergencies
+    "What disease outbreaks (cholera, dengue, malaria, Ebola, measles, etc.) pose risks to travelers?",
+    "What new COVID-19 variants, pandemic alerts, or respiratory illness outbreaks are being tracked?",
+    "What food poisoning incidents, contaminated water alerts, or health emergencies exist in tourist areas?",
+    
+    // WILDFIRES & ENVIRONMENTAL DISASTERS
+    "What wildfires, forest fires, or brush fires are threatening cities, highways, or airports?",
+    "What air quality emergencies, toxic smog, or hazardous air pollution alerts exist in populated areas?",
+    
+    // INDUSTRIAL & CHEMICAL INCIDENTS
+    "What chemical spills, gas leaks, factory explosions, or toxic hazmat incidents require evacuations?",
+    "What nuclear incidents, radiation leaks, or power plant emergencies are being reported?",
+    
+    // CYBER & COMMUNICATION DISRUPTIONS
+    "What cyber attacks on airports, banks, or critical infrastructure are disrupting services?",
+    "What internet blackouts, communication shutdowns, or network outages are affecting regions?",
+    
+    // FUEL & RESOURCES
+    "What fuel shortages, gas station closures, or energy rationing are impacting transportation?",
+    
+    // GOVERNMENT ACTIONS - Travel restrictions, emergencies
+    "What border closures, visa restrictions, entry bans, or travel prohibitions were announced?",
+    "What countries declared states of emergency, martial law, or curfews in the last 48 hours?",
+    "What travel warnings, embassy alerts, or evacuation orders were issued by governments?",
+    
+    // REGIONAL COVERAGE - Geographic completeness
+    "What emergencies are developing in Sub-Saharan Africa, Middle East, or North Africa affecting travelers?",
+    "What incidents are reported in Southeast Asia, South Asia, or East Asia that impact travel safety?",
+    "What situations are unfolding in Latin America, Central America, or the Caribbean?",
+    "What alerts exist in Eastern Europe, Central Asia, or former Soviet states?",
+    
+    // VERIFICATION - Breaking news
+    "What major breaking incidents affecting travelers were verified by Reuters, AP, BBC, or Al Jazeera in the last 12 hours?",
+    "What unexpected emergencies disrupted airports, hotels, tourist sites, or city centers in the last 24 hours?"
   ];
   
   return queries;
