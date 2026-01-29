@@ -367,14 +367,14 @@ function buildAlertForDb(alert: any, source?: { id?: string; url?: string; name?
   const geoJsonObj = alert?.geoJSON ?? alert?.geo_json ?? null;
   const geoJsonText = alert?.geojson ?? (geoJsonObj ? JSON.stringify(geoJsonObj) : null);
 
-  return {
+  // Only include fields that exist in the alerts table schema
+  // Base schema fields from 001_complete_schema.sql
+  const basePayload: any = {
     title: alert?.title || 'Untitled alert',
     summary: alert?.summary ?? alert?.eventSummary ?? '',
-    description: alert?.description ?? alert?.eventSummary ?? alert?.summary ?? '',
     location: alert?.location ?? null,
     country: countryNormalized,
     region: alert?.region ?? null,
-    mainland: mainlandNormalized,
     event_type: alert?.event_type ?? alert?.eventType ?? null,
     severity: normalizeSeverityForDb(alert?.severity),
     status: 'draft',
@@ -384,21 +384,32 @@ function buildAlertForDb(alert: any, source?: { id?: string; url?: string; name?
     sources: normalizeSourcesForDb(alert?.sources, source?.name),
     event_start_date: alert?.event_start_date ?? alert?.eventStartDate ?? null,
     event_end_date: alert?.event_end_date ?? alert?.eventEndDate ?? null,
-    latitude: alert?.latitude != null ? String(alert.latitude) : null,
-    longitude: alert?.longitude != null ? String(alert.longitude) : null,
-    radius: alert?.radiusKm ?? alert?.radius ?? null,
-    geo_json: geoJsonObj,
-    geojson: geoJsonText,
-    recommendations,
-    intelligence_topics: intelligenceTopic,
     ai_generated: true,
     ai_model: alert?.ai_model ?? 'claude-3-haiku-20240307',
     ai_confidence: alert?.ai_confidence ?? null,
-    confidence_score: alert?.confidence_score ?? null,
     generation_metadata: alert?.generation_metadata ?? {},
     created_at: nowIso(),
     updated_at: nowIso(),
   };
+
+  // Add extended fields only if they exist (from migrations 008 and 010)
+  // These might not be present on all databases
+  try {
+    if (alert?.description) basePayload.description = alert.description;
+    if (mainlandNormalized) basePayload.mainland = mainlandNormalized;
+    if (intelligenceTopic) basePayload.intelligence_topics = intelligenceTopic;
+    if (alert?.latitude != null) basePayload.latitude = String(alert.latitude);
+    if (alert?.longitude != null) basePayload.longitude = String(alert.longitude);
+    if (alert?.radiusKm || alert?.radius) basePayload.radius = alert?.radiusKm ?? alert?.radius;
+    if (geoJsonObj) basePayload.geo_json = geoJsonObj;
+    if (geoJsonText) basePayload.geojson = geoJsonText;
+    if (recommendations) basePayload.recommendations = recommendations;
+    if (alert?.confidence_score) basePayload.confidence_score = alert.confidence_score;
+  } catch (e) {
+    // Silently skip extended fields if they cause issues
+  }
+
+  return basePayload;
 }
 
 // Convert recommendations string/array to ACF repeater format (array of objects)
