@@ -5193,32 +5193,51 @@ Return recommendations in plain text format, organized by category if helpful.`;
     // ============================================================================
     // NEW SEQUENTIAL SCOUR HANDLER (v2) - One source per request, Redis queue
     // ============================================================================
-    // SCOUR • SOURCES (POST /scour-sources-v2) - Process ALL sources in one request
+    // SCOUR • SOURCES (POST /scour-sources-v2) - Process sources in batches
     if (path === "/scour-sources-v2" && method === "POST") {
       try {
         console.log(`\n${'='.repeat(70)}`);
-        console.log(`✅ SCOUR-SOURCES HANDLER - Processing all sources`);
+        console.log(`✅ SCOUR-SOURCES HANDLER - Batch processing`);
         console.log(`${'='.repeat(70)}`);
         
         const body = await req.json().catch(() => ({}));
         const jobId = body.jobId || crypto.randomUUID();
         const daysBack = typeof body.daysBack === "number" ? body.daysBack : 14;
+        const batchOffset = typeof body.batchOffset === "number" ? body.batchOffset : 0;
+        const batchSize = 50; // Process 50 sources at a time to avoid timeout
         
-        // Initialize job
-        const allSources = await querySupabaseRest(`/sources?enabled=eq.true&select=id,name,url,type&limit=1000`) || [];
-        const job: any = {
-          id: jobId,
-          status: "running",
-          totalSources: allSources.length,
-          processed: 0,
-          created: 0,
-          skipped: 0,
-          errorList: [],
-          startedAt: nowIso(),
-          updated_at: nowIso(),
-        };
-        console.log(`📋 Starting scour of ${allSources.length} sources`);
-        await setKV(`scour_job:${jobId}`, job);
+        // Get all sources or check existing job
+        let job: any;
+        const existingJob = await getKV(`scour_job:${jobId}`);
+        
+        if (existingJob && batchOffset > 0) {
+          // Continuing existing job
+          job = existingJob;
+          console.log(`📋 Continuing job ${jobId} from offset ${batchOffset}`);
+        } else {
+          // New job - initialize
+          const allSources = await querySupabaseRest(`/sources?enabled=eq.true&select=id,name,url,type&limit=1000`) || [];
+          job = {
+            id: jobId,
+            status: "running",
+            totalSources: allSources.length,
+            processed: 0,
+            created: 0,
+            skipped: 0,
+            errorList: [],
+            startedAt: nowIso(),
+            updated_at: nowIso(),
+          };
+          console.log(`📋 Starting NEW scour of ${allSources.length} sources in batches of ${batchSize}`);
+          await setKV(`scour_job:${jobId}`, job);
+        }
+        
+        // Get sources for this batch
+        const batchSources = await querySupabaseRest(
+          `/sources?enabled=eq.true&select=id,name,url,type&offset=${batchOffset}&limit=${batchSize}`
+        ) || [];
+        
+        console.log(`📦 Processing batch: ${batchOffset}-${batchOffset + batchSources.length} of ${job.totalSources}`);
         
         // Get existing alerts for dedup
         const sinceDateIso = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString();
@@ -5226,10 +5245,11 @@ Return recommendations in plain text format, organized by category if helpful.`;
           `/alerts?created_at=gte.${encodeURIComponent(sinceDateIso)}&select=id,title,location&limit=500`
         ) || [];
         
-        // Process ALL sources in sequence
-        for (let i = 0; i < allSources.length; i++) {
-          const source = allSources[i];
-          console.log(`\n📰 SOURCE ${i + 1}/${allSources.length}: ${source.name}`);
+        // Process this batch
+        for (let i = 0; i < batchSources.length; i++) {
+          const source = batchSources[i];
+          const globalIndex = batchOffset + i + 1;
+          console.log(`\n📰 SOURCE ${globalIndex}/${job.totalSources}: ${source.name}`);
           const sourceStartTime = Date.now();
           
           try {
@@ -5366,24 +5386,53 @@ Return recommendations in plain text format, organized by category if helpful.`;
           await setKV(`scour_job:${jobId}`, job);
         }
         
-        // Complete
-        job.status = "done";
-        job.updated_at = nowIso();
-        await setKV(`scour_job:${jobId}`, job);
+        // Check if there are more batches to process
+        const nextOffset = batchOffset + batchSize;
+        const hasMoreBatches = nextOffset < job.totalSources;
         
-        console.log(`\n${'='.repeat(70)}`);
-        console.log(`✅ SCOUR COMPLETE`);
-        console.log(`📊 Results: ${job.created} alerts created from ${job.processed}/${job.totalSources} sources`);
-        console.log(`${'='.repeat(70)}`);
-        
-        return json({
-          ok: true,
-          status: "done",
-          jobId,
-          processed: job.processed,
-          created: job.created,
-          totalSources: job.totalSources,
-        });
+        if (hasMoreBatches) {
+          // More batches remain - update status and return
+          job.status = "running";
+          job.updated_at = nowIso();
+          await setKV(`scour_job:${jobId}`, job);
+          
+          console.log(`\n${'='.repeat(70)}`);
+          console.log(`📦 BATCH COMPLETE - More batches remaining`);
+          console.log(`📊 Progress: ${job.processed}/${job.totalSources} sources, ${job.created} alerts created`);
+          console.log(`⏭️  Next batch starts at offset ${nextOffset}`);
+          console.log(`${'='.repeat(70)}`);
+          
+          return json({
+            ok: true,
+            status: "batch_complete",
+            jobId,
+            processed: job.processed,
+            created: job.created,
+            totalSources: job.totalSources,
+            nextBatchOffset: nextOffset,
+            hasMoreBatches: true,
+          });
+        } else {
+          // All batches complete
+          job.status = "done";
+          job.updated_at = nowIso();
+          await setKV(`scour_job:${jobId}`, job);
+          
+          console.log(`\n${'='.repeat(70)}`);
+          console.log(`✅ SCOUR COMPLETE - All batches finished`);
+          console.log(`📊 Final Results: ${job.created} alerts created from ${job.processed}/${job.totalSources} sources`);
+          console.log(`${'='.repeat(70)}`);
+          
+          return json({
+            ok: true,
+            status: "done",
+            jobId,
+            processed: job.processed,
+            created: job.created,
+            totalSources: job.totalSources,
+            hasMoreBatches: false,
+          });
+        }
       } catch (err: any) {
         console.error(`\n❌ SCOUR ERROR: ${err.message}`);
         return json({ ok: false, error: err.message }, { status: 500 });
