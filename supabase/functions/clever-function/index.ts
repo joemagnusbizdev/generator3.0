@@ -4554,11 +4554,95 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
         time: nowIso(),
         env: {
           AI_ENABLED: !!OPENAI_API_KEY,
+          CLAUDE_ENABLED: !!CLAUDE_API_KEY,
           SCOUR_ENABLED: true,
           AUTO_SCOUR_ENABLED: true,
           WP_CONFIGURED: !!(WP_URL && WP_USER && WP_APP_PASSWORD),
           BRAVRE_SEARCH_API_KEY_CONFIGURED: !!BRAVE_API_KEY,
         },
+      });
+    }
+
+    // TEST CLAUDE
+    if (path === "/test-claude" && method === "GET") {
+      if (!CLAUDE_API_KEY) {
+        return json({ 
+          ok: false, 
+          error: "ANTHROPIC_API_KEY not set in Edge Function secrets",
+          help: "Go to Supabase Dashboard > Functions > clever-function > Settings and add ANTHROPIC_API_KEY"
+        }, 500);
+      }
+
+      try {
+        console.log("Testing Claude API...");
+        const testPrompt = "Return only the JSON array: [{\"test\": \"success\"}]";
+        
+        const response = await fetchClaudeWithRetry(
+          'https://api.anthropic.com/v1/messages',
+          {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-api-key': CLAUDE_API_KEY,
+              'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+              model: 'claude-3-haiku-20240307',
+              max_tokens: 100,
+              temperature: 0,
+              messages: [{
+                role: 'user',
+                content: testPrompt
+              }]
+            }),
+            signal: AbortSignal.timeout(10000),
+          },
+          3,
+          1000
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          return json({ 
+            ok: false, 
+            error: `Claude API returned ${response.status}`,
+            details: errorData,
+            help: response.status === 401 ? "Invalid API key" : response.status === 429 ? "Rate limit exceeded" : "Unknown error"
+          }, 500);
+        }
+
+        const data = await response.json();
+        const responseText = data.content?.[0]?.text || "";
+        
+        return json({ 
+          ok: true, 
+          message: "Claude API is working correctly",
+          model: data.model,
+          responsePreview: responseText.slice(0, 200),
+          usage: data.usage
+        });
+      } catch (err: any) {
+        return json({ 
+          ok: false, 
+          error: "Claude API test failed",
+          message: err.message,
+          help: "Check your ANTHROPIC_API_KEY and network connectivity"
+        }, 500);
+      }
+    }
+
+    // STATUS (show all scour jobs)
+    if (path === "/status" && method === "GET") {
+      const allJobs = await querySupabaseRest(`/app_kv?key=like.scour_job%&select=key,value,updated_at&order=updated_at.desc&limit=10`) || [];
+      return json({
+        ok: true,
+        claudeConfigured: !!CLAUDE_API_KEY,
+        braveConfigured: !!BRAVE_API_KEY,
+        recentJobs: allJobs.map((j: any) => ({
+          key: j.key,
+          ...j.value,
+          updated_at: j.updated_at
+        }))
       });
     }
 
