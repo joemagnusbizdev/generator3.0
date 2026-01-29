@@ -5444,21 +5444,26 @@ Return recommendations in plain text format, organized by category if helpful.`;
       try {
         console.log(`🛑 FORCE STOP - Clearing all scour jobs`);
         
-        // Get all scour job keys
-        const allKeys = await kv.list({ prefix: "scour_job:" });
-        let deleted = 0;
+        // Get all scour job keys with limit to prevent timeout
+        const allKeys = await kv.list({ prefix: "scour_job:", limit: 100 });
+        const keysToDelete: string[] = [];
         
         for await (const entry of allKeys) {
-          await kv.delete(entry.key);
-          deleted++;
+          keysToDelete.push(entry.key);
         }
         
-        console.log(`✓ Force stopped: ${deleted} jobs cleared`);
+        console.log(`Found ${keysToDelete.length} jobs to delete`);
+        
+        // Delete all keys in parallel
+        const deletePromises = keysToDelete.map(key => kv.delete(key));
+        await Promise.all(deletePromises);
+        
+        console.log(`✓ Force stopped: ${keysToDelete.length} jobs cleared`);
         
         return json({
           ok: true,
-          deleted,
-          message: `Cleared ${deleted} scour job(s)`
+          deleted: keysToDelete.length,
+          message: `Cleared ${keysToDelete.length} scour job(s)`
         });
       } catch (err: any) {
         console.error(`❌ FORCE STOP ERROR: ${err.message}`);
