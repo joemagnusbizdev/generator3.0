@@ -120,6 +120,36 @@ const SourceManagerInline: React.FC<Props> = ({
     });
   }
 
+  // Force stop: Kill all scour jobs in database
+  async function forceStopScour() {
+    if (!confirm("Force stop all running scour jobs? This will clear all job data.")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/app_kv?key=like.scour_job:*`, {
+        method: 'DELETE',
+        headers: {
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        console.log('[ForceStop] All scour jobs cleared');
+        stopScour(); // Also stop local polling
+        alert('All scour jobs force stopped');
+      } else {
+        console.error('[ForceStop] Failed:', response.status);
+        alert('Failed to force stop scour jobs');
+      }
+    } catch (e: any) {
+      console.error('[ForceStop] Error:', e);
+      alert(`Error: ${e.message}`);
+    }
+  }
+
   /* =========================
      Edit / Delete
   ========================= */
@@ -294,11 +324,11 @@ const SourceManagerInline: React.FC<Props> = ({
 
         {isScouring && (
           <button
-            onClick={stopScour}
+            onClick={forceStopScour}
             className="px-3 py-1 rounded text-white font-semibold transition hover:opacity-90"
             style={{ backgroundColor: MAGNUS_COLORS.orange }}
           >
-            ⊘ Stop Scour
+            ⊗ Force Stop
           </button>
         )}
 
