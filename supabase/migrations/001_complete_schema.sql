@@ -110,61 +110,12 @@ CREATE INDEX IF NOT EXISTS idx_alerts_wordpress ON alerts(wordpress_post_id) WHE
 COMMENT ON TABLE alerts IS 'Intelligence alerts generated from sources or manually created';
 
 -- -------------------------------------------
--- 4. TRENDS Table
+-- 4. TRENDS Table (via migration 20240101000000_create_trends_table.sql)
 -- Used for: aggregating related alerts
 -- -------------------------------------------
-CREATE TABLE IF NOT EXISTS trends (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  
-  -- Core content
-  title TEXT NOT NULL,
-  description TEXT DEFAULT '',
-  predictive_analysis TEXT DEFAULT '',
-  
-  -- Status
-  status TEXT DEFAULT 'open' CHECK (status IN ('open', 'monitoring', 'closed')),
-  
-  -- Geographic
-  country TEXT,
-  countries TEXT[] DEFAULT '{}',
-  region TEXT,
-  
-  -- Classification
-  event_type TEXT,
-  severity TEXT DEFAULT 'informative' CHECK (severity IN ('critical', 'warning', 'caution', 'informative')),
-  
-  -- Linked alerts
-  alert_ids UUID[] DEFAULT '{}',
-  incident_count INTEGER DEFAULT 0,
-  
-  -- Time tracking
-  first_seen TIMESTAMPTZ DEFAULT NOW(),
-  last_seen TIMESTAMPTZ DEFAULT NOW(),
-  
-  -- Metadata
-  auto_generated BOOLEAN DEFAULT FALSE,
-  metadata JSONB DEFAULT '{}',
-  
-  -- Timestamps
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- NOTE: This table is created in a separate migration with the correct schema
+-- See: 20240101000000_create_trends_table.sql for the table definition
 
--- Add foreign key for trend_id in alerts (now that trends table exists)
-ALTER TABLE alerts 
-  ADD CONSTRAINT fk_alerts_trend 
-  FOREIGN KEY (trend_id) REFERENCES trends(id) ON DELETE SET NULL;
-
-CREATE INDEX IF NOT EXISTS idx_trends_status ON trends(status);
-CREATE INDEX IF NOT EXISTS idx_trends_country ON trends(country);
-CREATE INDEX IF NOT EXISTS idx_trends_event_type ON trends(event_type);
-CREATE INDEX IF NOT EXISTS idx_trends_severity ON trends(severity);
-CREATE INDEX IF NOT EXISTS idx_trends_updated ON trends(updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_trends_first_seen ON trends(first_seen DESC);
-
-COMMENT ON TABLE trends IS 'Aggregated trend patterns from related alerts';
-COMMENT ON COLUMN trends.countries IS 'Array of all countries involved in multi-country trends';
-COMMENT ON COLUMN trends.alert_ids IS 'Array of alert UUIDs contributing to this trend';
 
 -- -------------------------------------------
 -- 5. Row Level Security (RLS)
@@ -177,25 +128,32 @@ ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trends ENABLE ROW LEVEL SECURITY;
 
 -- Service role has full access (for Edge Functions)
+DROP POLICY IF EXISTS "Service role full access on app_kv" ON app_kv;
 CREATE POLICY "Service role full access on app_kv" ON app_kv
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Service role full access on sources" ON sources;
 CREATE POLICY "Service role full access on sources" ON sources
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Service role full access on alerts" ON alerts;
 CREATE POLICY "Service role full access on alerts" ON alerts
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Service role full access on trends" ON trends;
 CREATE POLICY "Service role full access on trends" ON trends
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 -- Authenticated users can read (for direct Supabase client access if needed)
+DROP POLICY IF EXISTS "Authenticated read on sources" ON sources;
 CREATE POLICY "Authenticated read on sources" ON sources
   FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Authenticated read on alerts" ON alerts;
 CREATE POLICY "Authenticated read on alerts" ON alerts
   FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Authenticated read on trends" ON trends;
 CREATE POLICY "Authenticated read on trends" ON trends
   FOR SELECT TO authenticated USING (true);
 
