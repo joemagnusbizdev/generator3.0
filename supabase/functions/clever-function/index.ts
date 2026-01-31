@@ -150,7 +150,7 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
     if (path.endsWith("/alerts/review") && method === "GET") {
       try {
         const page = parseInt(url.searchParams.get("page") || "1", 10);
-        const pageSize = parseInt(url.searchParams.get("pageSize") || "50", 10);
+        const pageSize = parseInt(url.searchParams.get("pageSize") || "500", 10);
         const offset = (page - 1) * pageSize;
         
         const alerts = await querySupabaseRest(
