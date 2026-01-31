@@ -495,63 +495,79 @@ Deno.serve(async (req) => {
     }
 
     // POST /alerts/:id/approve
-    if ((path.includes("/approve") && req.method === "POST") || 
-        (path.includes("/alerts/") && path.includes("/approve"))) {
+    if (path.includes("/approve") && req.method === "POST") {
       const parts = path.split("/");
       const idIndex = parts.findIndex(p => p === "alerts") + 1;
       const id = parts[idIndex];
       
-      const updated = await querySupabase(`/alerts?id=eq.${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ 
-          status: "approved",
-          updated_at: new Date().toISOString() 
-        }),
-        headers: {
-          "Prefer": "return=representation"
+      try {
+        if (!id) {
+          return new Response(
+            JSON.stringify({ ok: false, error: "Alert ID required" }),
+            { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
+          );
         }
-      });
-      
-      return new Response(
-        JSON.stringify({ ok: true, alert: updated[0] }),
-        {
-          status: 200,
+
+        const updated = await querySupabase(`/alerts?id=eq.${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ 
+            status: "approved",
+            updated_at: new Date().toISOString() 
+          }),
           headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
+            "Prefer": "return=representation"
           }
-        }
-      );
+        });
+        
+        return new Response(
+          JSON.stringify({ ok: true, alert: updated[0] }),
+          { status: 200, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
+        );
+      } catch (err: any) {
+        console.error("[approve]", err);
+        return new Response(
+          JSON.stringify({ ok: false, error: err.message }),
+          { status: 500, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
+        );
+      }
     }
 
     // POST /alerts/:id/dismiss
-    if ((path.includes("/dismiss") && req.method === "POST") || 
-        (path.includes("/alerts/") && path.includes("/dismiss"))) {
+    if (path.includes("/dismiss") && req.method === "POST") {
       const parts = path.split("/");
       const idIndex = parts.findIndex(p => p === "alerts") + 1;
       const id = parts[idIndex];
       
-      const updated = await querySupabase(`/alerts?id=eq.${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ 
-          status: "dismissed",
-          updated_at: new Date().toISOString() 
-        }),
-        headers: {
-          "Prefer": "return=representation"
+      try {
+        if (!id) {
+          return new Response(
+            JSON.stringify({ ok: false, error: "Alert ID required" }),
+            { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
+          );
         }
-      });
-      
-      return new Response(
-        JSON.stringify({ ok: true, alert: updated[0] }),
-        {
-          status: 200,
+
+        const updated = await querySupabase(`/alerts?id=eq.${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ 
+            status: "dismissed",
+            updated_at: new Date().toISOString() 
+          }),
           headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
+            "Prefer": "return=representation"
           }
-        }
-      );
+        });
+        
+        return new Response(
+          JSON.stringify({ ok: true, alert: updated[0] }),
+          { status: 200, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
+        );
+      } catch (err: any) {
+        console.error("[dismiss]", err);
+        return new Response(
+          JSON.stringify({ ok: false, error: err.message }),
+          { status: 500, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
+        );
+      }
     }
 
     // POST /alerts/:id/post-to-wp
@@ -1177,6 +1193,7 @@ Deno.serve(async (req) => {
           "POST /alerts/:id/approve",
           "POST /alerts/:id/dismiss",
           "POST /alerts/:id/post-to-wp",
+          "POST /alerts/:id/publish",
           "DELETE /alerts/:id",
           "POST /scour-sources",
           "GET /scour/status",
