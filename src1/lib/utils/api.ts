@@ -17,12 +17,16 @@ export async function apiFetchJson<T>(
     ...(options.headers as Record<string, string> || {}),
   };
 
-  // Only add Authorization header if token is provided
-  if (token) {
+  // Endpoints that have JWT verification disabled don't need Authorization header
+  const noAuthEndpoints = ['/scour-sources-v2', '/scour-early-signals', '/force-stop-scour', '/scour/status'];
+  const needsAuth = !noAuthEndpoints.some(ep => endpoint.includes(ep));
+
+  // Only add Authorization header if token is provided AND endpoint requires auth
+  if (token && needsAuth) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  console.log('[apiFetchJson] Request:', { endpoint, url, method: options.method || 'GET', hasToken: !!token });
+  console.log('[apiFetchJson] Request:', { endpoint, url, method: options.method || 'GET', hasToken: !!token, needsAuth });
   const response = await fetch(url, { ...options, headers });
 
   if (!response.ok) {

@@ -2,3 +2,6 @@
 
 [functions.clever-function]
 verify_jwt = false
+
+[functions.scour-worker]
+verify_jwt = false

@@ -29,6 +29,9 @@ export { default as TrendsView } from './TrendsView';
 // Admin
 export { default as UserManagementInline } from './UserManagementInline';
 
+// Health Check
+export { default as HealthCheckModal } from './HealthCheckModal';
+
 // Status
 export { default as ScourStatusBarInline } from './ScourStatusBarInline';
 export { ScourStatusBar } from './ScourStatusBar';

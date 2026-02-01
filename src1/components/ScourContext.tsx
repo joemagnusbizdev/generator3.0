@@ -10,6 +10,8 @@ export interface ScourJob {
   status: "running" | "done" | "error";
   phase?: "main_scour" | "early_signals" | "finalizing" | "done";
   currentEarlySignalQuery?: string;
+  currentQuery?: string;
+  currentQueryProgress?: string;
   total: number;
   processed: number;
   created: number;
@@ -27,6 +29,7 @@ export interface ScourJob {
   braveActive?: boolean;
   extractActive?: boolean;
   dupeCheckActive?: boolean;
+  earlySignalsActive?: boolean;
 }
 
 export interface ScourStartOpts {
@@ -145,6 +148,11 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
           nextBatchOffset?: number;
           processed?: number;
           created?: number;
+          phase?: string;
+          earlySignalsActive?: boolean;
+          duplicatesSkipped?: number;
+          errorCount?: number;
+          errors?: Array<any>;
           error?: string;
         }>(
           "/scour-sources-v2",
@@ -169,6 +177,26 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
         if (batchRes.created !== undefined) {
           setScourJob(prev => prev ? { ...prev, created: prev.created + batchRes.created! } : prev);
         }
+        if (batchRes.duplicatesSkipped !== undefined) {
+          setScourJob(prev => prev ? { ...prev, duplicatesSkipped: prev.duplicatesSkipped! + batchRes.duplicatesSkipped! } : prev);
+        }
+        if (batchRes.errorCount !== undefined) {
+          setScourJob(prev => prev ? { ...prev, errorCount: prev.errorCount! + batchRes.errorCount! } : prev);
+        }
+        if (batchRes.errors && Array.isArray(batchRes.errors)) {
+          setScourJob(prev => prev ? { 
+            ...prev, 
+            errors: [...(prev.errors || []), ...batchRes.errors!.map((e: any) => ({
+              reason: typeof e === 'string' ? e : e.reason || 'Unknown error'
+            }))]
+          } : prev);
+        }
+        if (batchRes.phase) {
+          setScourJob(prev => prev ? { ...prev, phase: batchRes.phase as any } : prev);
+        }
+        if (batchRes.earlySignalsActive !== undefined) {
+          setScourJob(prev => prev ? { ...prev, currentActivity: batchRes.earlySignalsActive ? '⚡ Running early signal queries...' : undefined } : prev);
+        }
 
         // Trigger next batch if more remain
         if (batchRes.hasMoreBatches && batchRes.nextBatchOffset !== undefined) {
@@ -176,7 +204,7 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
           setTimeout(() => triggerNextBatch(jobId, batchRes.nextBatchOffset!, token), 1000);
         } else {
           console.log(`[Scour] All batches complete!`);
-          setScourJob(prev => prev ? { ...prev, status: "done" } : prev);
+          setScourJob(prev => prev ? { ...prev, status: "done", phase: "done" } : prev);
           setIsScouring(false);
         }
       } catch (e: any) {
@@ -227,6 +255,7 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
         const jobData: ScourJob = {
           id: newJobId,
           status: "running",
+          phase: "main_scour",
           total: startRes.totalSources || 0,
           processed: 0,
           created: 0,

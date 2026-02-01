@@ -131,7 +131,7 @@ export default function App(): JSX.Element {
     <ScourProvider accessToken={accessToken}>
       <main className="p-4 space-y-4">
         {/* Scour Status Bar (must be inside ScourProvider) */}
-        <ScourStatusBarInline />
+        <ScourStatusBarInline accessToken={accessToken} />
 
         {/* Tabs */}
         <div className="flex flex-wrap gap-2 border-b pb-2">

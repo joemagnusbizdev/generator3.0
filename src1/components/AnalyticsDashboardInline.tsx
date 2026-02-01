@@ -10,6 +10,7 @@ import { apiFetchJson } from '../lib/utils/api';
 import { colors } from '../styles/inline';
 import { buttons } from '../styles/designSystem';
 import MAGNUS_COLORS from '../styles/magnus-colors';
+import HealthCheckModal from './HealthCheckModal';
 
 // ============================================================================
 // Types
@@ -384,6 +385,7 @@ export function AnalyticsDashboardInline({
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'ytd'>('month');
+  const [healthCheckOpen, setHealthCheckOpen] = useState(false);
 
   // Permission check
   if (!permissions.canAccessAnalytics) {
@@ -566,19 +568,39 @@ export function AnalyticsDashboardInline({
             Alert metrics by time period
           </p>
         </div>
-        <button
-          onClick={refresh}
-          disabled={loading}
-          style={{
-            ...buttons.secondary,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-          }}
-        >
-           Refresh
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button
+            onClick={() => setHealthCheckOpen(true)}
+            style={{
+              ...buttons.secondary,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              fontSize: '0.875rem',
+            }}
+          >
+            🏥 Health
+          </button>
+          <button
+            onClick={refresh}
+            disabled={loading}
+            style={{
+              ...buttons.secondary,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}
+          >
+             Refresh
+          </button>
+        </div>
       </div>
+
+      <HealthCheckModal
+        isOpen={healthCheckOpen}
+        onClose={() => setHealthCheckOpen(false)}
+        accessToken={accessToken}
+      />
 
       {err && (
         <div style={{
