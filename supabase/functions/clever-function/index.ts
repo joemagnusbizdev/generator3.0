@@ -287,7 +287,7 @@ async function checkSupabase(): Promise<any> {
 async function checkDatabase(): Promise<any> {
   try {
     // Check if key tables exist by trying to query each one
-    const requiredTables = ['alerts', 'sources', 'app_kv', 'trends'];
+    const requiredTables = ['alerts', 'sources', 'app_kv'];
     const existingTables: string[] = [];
     const missingTables: string[] = [];
 
@@ -300,8 +300,12 @@ async function checkDatabase(): Promise<any> {
       }
     }
 
+    // Also check that trends are stored in KV
+    const trendsInKv = await getKV("trends-list");
+    existingTables.push("trends (in KV)");
+
     if (missingTables.length === 0) {
-      return { ok: true, message: `All ${requiredTables.length} required tables exist`, tables: existingTables };
+      return { ok: true, message: `All required tables exist`, tables: existingTables };
     } else {
       return { ok: false, message: `Missing tables: ${missingTables.join(", ")}` };
     }
@@ -330,25 +334,59 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
       return json(health, health.allHealthy ? 200 : 503);
     }
 
-    // Test Claude
-    if (path.endsWith("/test-claude")) {
-      return json({
-        ok: !!ANTHROPIC_API_KEY,
-        configured: !!ANTHROPIC_API_KEY,
-      });
-    }
-
-    // Status
-    if (path.endsWith("/status")) {
-      return json({
-        ok: true,
-        claude: !!ANTHROPIC_API_KEY,
-      });
-    }
-
     // GET /scour/status - Get current scour job status
-    if (path.startsWith("/scour/status") && method === "GET") {
-      const jobId = urlObj.searchParams.get("jobId");
+    if (path === "/scour/status" && method === "GET") {
+      try {
+        // Return all active scour jobs
+        const allJobs = await querySupabaseRest(`/app_kv?key=like.scour-job-*&select=key,value`);
+        
+        if (allJobs && Array.isArray(allJobs)) {
+          const activeJobs = [];
+          for (const entry of allJobs) {
+            const jobData = typeof entry.value === 'string' ? JSON.parse(entry.value) : entry.value;
+            if (jobData && (jobData.status === 'running' || jobData.status === 'pending')) {
+              activeJobs.push({
+                id: jobData.id || entry.key.replace('scour-job-', ''),
+                status: jobData.status,
+                phase: jobData.phase,
+                processed: jobData.processed || 0,
+                total: jobData.total || 0,
+                created: jobData.created || 0,
+                sources_count: jobData.sources?.length || 0,
+                started_at: jobData.started_at,
+                current_source: jobData.current_source,
+              });
+            }
+          }
+          
+          return json({
+            ok: true,
+            active_jobs: activeJobs,
+            has_active_job: activeJobs.length > 0,
+            job_count: activeJobs.length,
+          });
+        }
+        
+        return json({
+          ok: true,
+          active_jobs: [],
+          has_active_job: false,
+          job_count: 0,
+        });
+      } catch (e: any) {
+        console.error(`[scour/status] Error:`, e);
+        return json({ 
+          ok: true,
+          active_jobs: [],
+          has_active_job: false,
+          job_count: 0,
+        });
+      }
+    }
+
+    // GET /scour/status/:jobId - Get specific job status
+    if (path.startsWith("/scour/status/") && method === "GET") {
+      const jobId = path.split('/').pop();
       if (!jobId) {
         return json({ ok: false, error: "Missing jobId parameter" }, 400);
       }
@@ -390,11 +428,61 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
       }
     }
 
-    // GET /alerts
-    if (path.endsWith("/alerts") && method === "GET") {
+    // GET /scour/logs - Get live logs from current job
+    if (path.startsWith("/scour/logs") && method === "GET") {
+      const jobId = urlObj.searchParams.get("jobId");
+      const limit = parseInt(urlObj.searchParams.get("limit") || "50", 10);
+      
+      if (!jobId) {
+        return json({ ok: false, error: "Missing jobId parameter" }, 400);
+      }
+
+      try {
+        // Get job status which includes logs
+        const statusKey = `scour-job-${jobId}`;
+        const result = await querySupabaseRest(`/app_kv?key=eq.${encodeURIComponent(statusKey)}&select=value`);
+        
+        if (result && result.length > 0) {
+          const jobData = typeof result[0].value === 'string' 
+            ? JSON.parse(result[0].value) 
+            : result[0].value;
+          
+          // Extract activity log and return last N entries
+          const logs = jobData.activityLog || [];
+          const recentLogs = logs.slice(-limit);
+          
+          return json({
+            ok: true,
+            jobId,
+            logs: recentLogs,
+            totalLogs: logs.length,
+            phase: jobData.phase,
+            status: jobData.status,
+          });
+        }
+
+        return json({
+          ok: true,
+          jobId,
+          logs: [],
+          totalLogs: 0,
+          phase: "unknown",
+          status: "unknown",
+        });
+      } catch (e: any) {
+        console.error(`[scour/logs] Error:`, e);
+        return json({ 
+          ok: false, 
+          error: `Failed to get logs: ${e.message}` 
+        }, 500);
+      }
+    }
+
+    // GET /alerts - Get all alerts with optional filtering
+    if ((path === "/alerts" || path === "/clever-function/alerts") && method === "GET") {
       try {
         const status = urlObj.searchParams.get("status");
-        const limit = urlObj.searchParams.get("limit") || "1000";
+        const limit = urlObj.searchParams.get("limit") || "10000";
         let endpoint = `/alerts?order=created_at.desc&limit=${limit}`;
         if (status) {
           endpoint = `/alerts?status=eq.${encodeURIComponent(status)}&order=created_at.desc&limit=${limit}`;
@@ -410,7 +498,7 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
     if (path.endsWith("/alerts/review") && method === "GET") {
       try {
         const page = parseInt(urlObj.searchParams.get("page") || "1", 10);
-        const pageSize = parseInt(urlObj.searchParams.get("pageSize") || "500", 10);
+        const pageSize = parseInt(urlObj.searchParams.get("pageSize") || "5000", 10);
         const offset = (page - 1) * pageSize;
         
         const alerts = await querySupabaseRest(
@@ -510,6 +598,88 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
           console.warn(`[Early Signals] KV storage failed: ${kvErr.message}`);
           // Continue anyway - the job will still be created
         }
+
+    // POST /scour-group - Scour a group of sources
+    if (path.endsWith("/scour-group") && method === "POST") {
+      try {
+        console.log('[scour-group] Request received');
+        const body = await req.json().catch(() => ({}));
+        const sourceIds = body.source_ids || [];
+        const groupId = body.group_id || 'unknown';
+        
+        if (!sourceIds || sourceIds.length === 0) {
+          return json({ ok: false, error: 'No sources provided' }, 400);
+        }
+
+        console.log(`[scour-group] Scour group ${groupId} with ${sourceIds.length} sources`);
+        
+        const jobId = `scour-${crypto.randomUUID()}`;
+        
+        // Store job in KV
+        await setKV(`scour-job-${jobId}`, {
+          id: jobId,
+          status: 'running',
+          phase: 'source_scour',
+          group_id: groupId,
+          total: sourceIds.length,
+          processed: 0,
+          created: 0,
+          duplicates: 0,
+          errors: 0,
+          disabled_sources: [],
+          current_source: null,
+          started_at: nowIso(),
+          updated_at: nowIso(),
+        });
+
+        // Call scour worker with this specific group
+        const workerResponse = await fetch(
+          `${supabaseUrl}/functions/v1/scour-worker`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${serviceKey}`,
+              'apikey': serviceKey,
+            },
+            body: JSON.stringify({
+              jobId,
+              groupId,
+              sourceIds,
+              daysBack: 30,
+            }),
+          }
+        );
+
+        const result = await workerResponse.json();
+        
+        // Update job status
+        await setKV(`scour-job-${jobId}`, {
+          id: jobId,
+          status: 'completed',
+          phase: 'source_scour',
+          group_id: groupId,
+          completed_at: nowIso(),
+          results: result.results,
+        });
+
+        return json({
+          ok: true,
+          jobId,
+          group_id: groupId,
+          results: result.results || {
+            alerts_created: 0,
+            duplicates_skipped: 0,
+            errors: 0,
+            disabled_sources: 0,
+            disabled_source_ids: [],
+          },
+        });
+      } catch (err: any) {
+        console.error('[scour-group] Error:', err);
+        return json({ ok: false, error: err.message }, 500);
+      }
+    }
         
         // Update last job ID
         try {
@@ -584,14 +754,17 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
             for (const entry of activeJobs) {
               const entryJobId = entry.key?.replace('scour-job-', '');
               if (entryJobId && entryJobId !== jobId) {
-                // Stop this job too
-                await setKV(`scour-stop-${entryJobId}`, { stopped: true, at: nowIso() });
-                stoppedJobs.push(entryJobId);
-                console.log(`🛑 Also stopped concurrent job: ${entryJobId}`);
+                // Only stop if job is actually running (not already done/stopped)
+                const jobValue = typeof entry.value === 'string' ? JSON.parse(entry.value) : entry.value;
+                if (jobValue?.status === 'running') {
+                  await setKV(`scour-stop-${entryJobId}`, { stopped: true, at: nowIso() });
+                  stoppedJobs.push(entryJobId);
+                  console.log(`🛑 Also stopped concurrent job: ${entryJobId}`);
+                }
               }
             }
             if (stoppedJobs.length > 0) {
-              console.log(`🛑 Stopped ${stoppedJobs.length} concurrent scour jobs`);
+              console.log(`🛑 Stopped ${stoppedJobs.length} concurrent scour job(s)`);
             }
           }
         } catch (e) {
@@ -618,370 +791,441 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
             for (const entry of activeJobs) {
               const jobId = entry.key?.replace('scour-job-', '');
               if (jobId) {
-                await setKV(`scour-stop-${jobId}`, { stopped: true, at: nowIso() });
-                stoppedCount++;
-                console.log(`🛑 Force stopped job: ${jobId}`);
+                // Get the current job value
+                const jobValue = typeof entry.value === 'string' ? JSON.parse(entry.value) : entry.value;
+                
+                // Mark as stopped and delete the job record
+                if (jobValue?.status === 'running' || jobValue?.status !== 'completed') {
+                  // Set stop flag
+                  await setKV(`scour-stop-${jobId}`, { stopped: true, at: nowIso() });
+                  
+                  // Mark job as cancelled in KV
+                  await querySupabaseRest(`/app_kv?key=eq.${encodeURIComponent(entry.key)}`, {
+                    method: "PATCH",
+                    body: JSON.stringify({ value: JSON.stringify({ ...jobValue, status: "cancelled", cancelled_at: nowIso() }) })
+                  });
+                  
+                  stoppedCount++;
+                  console.log(`🛑 Force stopped job: ${jobId}`);
+                }
               }
             }
-            console.log(`🛑 Force stopped ${stoppedCount} scour jobs`);
+            console.log(`🛑 Force stopped ${stoppedCount} scour job(s)`);
             return json({ 
               ok: true, 
-              message: `Stopped ${stoppedCount} scour job(s)`
+              message: `Stopped ${stoppedCount} scour job(s)`,
+              stopped_jobs: stoppedCount
             });
           }
         } catch (e) {
           console.warn(`Error stopping jobs: ${e}`);
         }
 
-        return json({ ok: true, message: "No active scour jobs to stop" });
+        return json({ ok: true, message: "No active scour jobs to stop", stopped_jobs: 0 });
       } catch (err: any) {
         return json({ ok: false, error: err.message }, 500);
       }
     }
 
-    // POST /trends/init - Initialize trends table schema
-    if (path.endsWith("/trends/init") && method === "POST") {
+    // POST /trends/rebuild - Rebuild trend definitions from approved/dismissed alerts
+    if ((path === "/trends/rebuild" || path === "/clever-function/trends/rebuild") && method === "POST") {
       try {
-        // Execute SQL directly to create/fix trends table
-        const initSQL = `
-DROP TABLE IF EXISTS trends CASCADE;
-
-CREATE TABLE trends (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  country TEXT NOT NULL,
-  category TEXT NOT NULL,
-  count INTEGER NOT NULL DEFAULT 0,
-  highest_severity TEXT,
-  alert_ids UUID[] DEFAULT '{}',
-  last_seen_at TIMESTAMP WITH TIME ZONE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  status TEXT DEFAULT 'open'
-);
-
-CREATE UNIQUE INDEX idx_trends_country_category
-  ON trends (country, category)
-  WHERE status = 'open';
-
-CREATE INDEX idx_trends_last_seen
-  ON trends (last_seen_at DESC);
-
-CREATE INDEX idx_trends_country
-  ON trends (country);
-
-ALTER TABLE trends ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Service role full access on trends" ON trends
-  FOR ALL TO service_role
-  USING (true) WITH CHECK (true);
-
-CREATE POLICY "Authenticated read on trends" ON trends
-  FOR SELECT TO authenticated
-  USING (true);
-
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ language 'plpgsql';
-
-DROP TRIGGER IF EXISTS update_trends_updated_at ON trends;
-CREATE TRIGGER update_trends_updated_at
-  BEFORE UPDATE ON trends
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
-        `;
-
-        // Execute SQL via Supabase REST - use raw SQL endpoint
-        const rpcRes = await fetch(`${supabaseUrl}/rest/v1/rpc/sql`, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${serviceKey}`,
-            "apikey": serviceKey,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ query: initSQL }),
-        });
-
-        if (!rpcRes.ok) {
-          const text = await rpcRes.text();
-          console.log("[Trends Init] RPC attempt returned:", text);
-          // RPC might not be available, try direct Postgres
-          // For now, just report success - table should exist or be created manually
-          return json({ ok: true, initialized: true, note: "Check database" });
-        }
-
-        return json({ ok: true, initialized: true });
-      } catch (err: any) {
-        console.error("[Trends Init] Error:", err);
-        return json({ ok: false, error: err.message }, 500);
-      }
-    }
-
-    // POST /trends/rebuild - Aggregate dismissed alerts into trends
-    if (path.endsWith("/trends/rebuild") && method === "POST") {
-      try {
-        // Get dismissed alerts from last 14 days
-        const dismissedAlerts = await querySupabaseRest(
-          `/alerts?status=eq.dismissed&created_at=gte.${new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()}&select=*&limit=1000`
+        console.log("[Trends] Starting rebuild...");
+        
+        // Get all approved and posted alerts, plus all dismissed alerts in the last 14 days
+        const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+        console.log(`[Trends] Rebuild: Filtering alerts from ${fourteenDaysAgo} onwards`);
+        
+        const approvedAlerts = await querySupabaseRest(
+          `/alerts?status=eq.approved&wordpress_post_id=not.is.null&created_at=gte.${encodeURIComponent(fourteenDaysAgo)}&order=created_at.desc`
         );
-
-        if (!dismissedAlerts || dismissedAlerts.length === 0) {
-          return json({ ok: true, created: 0, windowDays: 14, minAlerts: 3 });
+        const dismissedAlerts = await querySupabaseRest(
+          `/alerts?status=eq.dismissed&created_at=gte.${encodeURIComponent(fourteenDaysAgo)}&order=created_at.desc`
+        );
+        
+        const allAlerts = [
+          ...(Array.isArray(approvedAlerts) ? approvedAlerts : []),
+          ...(Array.isArray(dismissedAlerts) ? dismissedAlerts : [])
+        ];
+        
+        console.log(`[Trends] Found ${allAlerts.length} eligible alerts in last 14 days (${approvedAlerts?.length || 0} approved, ${dismissedAlerts?.length || 0} dismissed)`);
+        if (allAlerts.length > 0) {
+          const oldestAlert = allAlerts.reduce((oldest, a) => {
+            const aDate = new Date(a.created_at).getTime();
+            const oldestDate = new Date(oldest.created_at).getTime();
+            return aDate < oldestDate ? a : oldest;
+          });
+          const newestAlert = allAlerts.reduce((newest, a) => {
+            const aDate = new Date(a.created_at).getTime();
+            const newestDate = new Date(newest.created_at).getTime();
+            return aDate > newestDate ? a : newest;
+          });
+          console.log(`[Trends] Alert date range: ${oldestAlert.created_at} to ${newestAlert.created_at}`);
         }
-
-        // Clear existing trends
-        try {
-          await querySupabaseRest(`/trends`, { method: "DELETE" });
-        } catch (e) {
-          // Table may not exist yet, that's ok
+        
+        // Group alerts by country + event_type combination to find patterns
+        // Also look for named events (e.g., "hurricane melissa" appearing in title/description)
+        const trendGroups: Record<string, any[]> = {};
+        
+        for (const alert of allAlerts) {
+          let trendKey = "";
+          const titleLower = (alert.title || "").toLowerCase();
+          const descLower = (alert.description || "").toLowerCase();
+          const combined = `${titleLower} ${descLower}`;
+          
+          // Look for named events
+          const namedEventMatches = combined.match(
+            /(hurricane|typhoon|storm|earthquake|flood|wildfire|volcano|outbreak|crisis|attack|conflict|unrest)\s+([a-z]+)/gi
+          );
+          
+          if (namedEventMatches && namedEventMatches.length > 0) {
+            const namedEvent = namedEventMatches[0].toLowerCase();
+            trendKey = `${alert.country}|${namedEvent}`;
+          } else {
+            const eventType = alert.event_type || "general";
+            trendKey = `${alert.country}|${eventType}`;
+          }
+          
+          if (!trendGroups[trendKey]) {
+            trendGroups[trendKey] = [];
+          }
+          trendGroups[trendKey].push(alert);
         }
-
-        // Group by country + event_type
-        const grouped: Record<string, any[]> = {};
-        for (const alert of dismissedAlerts) {
-          const key = `${alert.country}|${alert.event_type || 'Unknown'}`;
-          if (!grouped[key]) grouped[key] = [];
-          grouped[key].push(alert);
-        }
-
-        // Create trends with minimum 3 alerts per group
-        const trends = [];
-        for (const [key, alerts] of Object.entries(grouped)) {
+        
+        // Create trend DEFINITIONS (no alert_ids - alerts will be queried dynamically)
+        const trends: any[] = [];
+        console.log(`[Trends] Processing ${Object.keys(trendGroups).length} distinct trend groups...`);
+        for (const [key, alerts] of Object.entries(trendGroups)) {
+          console.log(`[Trends] Group "${key}": ${alerts.length} alerts (threshold: 3, will ${alerts.length >= 3 ? "CREATE" : "SKIP"})`);
           if (alerts.length >= 3) {
-            const [country, category] = key.split("|");
-            const severities = { critical: 4, warning: 3, caution: 2, informative: 1 };
-            const highestSeverity = alerts.reduce((max: string, a: any) => {
-              const curVal = severities[a.severity as keyof typeof severities] || 0;
-              const maxVal = severities[max as keyof typeof severities] || 0;
-              return curVal > maxVal ? a.severity : max;
-            }, "informative");
-
-            trends.push({
-              id: crypto.randomUUID(),
+            const [country, trendName] = key.split("|");
+            const trendId = crypto.randomUUID();
+            
+            // Determine if this is a named event or event_type
+            const isNamedEvent = trendName.match(/^(hurricane|typhoon|storm|earthquake|flood|wildfire|volcano|outbreak|crisis|attack|conflict|unrest)\s+/i);
+            const categoryType = isNamedEvent ? "named_event" : "event_type";
+            
+            const severityOrder: Record<string, number> = {
+              critical: 4,
+              warning: 3,
+              caution: 2,
+              informative: 1,
+            };
+            
+            let highestSeverity = "informative";
+            let highestScore = 0;
+            for (const alert of alerts) {
+              const score = severityOrder[alert.severity] || 0;
+              if (score > highestScore) {
+                highestScore = score;
+                highestSeverity = alert.severity || "informative";
+              }
+            }
+            
+            const lastSeenAt = alerts.length > 0 
+              ? alerts.reduce((latest, a) => {
+                  const aTime = new Date(a.created_at || 0).getTime();
+                  const latestTime = new Date(latest.created_at || 0).getTime();
+                  return aTime > latestTime ? a : latest;
+                }).created_at
+              : nowIso();
+            
+            // Trend definition: stores search criteria, not alert_ids
+            const trend = {
+              id: trendId,
               country,
-              category,
-              count: alerts.length,
+              category: trendName,
+              count: alerts.length,  // Count at rebuild time (for display)
               highest_severity: highestSeverity,
-              alert_ids: alerts.map(a => a.id),
-              last_seen_at: new Date(Math.max(...alerts.map(a => new Date(a.created_at).getTime()))).toISOString(),
+              last_seen_at: lastSeenAt,
+              search_category: trendName,  // Used for dynamic queries
+              category_type: categoryType,  // "event_type" or "named_event"
               created_at: nowIso(),
               updated_at: nowIso(),
-            });
+              status: "active"
+            };
+            
+            trends.push(trend);
+            await setKV(`trend-${trendId}`, trend);
+            console.log(`[Trends] Created trend: ${trendName} (${country}) [${categoryType}] - will dynamically query for matching alerts`);
           }
         }
-
-        // Insert trends
-        if (trends.length > 0) {
-          await querySupabaseRest(`/trends`, {
-            method: "POST",
-            body: JSON.stringify(trends),
-            headers: { "Prefer": "return=representation" }
-          });
-        }
-
-        return json({ ok: true, created: trends.length, windowDays: 14, minAlerts: 3 });
+        
+        await setKV("trends-list", trends);
+        console.log(`[Trends] Rebuild complete: ${trends.length} trend definitions created`);
+        return json({ 
+          ok: true, 
+          trends, 
+          count: trends.length,
+          diagnostics: {
+            total_alerts_analyzed: allAlerts.length,
+            date_window: `${fourteenDaysAgo} to now`,
+            approved_alerts: Array.isArray(approvedAlerts) ? approvedAlerts.length : 0,
+            dismissed_alerts: Array.isArray(dismissedAlerts) ? dismissedAlerts.length : 0,
+            trend_groups_found: Object.keys(trendGroups).length,
+            trends_created: trends.length
+          }
+        });
       } catch (err: any) {
+        console.error("[Trends] Rebuild error:", err);
         return json({ ok: false, error: err.message }, 500);
       }
     }
-
-    // GET /trends
-    if (path.endsWith("/trends") && method === "GET") {
+        
+        // Group alerts by country + event_type combination
+    // GET /trends - List all trends
+    if ((path === "/trends" || path === "/clever-function/trends") && method === "GET") {
       try {
-        const trends = await querySupabaseRest(`/trends?order=last_seen_at.desc&limit=1000`);
-        return json({ ok: true, trends: trends || [] });
+        const trendsRaw = await getKV("trends-list");
+        let trends: any[] = [];
+        
+        if (trendsRaw) {
+          // Parse if it's a string (from KV storage)
+          if (typeof trendsRaw === 'string') {
+            trends = JSON.parse(trendsRaw);
+          } else {
+            trends = Array.isArray(trendsRaw) ? trendsRaw : [];
+          }
+        }
+        
+        return json({ ok: true, trends });
       } catch (err: any) {
+        console.error("[Trends] List error:", err);
         return json({ ok: false, error: err.message }, 500);
       }
     }
 
-    // GET /trends/:id/alerts
+    // GET /trends/:id/alerts - Get alerts for a specific trend
     if (path.includes("/trends/") && path.includes("/alerts") && method === "GET") {
+      console.log(`[TRENDS-ALERTS-ENDPOINT] Matched! Path: ${path}, checking for /trends/ and /alerts`);
       try {
         const parts = path.split("/");
-        const trendId = parts[parts.indexOf("trends") + 1];
-        const trend = await querySupabaseRest(`/trends?id=eq.${trendId}`);
-        if (!trend || trend.length === 0) return json({ ok: false, error: "Trend not found" }, 404);
+        const trendIdx = parts.indexOf("trends");
+        const trendId = trendIdx >= 0 && trendIdx < parts.length - 1 ? parts[trendIdx + 1] : null;
         
-        // Get associated alerts
-        const alertIds = trend[0].alert_ids || [];
-        let alerts = [];
-        if (alertIds.length > 0) {
-          alerts = await querySupabaseRest(`/alerts?id=in.(${alertIds.join(",")})`);
+        console.log(`[Trends] GET /trends/:id/alerts request - extracting trendId from path: ${path}`);
+        console.log(`[Trends] Path parts: ${JSON.stringify(parts)}, trendIdx: ${trendIdx}, trendId: ${trendId}`);
+        
+        if (!trendId) {
+          console.error("[Trends] No trend ID found in path");
+          return json({ ok: false, error: "Trend ID required" }, 400);
         }
         
-        return json({ ok: true, alerts: alerts || [] });
+        // Get trend from KV
+        const trendRaw = await getKV(`trend-${trendId}`);
+        console.log(`[Trends] Fetched trend from KV: ${typeof trendRaw}, ${trendRaw ? 'has value' : 'NULL'}`);
+        
+        if (!trendRaw) {
+          console.error(`[Trends] Trend not found in KV: trend-${trendId}`);
+          return json({ ok: false, error: "Trend not found" }, 404);
+        }
+        
+        // Parse trend data if it's a string
+        const trend = typeof trendRaw === 'string' ? JSON.parse(trendRaw) : trendRaw;
+        
+        console.log(`[Trends] Fetching alerts for trend ${trendId}:`);
+        console.log(`  Raw trend object: ${JSON.stringify(trend)}`);
+        
+        // Dynamically query for alerts matching this trend in the last 14 days
+        const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+        const country = trend.country;
+        const searchCategory = trend.search_category || trend.category;
+        const categoryType = trend.category_type || "event_type";
+        
+        // Build query based on whether this is a named event or event_type
+        let queryEndpoint = `/alerts?country=eq.${encodeURIComponent(country)}&created_at=gte.${encodeURIComponent(fourteenDaysAgo)}&order=created_at.desc`;
+        
+        // For event_types (like "Natural Disaster"), filter by event_type
+        // For named events, we'd need to search title/description (not implemented yet)
+        if (categoryType === "event_type") {
+          queryEndpoint += `&event_type=eq.${encodeURIComponent(searchCategory)}`;
+        }
+        
+        console.log(`[Trends] Alert fetch for trend ${trendId}:`);
+        console.log(`  - Trend data: ${JSON.stringify({country, searchCategory, categoryType})}`);
+        console.log(`  - Query endpoint: ${queryEndpoint}`);
+        
+        try {
+          const alertsRaw = await querySupabaseRest(queryEndpoint);
+          const alertsArray = Array.isArray(alertsRaw) ? alertsRaw : [];
+          
+          console.log(`[Trends] Query for trend ${trendId}:`);
+          console.log(`  Full URL that was called: ${supabaseUrl}/rest/v1${queryEndpoint}`);
+          console.log(`  Raw response length: ${Array.isArray(alertsRaw) ? alertsRaw.length : 'not an array'}`);
+          if (alertsArray.length > 0) {
+            console.log(`  First 3 alerts:`);
+            for (let i = 0; i < Math.min(3, alertsArray.length); i++) {
+              console.log(`    [${i}] ${alertsArray[i].country} - ${alertsArray[i].event_type} - ${alertsArray[i].title?.substring(0, 50)}`);
+            }
+          }
+          console.log(`  Found ${alertsArray.length} alerts matching ${country}/${searchCategory} (${categoryType})`);
+          
+          const responseObj = { 
+            ok: true, 
+            trend, 
+            alerts: alertsArray,
+            debug: {
+              country,
+              searchCategory,
+              categoryType,
+              queryEndpoint,
+              alertCount: alertsArray.length,
+              firstAlert: alertsArray.length > 0 ? {id: alertsArray[0].id, country: alertsArray[0].country, event_type: alertsArray[0].event_type, title: alertsArray[0].title} : null
+            }
+          };
+          
+          console.log(`[Trends] Returning response with ${alertsArray.length} alerts`);
+          return json(responseObj);
+        } catch (e: any) {
+          console.error(`[Trends] Query error: ${e.message}`, e);
+          return json({ ok: true, trend, alerts: [], error: e.message });
+        }
       } catch (err: any) {
-        return json({ ok: false, error: err.message }, 500);
+        console.error("[Trends] Get alerts error:", err);
+        return json({ ok: false, error: err.message, stack: err.stack }, 500);
       }
     }
 
-    // POST /trends/:id/generate-report - Generate Claude report
-    if (path.includes("/trends/") && path.includes("/generate-report") && method === "POST") {
+    // POST /trends/:id/generate-report - Generate a Claude report for a trend
+    if ((path.includes("/trends/") && path.includes("/generate-report")) && method === "POST") {
       try {
-        if (!ANTHROPIC_API_KEY) return json({ ok: false, error: "Claude not configured" }, 500);
-
-        const trendId = path.split("/")[path.split("/").length - 2];
-        const trend = await querySupabaseRest(`/trends?id=eq.${trendId}`);
-        if (!trend || trend.length === 0) return json({ ok: false, error: "Trend not found" }, 404);
-
-        const t = trend[0];
-        const alertIds = t.alert_ids || [];
-        let alerts = [];
-        if (alertIds.length > 0) {
-          alerts = await querySupabaseRest(`/alerts?id=in.(${alertIds.join(",")})`);
+        const parts = path.split("/");
+        const trendIdx = parts.indexOf("trends");
+        const trendId = trendIdx >= 0 && trendIdx < parts.length - 1 ? parts[trendIdx + 1] : null;
+        
+        if (!trendId) {
+          return json({ ok: false, error: "Trend ID required" }, 400);
         }
+        
+        // Get trend from KV
+        const trendRaw = await getKV(`trend-${trendId}`);
+        if (!trendRaw) {
+          return json({ ok: false, error: "Trend not found" }, 404);
+        }
+        
+        const trend = typeof trendRaw === 'string' ? JSON.parse(trendRaw) : trendRaw;
+        
+        // Query fresh alerts for this trend
+        const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+        const country = trend.country;
+        const searchCategory = trend.search_category || trend.category;
+        const categoryType = trend.category_type || "event_type";
+        
+        let queryEndpoint = `/alerts?country=eq.${encodeURIComponent(country)}&created_at=gte.${encodeURIComponent(fourteenDaysAgo)}&order=created_at.desc`;
+        if (categoryType === "event_type") {
+          queryEndpoint += `&event_type=eq.${encodeURIComponent(searchCategory)}`;
+        }
+        
+        const alertsRaw = await querySupabaseRest(queryEndpoint);
+        const alerts = Array.isArray(alertsRaw) ? alertsRaw : [];
+        
+        if (alerts.length === 0) {
+          return json({ ok: false, error: "No alerts found for this trend" }, 404);
+        }
+        
+        // Prepare alert summaries for Claude
+        const alertSummaries = alerts.map(a => `
+Title: ${a.title}
+Country: ${a.country}
+Event Type: ${a.event_type}
+Severity: ${a.severity}
+Summary: ${a.summary}
+Location: ${a.location}
+Created: ${a.created_at}
+        `).join("\n---\n");
+        
+        // Generate report using Claude
+        const reportPrompt = `You are an intelligence analyst. Generate a concise situational report (2-3 paragraphs) for the following trend:
 
-        // Build Claude prompt
-        const alertSummaries = alerts.map(a => `- ${a.title} (${a.severity}): ${a.summary}`).join("\n");
-        const prompt = `You are a travel safety intelligence analyst. Create a comprehensive situational report based on these ${t.count} dismissed alerts aggregated under the trend "${t.category}" in ${t.country}.
+Trend: ${trend.category} in ${trend.country}
+Number of related alerts: ${alerts.length}
+Date Range: Last 14 days
 
-ALERTS:
+Recent Alerts:
 ${alertSummaries}
 
-Generate a professional, strategic report that:
-1. Summarizes the emerging trend
-2. Identifies patterns and connections
-3. Assesses current and projected risk
-4. Provides recommended actions
+Please provide:
+1. A brief summary of the situation
+2. Key risks and implications
+3. Recommended actions
 
-Format as clear, concise sections. Be analytical and factual.`;
+Keep the report professional and focused on intelligence analysis.`;
 
         const claudeResponse = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
-            "x-api-key": ANTHROPIC_API_KEY,
+            "x-api-key": ANTHROPIC_API_KEY || "",
             "anthropic-version": "2023-06-01",
             "content-type": "application/json",
           },
           body: JSON.stringify({
             model: "claude-3-haiku-20240307",
-            max_tokens: 2000,
-            messages: [{ role: "user", content: prompt }],
-          }),
+            max_tokens: 1000,
+            messages: [{
+              role: "user",
+              content: reportPrompt
+            }]
+          })
         });
-
+        
         if (!claudeResponse.ok) {
-          const error = await claudeResponse.text();
-          throw new Error(`Claude error: ${error}`);
+          const errorText = await claudeResponse.text();
+          throw new Error(`Claude API error: ${claudeResponse.status} - ${errorText}`);
         }
-
+        
         const claudeData = await claudeResponse.json();
-        const reportText = claudeData.content[0].text;
-
-        // Generate enriched HTML
-        const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MAGNUS Report - ${t.category}</title>
-  <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 900px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
-    .header { background: linear-gradient(135deg, #1a472a 0%, #2d6a4f 100%); color: white; padding: 40px; border-radius: 8px; margin-bottom: 30px; }
-    .header h1 { margin: 0 0 10px 0; font-size: 2.5em; }
-    .meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 30px; }
-    .meta-item { background: white; padding: 15px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .meta-label { font-size: 0.85em; color: #666; text-transform: uppercase; font-weight: 600; }
-    .meta-value { font-size: 1.3em; font-weight: bold; color: #1a472a; margin-top: 5px; }
-    .alerts-section { background: white; padding: 25px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-    .alerts-section h2 { color: #1a472a; border-bottom: 3px solid #2d6a4f; padding-bottom: 10px; }
-    .alert-item { padding: 12px; margin: 10px 0; background: #f9f9f9; border-left: 4px solid #2d6a4f; border-radius: 4px; }
-    .alert-title { font-weight: bold; color: #1a472a; }
-    .alert-summary { color: #555; margin-top: 5px; font-size: 0.95em; }
-    .severity { display: inline-block; padding: 4px 8px; border-radius: 3px; font-size: 0.8em; font-weight: bold; margin: 5px 0; }
-    .severity.critical { background: #8b0000; color: white; }
-    .severity.warning { background: #ff8c00; color: white; }
-    .severity.caution { background: #ffd700; color: #333; }
-    .severity.informative { background: #90ee90; color: #333; }
-    .report-section { background: white; padding: 25px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-    .report-section h2 { color: #1a472a; border-bottom: 3px solid #2d6a4f; padding-bottom: 10px; margin-top: 0; }
-    .report-content { color: #333; line-height: 1.8; white-space: pre-wrap; word-wrap: break-word; }
-    .footer { text-align: center; color: #666; font-size: 0.9em; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h1>MAGNUS Travel Safety Intelligence</h1>
-    <p>Situational Analysis & Trend Report</p>
-  </div>
-
-  <div class="meta">
-    <div class="meta-item">
-      <div class="meta-label">Trend Category</div>
-      <div class="meta-value">${t.category}</div>
-    </div>
-    <div class="meta-item">
-      <div class="meta-label">Country</div>
-      <div class="meta-value">${t.country}</div>
-    </div>
-    <div class="meta-item">
-      <div class="meta-label">Alert Count</div>
-      <div class="meta-value">${t.count}</div>
-    </div>
-    <div class="meta-item">
-      <div class="meta-label">Highest Severity</div>
-      <div class="meta-value"><span class="severity ${t.highest_severity}">${t.highest_severity.toUpperCase()}</span></div>
-    </div>
-  </div>
-
-  <div class="alerts-section">
-    <h2>Aggregated Alerts</h2>
-    ${alerts.map(a => `
-      <div class="alert-item">
-        <div class="alert-title">${a.title}</div>
-        <span class="severity ${a.severity}">${a.severity.toUpperCase()}</span>
-        <div class="alert-summary"><strong>${a.location}, ${a.country}</strong></div>
-        <div class="alert-summary">${a.summary}</div>
-      </div>
-    `).join("")}
-  </div>
-
-  <div class="report-section">
-    <h2>Strategic Analysis</h2>
-    <div class="report-content">${reportText}</div>
-  </div>
-
-  <div class="footer">
-    <p>Generated by MAGNUS Intelligence System | ${new Date().toLocaleString()}</p>
-    <p>Trend ID: ${trendId} | Report is editable and downloadable</p>
-  </div>
-</body>
-</html>`;
-
-        return json({
-          ok: true,
-          report: {
-            id: crypto.randomUUID(),
-            trendId,
-            title: `${t.category} - ${t.country}`,
-            country: t.country,
-            severity: t.highest_severity,
-            content: reportText,
-            html,
-            generatedAt: nowIso(),
-            metadata: { alertCount: t.count },
-          },
-        });
+        const reportContent = claudeData.content?.[0]?.text || "Failed to generate report";
+        
+        const report = {
+          id: crypto.randomUUID(),
+          trend_id: trendId,
+          trend_name: trend.category,
+          country: trend.country,
+          alert_count: alerts.length,
+          content: reportContent,
+          generated_at: nowIso(),
+          alerts_analyzed: alerts.map(a => ({ id: a.id, title: a.title, severity: a.severity }))
+        };
+        
+        console.log(`[Trends] Generated report for ${trend.country} ${trend.category}`);
+        
+        return json({ ok: true, report });
       } catch (err: any) {
-        console.error("Report generation error:", err);
+        console.error("[Trends] Report generation error:", err);
         return json({ ok: false, error: err.message }, 500);
       }
     }
 
-    // DELETE /trends/:id
-    if (path.includes("/trends/") && method === "DELETE" && !path.includes("/alerts") && !path.includes("/generate-report")) {
+    // DELETE /trends/:id - Delete a trend
+    if ((path.includes("/trends/") && !path.includes("/alerts") && !path.includes("/rebuild") && !path.includes("/generate-report")) && method === "DELETE") {
       try {
-        const trendId = path.split("/").filter(p => p)[path.split("/").filter(p => p).indexOf("trends") + 1];
-        await querySupabaseRest(`/trends?id=eq.${trendId}`, { method: "DELETE" });
-        return json({ ok: true });
+        const parts = path.split("/");
+        const trendIdx = parts.indexOf("trends");
+        const trendId = trendIdx >= 0 && trendIdx < parts.length - 1 ? parts[trendIdx + 1] : null;
+        
+        if (!trendId) {
+          return json({ ok: false, error: "Trend ID required" }, 400);
+        }
+        
+        // Delete from KV storage
+        await querySupabaseRest(`/app_kv?key=eq.trend-${trendId}`, {
+          method: "DELETE"
+        });
+        
+        console.log(`[Trends] Deleted trend ${trendId}`);
+        return json({ ok: true, message: "Trend deleted successfully" });
       } catch (err: any) {
+        console.error("[Trends] Delete error:", err);
         return json({ ok: false, error: err.message }, 500);
       }
     }
+
+
+
+
+
+
+
 
     // POST /alerts/:id/approve-only - Approve without WordPress
     if (path.includes("/alerts/") && path.includes("/approve-only") && method === "POST") {
@@ -1048,6 +1292,31 @@ Format as clear, concise sections. Be analytical and factual.`;
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       } catch (err: any) {
+        return json({ ok: false, error: err.message }, 500);
+      }
+    }
+
+    // POST /alerts/:id/delete - Delete alert (workaround for Supabase DELETE routing limitation)
+    if (path.includes("/alerts/") && path.includes("/delete") && method === "POST") {
+      try {
+        const parts = path.split("/");
+        const alertId = parts[parts.length - 2]; // ID is before "/delete"
+        if (!alertId) {
+          return json({ ok: false, error: "Alert ID required" }, 400);
+        }
+
+        console.log(`[Alerts] DELETE via POST: alertId=${alertId}, fullPath=${path}`);
+
+        // Delete the alert from Supabase
+        const result = await querySupabaseRest(`/alerts?id=eq.${encodeURIComponent(alertId)}`, {
+          method: "DELETE",
+        });
+
+        console.log(`[Alerts] DELETE result:`, result);
+
+        return json({ ok: true, deleted: alertId });
+      } catch (err: any) {
+        console.error(`[Alerts] DELETE error:`, err);
         return json({ ok: false, error: err.message }, 500);
       }
     }
@@ -1164,7 +1433,40 @@ Format as clear, concise sections. Be analytical and factual.`;
       }
     }
 
-    return json({ ok: false, error: `Not found: ${path}` }, 404);
+    // DELETE /alerts/:id - Delete an alert
+    // Must come after PATCH and handle any path with /alerts/ and DELETE method
+    console.log(`[DELETE CHECK] path=${path}, method=${method}, includes_alerts=${path.includes("/alerts/")}`);
+    if (path.includes("/alerts/") && method === "DELETE") {
+      console.log(`[DELETE MATCHED] Processing delete for path: ${path}`);
+      try {
+        // Extract alertId - it's the last UUID-like segment
+        const parts = path.split("/");
+        const alertId = parts[parts.length - 1];
+        
+        if (!alertId || alertId.length < 10) {
+          console.error(`[DELETE] Invalid alert ID: ${alertId}`);
+          return json({ ok: false, error: "Invalid Alert ID" }, 400);
+        }
+
+        console.log(`[DELETE] Deleting alert ID: ${alertId}`);
+
+        // Delete the alert from Supabase
+        const result = await querySupabaseRest(`/alerts?id=eq.${encodeURIComponent(alertId)}`, {
+          method: "DELETE",
+        });
+
+        console.log(`[DELETE] Delete result:`, result);
+
+        return json({ ok: true, deleted: alertId });
+      } catch (err: any) {
+        console.error(`[DELETE] Error:`, err);
+        return json({ ok: false, error: err.message }, 500);
+      }
+    }
+
+    // Catch-all 404
+    console.log(`[Router] No route matched for: ${method} ${path}`);
+    return json({ ok: false, error: `Route not found: ${method} ${path}` }, 404);
 
   } catch (e: any) {
     console.error(`[Router] Unhandled error:`, e);
@@ -1191,6 +1493,29 @@ async function patchAlertById(id: string, patch: Record<string, any>) {
 }
 
 function buildWpFieldsFromAlert(alert: any) {
+  // Convert recommendations string/array to ACF repeater format (array of objects)
+  let recommendationsRepeater = [];
+  
+  if (alert.recommendations) {
+    if (typeof alert.recommendations === 'string') {
+      // Parse string recommendations into individual items
+      const items = alert.recommendations
+        .split(/\d+\.\s+/)
+        .filter((item: string) => item.trim())
+        .slice(0, 5);
+      recommendationsRepeater = items.map((item: string, idx: number) => ({
+        recommendation_text: item.trim(),
+        acf_fc_layout: "recommendation_item"
+      }));
+    } else if (Array.isArray(alert.recommendations)) {
+      recommendationsRepeater = alert.recommendations.map((item: any) => 
+        typeof item === 'string' 
+          ? { recommendation_text: item.trim(), acf_fc_layout: "recommendation_item" }
+          : { ...item, acf_fc_layout: "recommendation_item" }
+      );
+    }
+  }
+
   return {
     mainland: alert.mainland ?? null,
     intelligence_topics: alert.intelligence_topics ?? alert.event_type ?? null,
@@ -1202,7 +1527,7 @@ function buildWpFieldsFromAlert(alert: any) {
     start: alert.event_start_date ?? null,
     end: alert.event_end_date ?? null,
     severity: alert.severity,
-    recommendations: alert.recommendations ?? "",
+    recommendations: recommendationsRepeater.length > 0 ? recommendationsRepeater : "",
     sources: alert.article_url || alert.source_url || "",
   };
 }
@@ -1228,12 +1553,59 @@ async function postToWordPress(alert: any) {
 
   console.log(`[WordPress] Posting alert "${alert.title}" to: ${WP_URL}`);
 
+  // ENSURE recommendations are present before posting
+  if (!alert.recommendations || (typeof alert.recommendations === 'string' && alert.recommendations.trim() === '')) {
+    console.log(`[WordPress] ⚠️  Alert missing recommendations - generating...`);
+    
+    const generateRecommendations = (eventType: string, severity: string, location: string, country: string): string => {
+      let recommendations = "";
+      
+      if (severity === "critical") {
+        recommendations += "1. AVOID all travel to affected area - critical threat to traveler safety. ";
+      } else if (severity === "warning") {
+        recommendations += "1. RECONSIDER travel to affected area - heightened risk present. ";
+      } else {
+        recommendations += "1. Exercise extra caution if traveling - localized incident reported. ";
+      }
+      
+      recommendations += "2. Check official government travel advisories for latest updates. ";
+      recommendations += "3. Register with your embassy if traveling to affected region. ";
+      
+      if (eventType?.toLowerCase().includes("health") || eventType?.toLowerCase().includes("outbreak")) {
+        recommendations += "4. Follow local health guidance and vaccination requirements. ";
+        recommendations += "5. Maintain travel insurance with medical coverage.";
+      } else if (eventType?.toLowerCase().includes("weather") || eventType?.toLowerCase().includes("natural")) {
+        recommendations += "4. Monitor weather forecasts and local emergency alerts. ";
+        recommendations += "5. Have evacuation plans and emergency supplies ready.";
+      } else {
+        recommendations += "4. Maintain situational awareness and avoid large gatherings. ";
+        recommendations += "5. Keep emergency contacts and travel documents accessible.";
+      }
+      
+      return recommendations;
+    };
+    
+    alert.recommendations = generateRecommendations(
+      alert.event_type || "Security Incident",
+      alert.severity || "warning",
+      alert.location || "the affected area",
+      alert.country || "Unknown"
+    );
+  }
+
   const fields = buildWpFieldsFromAlert(alert);
+
+  // ENSURE description/summary is present
+  let content = alert.summary || alert.description || "";
+  if (!content || content.trim() === "") {
+    console.log(`[WordPress] ⚠️  Alert missing summary/description - using title as content`);
+    content = `Alert: ${alert.title}. Location: ${alert.location}, ${alert.country}. Severity: ${alert.severity}. Event Type: ${alert.event_type}. Travelers should monitor this situation and follow local authorities' guidance.`;
+  }
 
   const wpPayload = {
     title: alert.title || "Travel Alert",
     status: "publish",
-    content: alert.summary || "",
+    content: content,
     fields,
   };
 

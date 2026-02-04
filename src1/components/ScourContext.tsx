@@ -130,6 +130,14 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
         }
 
         stopPolling();
+      } else if (job.phase === 'early_signals' && pollIntervalRef.current) {
+        // During early signals, poll faster to catch query updates
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = setInterval(() => {
+            pollStatus(currentJobId, token);
+          }, 400); // Very fast polling for early signals
+        }
       }
     },
     [stopPolling]
@@ -274,11 +282,12 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
         }
 
         stopPolling();
+        // Start polling (interval will adjust based on phase)
         pollIntervalRef.current = setInterval(() => {
           pollStatus(newJobId, token);
         }, 2500);
 
-        setTimeout(() => pollStatus(newJobId, token), 600);
+        setTimeout(() => pollStatus(newJobId, token), 200);
       } catch (e: any) {
         const errorMsg = e?.message || "Failed to start scour";
         console.error(`[Scour Error]`, errorMsg);

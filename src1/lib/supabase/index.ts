@@ -20,7 +20,8 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   const path = url.pathname;
   
-  console.log("Path:", path);
+  console.log("Full URL:", req.url);
+  console.log("Pathname:", path);
 
   // Get environment variables
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -682,24 +683,43 @@ Deno.serve(async (req) => {
     }
 
     // DELETE /alerts/:id
-    if ((path.startsWith("/alerts/") || path.startsWith("/clever-function/alerts/")) && req.method === "DELETE") {
+    if ((path.includes("/alerts/") && path.includes("-")) && req.method === "DELETE") {
       const parts = path.split("/");
       const id = parts[parts.length - 1];
       
-      await querySupabase(`/alerts?id=eq.${id}`, {
-        method: "DELETE",
-      });
+      console.log(`[DELETE] Path: ${path}`);
+      console.log(`[DELETE] Deleting alert ID: ${id}`);
       
-      return new Response(
-        JSON.stringify({ ok: true, deleted: id }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
+      try {
+        const result = await querySupabase(`/alerts?id=eq.${id}`, {
+          method: "DELETE",
+        });
+        
+        console.log(`[DELETE] Delete result:`, result);
+        
+        return new Response(
+          JSON.stringify({ ok: true, deleted: id }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            }
           }
-        }
-      );
+        );
+      } catch (err) {
+        console.error(`[DELETE] Error deleting alert ${id}:`, err);
+        return new Response(
+          JSON.stringify({ ok: false, error: String(err) }),
+          {
+            status: 500,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            }
+          }
+        );
+      }
     }
 
     // ========================================================================
@@ -743,6 +763,33 @@ Deno.serve(async (req) => {
         }),
         {
           status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          }
+        }
+      );
+    }
+
+    // POST /scour-group - Scour a specific group of sources
+    if ((path === "/scour-group" || path === "/clever-function/scour-group") && req.method === "POST") {
+      console.log("[Supabase Proxy] POST /scour-group - forwarding to clever-function");
+      const body = await req.json();
+      
+      const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/clever-function/scour-group`, {
+        method: "POST",
+        headers: {
+          "Authorization": req.headers.get("authorization") || "",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body)
+      });
+      
+      const data = await response.json();
+      return new Response(
+        JSON.stringify(data),
+        {
+          status: response.status,
           headers: {
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
@@ -1030,94 +1077,26 @@ Deno.serve(async (req) => {
     }
 
     // ========================================================================
-    // TRENDS
+    // TRENDS - Forward all to clever-function (uses KV storage)
     // ========================================================================
 
-    // GET /trends
-    if ((path === "/trends" || path === "/clever-function/trends") && req.method === "GET") {
-      const status = url.searchParams.get("status");
-      const limit = url.searchParams.get("limit") || "1000";
-      
-      let endpoint = `/trends?order=created_at.desc&limit=${limit}`;
-      if (status) {
-        endpoint = `/trends?status=eq.${status}&order=created_at.desc&limit=${limit}`;
-      }
-      
-      const trends = await safeQuerySupabase(endpoint);
-      
-      return new Response(
-        JSON.stringify({ ok: true, trends: trends || [] }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // GET /trends/:id
-    if ((path.startsWith("/trends/") || path.startsWith("/clever-function/trends/")) && req.method === "GET") {
-      const parts = path.split("/");
-      const id = parts[parts.length - 1];
-      
-      const trends = await safeQuerySupabase(`/trends?id=eq.${id}`);
-      
-      if (!trends || trends.length === 0) {
-        return new Response(
-          JSON.stringify({ ok: false, error: "Trend not found" }),
-          {
-            status: 404,
-            headers: {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-            }
-          }
-        );
-      }
-      
-      return new Response(
-        JSON.stringify({ ok: true, trend: trends[0] }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          }
-        }
-      );
-    }
-
-    // POST /trends
-    if ((path === "/trends" || path === "/clever-function/trends") && req.method === "POST") {
-      const body = await req.json();
-      
-      const newTrend = await safeQuerySupabase("/trends", {
+    // POST /trends/rebuild - Rebuild trends from alerts
+    if ((path === "/trends/rebuild" || path === "/clever-function/trends/rebuild") && req.method === "POST") {
+      console.log("[Supabase Proxy] POST /trends/rebuild - forwarding to clever-function");
+      const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/clever-function/trends/rebuild`, {
         method: "POST",
-        body: JSON.stringify({
-          id: crypto.randomUUID(),
-          ...body,
-          status: body.status || "open",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }),
         headers: {
-          "Prefer": "return=representation"
-        }
+          "Authorization": req.headers.get("authorization") || "",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({})
       });
-
-      if (!newTrend) {
-        return new Response(
-          JSON.stringify({ ok: false, error: "Trends table not available" }),
-          { status: 500, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
-        );
-      }
       
+      const data = await response.json();
       return new Response(
-        JSON.stringify({ ok: true, trend: newTrend[0] }),
+        JSON.stringify(data),
         {
-          status: 200,
+          status: response.status,
           headers: {
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
@@ -1126,24 +1105,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    // PATCH /trends/:id
-    if ((path.startsWith("/trends/") || path.startsWith("/clever-function/trends/")) && req.method === "PATCH") {
-      const parts = path.split("/");
-      const id = parts[parts.length - 1];
-      const body = await req.json();
-      
-      const updated = await safeQuerySupabase(`/trends?id=eq.${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ ...body, updated_at: new Date().toISOString() }),
+    // GET /trends - List all trends
+    if ((path === "/trends" || path === "/clever-function/trends") && req.method === "GET") {
+      console.log("[Supabase Proxy] GET /trends - forwarding to clever-function");
+      const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/clever-function/trends`, {
+        method: "GET",
         headers: {
-          "Prefer": "return=representation"
+          "Authorization": req.headers.get("authorization") || "",
+          "Content-Type": "application/json",
         }
       });
       
+      const data = await response.json();
       return new Response(
-        JSON.stringify({ ok: true, trend: updated?.[0] }),
+        JSON.stringify(data),
         {
-          status: 200,
+          status: response.status,
           headers: {
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
@@ -1152,19 +1129,96 @@ Deno.serve(async (req) => {
       );
     }
 
-    // DELETE /trends/:id
-    if ((path.startsWith("/trends/") || path.startsWith("/clever-function/trends/")) && req.method === "DELETE") {
-      const parts = path.split("/");
-      const id = parts[parts.length - 1];
+    // GET /trends/:id/alerts - Get alerts for a trend
+    if ((path.startsWith("/trends/") || path.startsWith("/clever-function/trends/")) && path.includes("/alerts") && req.method === "GET") {
+      console.log("[Supabase Proxy] GET /trends/:id/alerts - forwarding to clever-function");
+      const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/clever-function${path}`, {
+        method: "GET",
+        headers: {
+          "Authorization": req.headers.get("authorization") || "",
+          "Content-Type": "application/json",
+        }
+      });
       
-      await safeQuerySupabase(`/trends?id=eq.${id}`, {
+      const data = await response.json();
+      return new Response(
+        JSON.stringify(data),
+        {
+          status: response.status,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          }
+        }
+      );
+    }
+
+    // GET /trends/:id - Get a specific trend
+    if ((path.startsWith("/trends/") || path.startsWith("/clever-function/trends/")) && req.method === "GET") {
+      console.log("[Supabase Proxy] GET /trends/:id - forwarding to clever-function");
+      const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/clever-function${path}`, {
+        method: "GET",
+        headers: {
+          "Authorization": req.headers.get("authorization") || "",
+          "Content-Type": "application/json",
+        }
+      });
+      
+      const data = await response.json();
+      return new Response(
+        JSON.stringify(data),
+        {
+          status: response.status,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          }
+        }
+      );
+    }
+
+    // POST /trends/:id/generate-report - Generate report for a trend
+    if ((path.startsWith("/trends/") || path.startsWith("/clever-function/trends/")) && path.includes("/generate-report") && req.method === "POST") {
+      console.log("[Supabase Proxy] POST /trends/:id/generate-report - forwarding to clever-function");
+      const body = await req.text();
+      const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/clever-function${path}`, {
+        method: "POST",
+        headers: {
+          "Authorization": req.headers.get("authorization") || "",
+          "Content-Type": "application/json",
+        },
+        body
+      });
+      
+      const data = await response.json();
+      return new Response(
+        JSON.stringify(data),
+        {
+          status: response.status,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          }
+        }
+      );
+    }
+
+    // DELETE /trends/:id - Delete a trend
+    if ((path.startsWith("/trends/") || path.startsWith("/clever-function/trends/")) && !path.includes("/alerts") && !path.includes("/rebuild") && !path.includes("/generate-report") && req.method === "DELETE") {
+      console.log("[Supabase Proxy] DELETE /trends/:id - forwarding to clever-function");
+      const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/clever-function${path}`, {
         method: "DELETE",
+        headers: {
+          "Authorization": req.headers.get("authorization") || "",
+          "Content-Type": "application/json",
+        }
       });
       
+      const data = await response.json();
       return new Response(
-        JSON.stringify({ ok: true, deleted: id }),
+        JSON.stringify(data),
         {
-          status: 200,
+          status: response.status,
           headers: {
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",

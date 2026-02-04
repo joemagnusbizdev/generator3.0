@@ -24,6 +24,8 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
   const [runningEarlySignals, setRunningEarlySignals] = useState(false);
   const [earlySignalsProgress, setEarlySignalsProgress] = useState<{ current: number; total: number } | null>(null);
   const [showErrors, setShowErrors] = useState(false);
+  const [showLogs, setShowLogs] = useState(false);
+  const [liveLogs, setLiveLogs] = useState<Array<{ time: string; message: string }>>([]);
 
   // Reset early signals flag when scour completes
   useEffect(() => {
@@ -32,6 +34,28 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
       setEarlySignalsProgress(null);
     }
   }, [isScouring, scourJob?.status, runningEarlySignals]);
+
+  // Fetch live logs from server
+  useEffect(() => {
+    if (!scourJob?.id || !isScouring) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/logs?jobId=${scourJob.id}&limit=100`,
+          { headers: { 'Authorization': `Bearer ${accessToken}` } }
+        ).then(r => r.json());
+
+        if (res.ok && res.logs) {
+          setLiveLogs(res.logs);
+        }
+      } catch (e) {
+        console.error('Error fetching logs:', e);
+      }
+    }, 2000); // Poll every 2 seconds
+
+    return () => clearInterval(interval);
+  }, [scourJob?.id, isScouring, accessToken]);
 
   // Track early signals phase - keep running true while in early_signals phase
   useEffect(() => {
@@ -226,17 +250,32 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
           {scourJob.currentEarlySignalQuery && (
             <div style={{ 
               padding: '0.75rem', 
-              backgroundColor: 'white',
+              backgroundColor: 'rgba(255, 140, 0, 0.05)',
               border: `2px solid ${MAGNUS_COLORS.orange}`,
               borderRadius: '4px',
-              fontSize: '1rem',
+              fontSize: '0.95rem',
               fontFamily: 'monospace',
               color: MAGNUS_COLORS.orange,
               fontWeight: 'bold',
+              marginBottom: '0.5rem',
             }}>
-              🌍 Current Query: {scourJob.currentEarlySignalQuery}
+              <div style={{ marginBottom: '0.25rem' }}>🌍 Current Query:</div>
+              <div style={{ paddingLeft: '1rem', fontSize: '0.9rem' }}>{scourJob.currentEarlySignalQuery}</div>
             </div>
           )}
+
+          {/* Query Stats */}
+          <div style={{
+            padding: '0.5rem 0.75rem',
+            backgroundColor: 'rgba(255, 140, 0, 0.03)',
+            borderLeft: `3px solid ${MAGNUS_COLORS.orange}`,
+            borderRadius: '2px',
+            fontSize: '0.85rem',
+            color: MAGNUS_COLORS.deepGreen,
+          }}>
+            <div>📍 Query Progress: {earlySignalsProgress?.current || 0} of {earlySignalsProgress?.total || 80} searches completed</div>
+            <div>⏱ Estimated Time: ~{Math.ceil(((earlySignalsProgress?.total || 80) - (earlySignalsProgress?.current || 0)) * 0.3)} seconds remaining</div>
+          </div>
         </div>
 
         {/* Regular Scour Status Below (if also running) */}
@@ -473,6 +512,59 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
                       color: MAGNUS_COLORS.critical,
                     }}>
                       <strong>Error {idx + 1}:</strong> {error.reason || error.sourceId || 'Unknown error'}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Live Logs - Expandable */}
+          {isScouring && liveLogs.length > 0 && (
+            <div style={{ marginTop: '0.75rem', borderRadius: '3px', overflow: 'hidden' }}>
+              <button
+                onClick={() => setShowLogs(!showLogs)}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  backgroundColor: 'rgba(66, 165, 245, 0.1)',
+                  border: `1px solid rgb(66, 165, 245)`,
+                  borderRadius: '3px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  color: 'rgb(66, 165, 245)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <span>📋 Live Logs ({liveLogs.length}) {showLogs ? '▼' : '▶'}</span>
+              </button>
+              {showLogs && liveLogs.length > 0 && (
+                <div style={{
+                  marginTop: '0.25rem',
+                  padding: '0.75rem',
+                  backgroundColor: 'rgba(66, 165, 245, 0.05)',
+                  border: `1px solid rgb(66, 165, 245)`,
+                  borderTop: 'none',
+                  borderRadius: '0 0 3px 3px',
+                  maxHeight: '400px',
+                  overflowY: 'auto',
+                  fontSize: '0.8rem',
+                  fontFamily: 'monospace',
+                  lineHeight: '1.4',
+                }}>
+                  {liveLogs.slice(-30).map((log, idx) => (
+                    <div key={idx} style={{ 
+                      marginBottom: '0.25rem',
+                      color: 'rgb(66, 165, 245)',
+                      borderBottom: '1px solid rgba(66, 165, 245, 0.2)',
+                      paddingBottom: '0.25rem',
+                    }}>
+                      <span style={{ color: 'rgba(66, 165, 245, 0.7)', marginRight: '0.5rem' }}>
+                        {log.time}
+                      </span>
+                      <span>{log.message}</span>
                     </div>
                   ))}
                 </div>

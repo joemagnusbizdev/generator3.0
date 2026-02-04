@@ -7,7 +7,7 @@ import { ThemeSupa } from "@supabase/auth-ui-shared";
 import AlertReviewQueueInline from "./components/AlertReviewQueueInline";
 import AlertCreateInline from "./components/AlertCreateInline";
 import SourceManagerInline from "./components/SourceManagerInline";
-import ScourStatusBarInline from "./components/ScourStatusBarInline";
+import { ScourStatusIndicator } from "./components/ScourStatusIndicator";
 import AnalyticsDashboardInline from "./components/AnalyticsDashboardInline";
 import UserManagementInline from "./components/UserManagementInline";
 import { ScourProvider } from "./components/ScourContext";
@@ -129,10 +129,10 @@ export default function App(): JSX.Element {
 
   return (
     <ScourProvider accessToken={accessToken}>
+      {/* Global Scour Status Indicator - visible from anywhere */}
+      <ScourStatusIndicator />
+      
       <main className="p-4 space-y-4">
-        {/* Scour Status Bar (must be inside ScourProvider) */}
-        <ScourStatusBarInline accessToken={accessToken} />
-
         {/* Tabs */}
         <div className="flex flex-wrap gap-2 border-b pb-2">
           {permissions.canReview && (
@@ -212,7 +212,7 @@ export default function App(): JSX.Element {
         </div>
 
         {/* Views */}
-        {tab === "review" && <AlertReviewQueueInline permissions={permissions} />}
+        {tab === "review" && <AlertReviewQueueInline permissions={permissions} accessToken={accessToken || ''} />}
 
         {tab === "create" && (
           <AlertCreateInline

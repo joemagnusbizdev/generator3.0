@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import GeoJsonPreview from "./GeoJsonPreview";
 import GeoJSONGeneratorModal from "./GeoJSONGeneratorModal";
 import MAGNUS_COLORS from "../styles/magnus-colors";
+import ScourManagementInline from "./ScourManagementInline";
 
 
 // =========================
@@ -287,9 +288,10 @@ ${sources || "Internal Intelligence"}`.trim();
 
 type Props = {
   permissions: PermissionSet;
+  accessToken: string;
 };
 
-export default function AlertReviewQueueInline({ permissions }: Props) {
+export default function AlertReviewQueueInline({ permissions, accessToken }: Props) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<Record<string, boolean>>({});
@@ -303,9 +305,10 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [showGeoModal, setShowGeoModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
+  const [itemsPerPage] = useState(50);
+  const [pollingPaused, setPollingPaused] = useState(false);
 
-  const { startScour, isScouring, accessToken } = useScour() as any;
+  const { startScour, isScouring } = useScour() as any;
 
   useEffect(() => {
     if (!permissions.canReview) return;
@@ -313,13 +316,15 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
     // Load immediately
     void loadAlerts();
     
-    // Then poll every 3 seconds for new alerts during active session
+    // Then poll every 3 seconds for new alerts during active session (unless paused)
     const interval = setInterval(() => {
-      loadAlerts().catch(e => console.warn('Alert poll failed:', e));
+      if (!pollingPaused) {
+        loadAlerts().catch(e => console.warn('Alert poll failed:', e));
+      }
     }, 3000);
     
     return () => clearInterval(interval);
-  }, [permissions.canReview]);
+  }, [permissions.canReview, pollingPaused]);
 
   async function loadAlerts() {
     try {
@@ -336,6 +341,7 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
         }
       }
       const data = await res.json();
+      console.log(`[LOAD_ALERTS] Got ${data.alerts?.length || 0} alerts from server:`, data.alerts?.map((a: Alert) => a.id));
       setAlerts(Array.isArray(data.alerts) ? data.alerts : []);
     } catch (e: any) {
       setError(e?.message || "Failed to load alerts");
@@ -428,42 +434,124 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
   }
 
   async function dismiss(id: string) {
-    await fetch(`${API_BASE}/alerts/${id}/dismiss`, { method: "POST" });
-    setAlerts((a) => a.filter((x) => x.id !== id));
+    try {
+      console.log(`[DISMISS] Dismissing alert ${id}`);
+      const res = await fetch(`${API_BASE}/alerts/${id}/dismiss`, { method: "POST" });
+      console.log(`[DISMISS] Response status: ${res.status}`);
+      
+      if (!res.ok) throw new Error("Dismiss failed");
+      
+      // Immediately remove from local state
+      setAlerts((a) => a.filter((x) => x.id !== id));
+      
+      // Pause polling to prevent refresh
+      setPollingPaused(true);
+      setTimeout(() => {
+        setPollingPaused(false);
+        loadAlerts().catch(e => console.warn('Fresh load failed:', e));
+      }, 3000);
+    } catch (err: any) {
+      console.error(`[DISMISS] Error:`, err);
+      alert(`❌ Dismiss failed: ${err.message}`);
+      setPollingPaused(false);
+    }
   }
 
   async function del(id: string) {
     if (!window.confirm("Delete alert permanently?")) return;
-    await fetch(`${API_BASE}/alerts/${id}`, { method: "DELETE" });
-    setAlerts((a) => a.filter((x) => x.id !== id));
+    
+    try {
+      console.log(`[DELETE] Deleting alert ${id}`);
+      // Use POST to /delete endpoint instead of DELETE due to Supabase routing limitations
+      const res = await fetch(`${API_BASE}/alerts/${id}/delete`, { 
+        method: "POST"
+      });
+      console.log(`[DELETE] Response status: ${res.status}`);
+      
+      if (!res.ok) {
+        const responseText = await res.text();
+        console.error(`[DELETE] Error response:`, responseText);
+        throw new Error(`Delete failed with status ${res.status}: ${responseText}`);
+      }
+      
+      const responseData = await res.json();
+      console.log(`[DELETE] Response:`, responseData);
+      
+      // Immediately remove from local state
+      console.log(`[DELETE] Removing from local state`);
+      setAlerts((a) => {
+        const filtered = a.filter((x) => x.id !== id);
+        console.log(`[DELETE] Local alerts before: ${a.length}, after: ${filtered.length}`);
+        return filtered;
+      });
+      
+      // Pause polling to prevent refresh for 5 seconds
+      console.log(`[DELETE] Pausing polling for 5 seconds`);
+      setPollingPaused(true);
+      setTimeout(() => {
+        console.log(`[DELETE] Resuming polling and doing fresh load`);
+        setPollingPaused(false);
+        // Force a fresh load after the pause
+        loadAlerts().catch(e => console.warn('Fresh load failed:', e));
+      }, 5000);
+    } catch (err: any) {
+      console.error(`[DELETE] Error:`, err);
+      alert(`❌ Delete failed: ${err.message}`);
+      // Resume polling on error
+      setPollingPaused(false);
+    }
   }
 
   async function batchDismiss() {
     if (!selected.size) return;
     if (!window.confirm(`Dismiss ${selected.size} alerts?`)) return;
 
-    await Promise.all(
-      [...selected].map((id) =>
-        fetch(`${API_BASE}/alerts/${id}/dismiss`, { method: "POST" })
-      )
-    );
+    try {
+      await Promise.all(
+        [...selected].map((id) =>
+          fetch(`${API_BASE}/alerts/${id}/dismiss`, { method: "POST" })
+        )
+      );
 
-    setAlerts((a) => a.filter((x) => !selected.has(x.id)));
-    setSelected(new Set());
+      setAlerts((a) => a.filter((x) => !selected.has(x.id)));
+      setSelected(new Set());
+      
+      // Pause polling and do a fresh load
+      setPollingPaused(true);
+      setTimeout(() => {
+        setPollingPaused(false);
+        loadAlerts().catch(e => console.warn('Fresh load failed:', e));
+      }, 3000);
+    } catch (err: any) {
+      alert(`❌ Batch dismiss failed: ${err.message}`);
+      setPollingPaused(false);
+    }
   }
 
   async function batchDelete() {
     if (!selected.size) return;
     if (!window.confirm(`DELETE ${selected.size} alerts?`)) return;
 
-    await Promise.all(
-      [...selected].map((id) =>
-        fetch(`${API_BASE}/alerts/${id}`, { method: "DELETE" })
-      )
-    );
+    try {
+      await Promise.all(
+        [...selected].map((id) =>
+          fetch(`${API_BASE}/alerts/${id}`, { method: "DELETE" })
+        )
+      );
 
-    setAlerts((a) => a.filter((x) => !selected.has(x.id)));
-    setSelected(new Set());
+      setAlerts((a) => a.filter((x) => !selected.has(x.id)));
+      setSelected(new Set());
+      
+      // Pause polling and do a fresh load
+      setPollingPaused(true);
+      setTimeout(() => {
+        setPollingPaused(false);
+        loadAlerts().catch(e => console.warn('Fresh load failed:', e));
+      }, 3000);
+    } catch (err: any) {
+      alert(`❌ Batch delete failed: ${err.message}`);
+      setPollingPaused(false);
+    }
   }
 
   if (!permissions.canReview) {
@@ -500,19 +588,8 @@ export default function AlertReviewQueueInline({ permissions }: Props) {
 
   return (
   <div className="space-y-4">
-    {/* Run Scour (context-driven, single trigger) */}
-    {permissions.canScour && (
-      <div className="flex justify-end mb-3">
-        <button
-          onClick={() => startScour(accessToken)}
-          disabled={isScouring}
-          className="px-4 py-2 rounded text-white font-semibold transition disabled:opacity-60"
-          style={{ backgroundColor: isScouring ? MAGNUS_COLORS.border : MAGNUS_COLORS.darkGreen }}
-        >
-          {isScouring ? "Scouring…" : "Run Scour"}
-        </button>
-      </div>
-    )}
+    {/* Scour Management - Main Scour Function (accessible to all users) */}
+    {accessToken && <ScourManagementInline accessToken={accessToken} />}
 
     {/* Batch actions */}
     {selected.size > 0 && (

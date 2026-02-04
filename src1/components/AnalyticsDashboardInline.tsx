@@ -403,7 +403,7 @@ export function AnalyticsDashboardInline({
 
     try {
       const alertsRes = await apiFetchJson<{ ok?: boolean; alerts?: AlertRow[] } | AlertRow[]>(
-        '/alerts?limit=5000', 
+        '/alerts?limit=10000', 
         accessToken
       ).catch(() => []);
 
