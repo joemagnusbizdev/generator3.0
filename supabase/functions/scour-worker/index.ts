@@ -2039,11 +2039,11 @@ async function executeEarlySignalQuery(query: string, config: ScourConfig): Prom
         model: 'claude-3-haiku-20240307',
         max_tokens: 1024,
         system: `You are a travel safety alert extraction system. Extract travel safety incidents from the provided content.
-Return only REAL, verifiable incidents with: title, location (city), country, event_type, severity (low/medium/high), description.
+Return only REAL, verifiable incidents with: title, location (city), country, event_type, severity (low/medium/high), description, and URL.
 Format as JSON array of incidents. If no incidents found, return [].`,
         messages: [{ 
           role: 'user', 
-          content: `Extract travel safety incidents from this content about "${query}":\n\n${searchContent}\n\nReturn JSON array with title, location, country, event_type (earthquake/flood/protest/explosion/airport_closure/weather/health/security/other), severity, description.`
+          content: `Extract travel safety incidents from this content about "${query}":\n\n${searchContent}\n\nReturn JSON array with: title, location, country, event_type (earthquake/flood/protest/explosion/airport_closure/weather/health/security/other), severity, description, and url (MANDATORY - source URL from the search results or content).`
         }]
       }),
       signal: AbortSignal.timeout(15000),
@@ -2078,6 +2078,12 @@ Format as JSON array of incidents. If no incidents found, return [].`,
                 
                 for (const item of parsed) {
                   if (item.title && item.country && item.location) {
+                    // Validate that alert has a source URL (not optional - essential for verification)
+                    if (!item.url || typeof item.url !== 'string' || item.url.trim().length === 0) {
+                      console.log(`[EARLY_SIGNAL_VALIDATION] Rejected alert without source URL: "${item.title}"`);
+                      continue; // Skip alerts without source
+                    }
+                    
                     // Validate event date is recent (not older than 60 days)
                     let isStale = false;
                     if (item.event_start_date) {
