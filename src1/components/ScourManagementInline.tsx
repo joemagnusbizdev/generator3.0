@@ -148,6 +148,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
 
     try {
       if (groupId === 'early-signals') {
+        console.log(`[Early Signals] Starting early signals scour...`);
         addStatusMessage(groupId, 'Triggering early signals...');
         
         const response = await fetch(
@@ -165,9 +166,15 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
           }
         );
 
-        if (!response.ok) throw new Error(`Failed: ${response.status}`);
+        console.log(`[Early Signals] Response status: ${response.status}, ok: ${response.ok}`);
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`[Early Signals] Error response:`, errorText);
+          throw new Error(`Failed: ${response.status}`);
+        }
         
         const result = await response.json();
+        console.log(`[Early Signals] Result received:`, result);
         const alerts = result.created || 0;
         const dupes = result.duplicatesSkipped || 0;
         const errors = result.errorCount || 0;
