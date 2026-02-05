@@ -510,9 +510,36 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
         );
         const totalCount = Array.isArray(countResponse) ? countResponse.length : 0;
         
+        // Filter out stale alerts on the backend (belt and suspenders approach)
+        // Only show alerts from last 14 days OR with ongoing events (end_date in future)
+        const now = new Date();
+        const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+        
+        const filteredAlerts = (alerts || []).filter((alert: any) => {
+          const createdAt = alert.created_at ? new Date(alert.created_at) : null;
+          
+          // Check if alert is from the last 14 days
+          if (createdAt && createdAt >= fourteenDaysAgo) {
+            return true;
+          }
+          
+          // Check if it's related to an ongoing event (event_end_date is in future)
+          if (alert.event_end_date) {
+            const eventEndDate = new Date(alert.event_end_date);
+            if (eventEndDate > now) {
+              // Event is ongoing, include alert
+              return true;
+            }
+          }
+          
+          // Reject stale alerts (older than 14 days without ongoing event)
+          console.log(`[alerts/review] Filtering out stale alert: "${alert.title}" (created ${createdAt}, event_end ${alert.event_end_date})`);
+          return false;
+        });
+        
         return json({ 
           ok: true, 
-          alerts: alerts || [],
+          alerts: filteredAlerts,
           pagination: {
             page,
             pageSize,
