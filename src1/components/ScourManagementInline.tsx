@@ -34,9 +34,18 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
   const [runningGroupId, setRunningGroupId] = useState<string | null>(null);
   const [allComplete, setAllComplete] = useState(false);
   const [statusMessages, setStatusMessages] = useState<Record<string, string>>({});
+  const [lastSourceCount, setLastSourceCount] = useState<number>(0);
+  const [isExpanded, setIsExpanded] = useState(true);
 
   useEffect(() => {
     loadAndGroupSources();
+    
+    // Poll for new sources every 10 seconds
+    const interval = setInterval(() => {
+      loadAndGroupSources();
+    }, 10000);
+
+    return () => clearInterval(interval);
   }, [accessToken]);
 
   const addStatusMessage = (groupId: string, message: string) => {
@@ -58,6 +67,13 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
 
       if (!response.ok) throw new Error('Failed to load sources');
       const sources: Source[] = await response.json();
+
+      // Only update if source count changed
+      if (sources.length === lastSourceCount) {
+        return;
+      }
+
+      setLastSourceCount(sources.length);
 
       const groupedByType = new Map<string, Source[]>();
       sources.forEach(source => {
@@ -129,15 +145,28 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         if (!response.ok) throw new Error(`Failed: ${response.status}`);
         
         const result = await response.json();
+        const alerts = result.created || 0;
+        const dupes = result.duplicatesSkipped || 0;
+        const errors = result.errorCount || 0;
         
         setSourceGroups(prev =>
           prev.map(g =>
             g.id === groupId
-              ? { ...g, status: 'completed', results: { alerts_created: 0, duplicates_skipped: 0, errors: 0, disabled_sources: 0, disabled_source_ids: [] } }
+              ? { 
+                  ...g, 
+                  status: 'completed', 
+                  results: { 
+                    alerts_created: alerts, 
+                    duplicates_skipped: dupes, 
+                    errors: errors, 
+                    disabled_sources: 0, 
+                    disabled_source_ids: [] 
+                  } 
+                }
               : g
           )
         );
-        addStatusMessage(groupId, 'Complete');
+        addStatusMessage(groupId, `Complete: ${alerts} alerts, ${dupes} dupes`);
       } else {
         addStatusMessage(groupId, `Scouring ${group.sources.length} sources...`);
 
@@ -162,20 +191,32 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         }
 
         const result = await response.json();
-        const alerts = result.results?.alerts_created || 0;
-        addStatusMessage(groupId, `Created ${alerts} alerts`);
+        const alerts = result.created || 0;
+        const dupes = result.duplicatesSkipped || 0;
+        const errors = result.errorCount || 0;
+        addStatusMessage(groupId, `Created ${alerts} alerts, ${dupes} dupes`);
 
         setSourceGroups(prev =>
           prev.map(g =>
             g.id === groupId
-              ? { ...g, status: 'completed', results: result.results || { alerts_created: 0, duplicates_skipped: 0, errors: 0, disabled_sources: 0, disabled_source_ids: [] } }
+              ? { 
+                  ...g, 
+                  status: 'completed', 
+                  results: { 
+                    alerts_created: alerts, 
+                    duplicates_skipped: dupes, 
+                    errors: errors, 
+                    disabled_sources: 0, 
+                    disabled_source_ids: [] 
+                  } 
+                }
               : g
           )
         );
 
-        if (result.results?.disabled_source_ids?.length > 0) {
-          addStatusMessage(groupId, `Disabling ${result.results.disabled_source_ids.length} sources...`);
-          for (const sourceId of result.results.disabled_source_ids) {
+        if (result.disabled_source_ids?.length > 0) {
+          addStatusMessage(groupId, `Disabling ${result.disabled_source_ids.length} sources...`);
+          for (const sourceId of result.disabled_source_ids) {
             await fetch(
               `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/sources?id=eq.${sourceId}`,
               {
@@ -218,7 +259,13 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
   return (
     <div className="border rounded-lg p-4 bg-gray-50">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-bold text-base">📊 Scour Management</h3>
+        <div 
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex-1 cursor-pointer flex items-center gap-2 hover:opacity-80"
+        >
+          <span className="text-lg">{isExpanded ? '▼' : '▶'}</span>
+          <h3 className="font-bold text-base">📊 Scour Management</h3>
+        </div>
         <div className="flex gap-2">
           <button
             onClick={stopAllScours}
@@ -235,93 +282,95 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        {/* Left Column: List of Groups */}
-        <div className="space-y-2">
-          <h4 className="text-xs font-semibold text-gray-600 uppercase">Scour Groups</h4>
-          {sourceGroups.map(group => {
-            const isRunning = runningGroupId === group.id;
-            
-            return (
-              <div
-                key={group.id}
-                className={`border rounded p-2 text-xs transition-colors ${
-                  group.status === 'completed'
-                    ? 'bg-green-100 border-green-300'
-                    : group.status === 'error'
-                    ? 'bg-red-100 border-red-300'
-                    : isRunning
-                    ? 'bg-blue-100 border-blue-300'
-                    : 'bg-white border-gray-300'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-xs">{group.name}</div>
-                  </div>
-                  <div className="flex-shrink-0 flex items-center gap-1">
-                    {group.status === 'pending' && (
-                      <button
-                        onClick={() => runGroup(group.id)}
-                        disabled={runningGroupId !== null}
-                        className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                      >
-                        Run
-                      </button>
-                    )}
-                    {isRunning && (
-                      <div className="animate-spin w-3 h-3 border-2 border-blue-400 border-t-blue-600 rounded-full" />
-                    )}
-                    {group.status === 'completed' && <span className="text-green-700 font-bold">✓</span>}
-                    {group.status === 'error' && <span className="text-red-700 font-bold">✗</span>}
+      {isExpanded && (
+        <div className="grid grid-cols-2 gap-4">
+          {/* Left Column: List of Groups */}
+          <div className="space-y-2">
+            <h4 className="text-xs font-semibold text-gray-600 uppercase">Scour Groups</h4>
+            {sourceGroups.map(group => {
+              const isRunning = runningGroupId === group.id;
+              
+              return (
+                <div
+                  key={group.id}
+                  className={`border rounded p-2 text-xs transition-colors ${
+                    group.status === 'completed'
+                      ? 'bg-green-100 border-green-300'
+                      : group.status === 'error'
+                      ? 'bg-red-100 border-red-300'
+                      : isRunning
+                      ? 'bg-blue-100 border-blue-300'
+                      : 'bg-white border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-xs">{group.name}</div>
+                    </div>
+                    <div className="flex-shrink-0 flex items-center gap-1">
+                      {group.status === 'pending' && (
+                        <button
+                          onClick={() => runGroup(group.id)}
+                          disabled={runningGroupId !== null}
+                          className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                        >
+                          Run
+                        </button>
+                      )}
+                      {isRunning && (
+                        <div className="animate-spin w-3 h-3 border-2 border-blue-400 border-t-blue-600 rounded-full" />
+                      )}
+                      {group.status === 'completed' && <span className="text-green-700 font-bold">✓</span>}
+                      {group.status === 'error' && <span className="text-red-700 font-bold">✗</span>}
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
 
-        {/* Right Column: Results and Status */}
-        <div className="space-y-2">
-          <h4 className="text-xs font-semibold text-gray-600 uppercase">Results & Status</h4>
-          {sourceGroups.map(group => {
-            const statusMsg = statusMessages[group.id];
-            
-            return (
-              <div key={group.id} className="border rounded p-2 bg-white text-xs">
-                <div className="font-semibold text-xs mb-1">{group.name}</div>
-                {statusMsg && (
-                  <div className="text-xs text-gray-700 mb-2">{statusMsg}</div>
-                )}
-                {group.results && (
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="flex items-center gap-1">
-                      <span className="text-green-700">✓</span>
-                      <span>{group.results.alerts_created} alerts</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <span className="text-gray-700">∼</span>
-                      <span>{group.results.duplicates_skipped} dupes</span>
-                    </div>
-                    {group.results.errors > 0 && (
+          {/* Right Column: Results and Status */}
+          <div className="space-y-2">
+            <h4 className="text-xs font-semibold text-gray-600 uppercase">Results & Status</h4>
+            {sourceGroups.map(group => {
+              const statusMsg = statusMessages[group.id];
+              
+              return (
+                <div key={group.id} className="border rounded p-2 bg-white text-xs">
+                  <div className="font-semibold text-xs mb-1">{group.name}</div>
+                  {statusMsg && (
+                    <div className="text-xs text-gray-700 mb-2">{statusMsg}</div>
+                  )}
+                  {group.results && (
+                    <div className="grid grid-cols-2 gap-2 text-xs">
                       <div className="flex items-center gap-1">
-                        <span className="text-red-700">✗</span>
-                        <span>{group.results.errors} errors</span>
+                        <span className="text-green-700">✓</span>
+                        <span>{group.results.alerts_created} alerts</span>
                       </div>
-                    )}
-                    {group.results.disabled_sources > 0 && (
                       <div className="flex items-center gap-1">
-                        <span className="text-orange-700">⊘</span>
-                        <span>{group.results.disabled_sources} disabled</span>
+                        <span className="text-gray-700">∼</span>
+                        <span>{group.results.duplicates_skipped} dupes</span>
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                      {group.results.errors > 0 && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-red-700">✗</span>
+                          <span>{group.results.errors} errors</span>
+                        </div>
+                      )}
+                      {group.results.disabled_sources > 0 && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-orange-700">⊘</span>
+                          <span>{group.results.disabled_sources} disabled</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
