@@ -483,11 +483,13 @@ CRITICAL REQUIREMENTS:
    - Never return empty recommendations
    - Make them specific to the location, event type, and severity
    - Include dos and don'ts for travelers
-9. MANDATORY: Event dates when available from the article
+9. MANDATORY: RECENT EVENT DATES ONLY (last 7 days maximum)
    - event_start_date: YYYY-MM-DD format (when event started or is expected to start)
    - event_end_date: YYYY-MM-DD format (when event ended or is expected to end)
-   - If unclear, estimate reasonable timeframe (e.g., earthquake = start date only, crisis = start to 7+ days out)
-   - If not provided in source, omit field and system will set defaults
+   - REJECT: Any event older than 7 days from today
+   - REJECT: Historical/archived events, even if significant
+   - REJECT: Future events more than 1 day out
+   - If unclear on dates, REJECT the alert - don't guess
 10. EventType from: [War, Armed Conflict, Terrorism, Health Crisis, Natural Disaster, Maritime Incident, Environmental, Security Incident, Civil Unrest, Border/Immigration, Transportation Disruption, Infrastructure Failure]
 
 JSON output format:
@@ -502,7 +504,7 @@ JSON output format:
   "longitude": precise_number_on_land,
   "radiusKm": number_based_on_severity_and_impact,
   "recommendations": "3-5 actionable travel recommendations in English",
-  "event_start_date": "YYYY-MM-DD (REQUIRED)",
+  "event_start_date": "YYYY-MM-DD (REQUIRED - last 7 days only)",
   "event_end_date": "YYYY-MM-DD (REQUIRED)",
   "geoJSON": {
     "type": "Feature",
@@ -517,7 +519,7 @@ JSON output format:
 NOTE: geoJSON is OPTIONAL - if missing, we'll auto-generate from latitude/longitude/radiusKm
 NOTE: latitude, longitude, radiusKm, event_start_date, event_end_date are ALL REQUIRED`;
 
-  const userPrompt = `Extract alerts from this ${sourceName} content. ENSURE all output is in English and GeoJSON is accurate to event location:
+  const userPrompt = `Extract alerts from this ${sourceName} content. ENSURE all output is in English and GeoJSON is accurate to event location. CRITICAL: Only include events from last 7 days - reject historical/archived content:`;
 
 ${content.slice(0, 15000)}`;
 
@@ -947,17 +949,22 @@ function checkAlertQuality(alert: any): string[] {
     issues.push("zero coordinates");
   }
   
-  // Check for stale events (more than 60 days old)
+  // Check for stale events (more than 7 days old) - STRICT threshold
   if (alert.event_start_date) {
     try {
       const eventDate = new Date(alert.event_start_date);
       const now = new Date();
       const daysSinceEvent = (now.getTime() - eventDate.getTime()) / (1000 * 60 * 60 * 24);
-      if (daysSinceEvent > 60) {
+      if (daysSinceEvent > 7) {
         issues.push(`stale event (${Math.floor(daysSinceEvent)} days old)`);
       }
+      // Also reject if date is in future (invalid)
+      if (daysSinceEvent < -1) {
+        issues.push(`future date (invalid)`);
+      }
     } catch (e) {
-      // Invalid date format, skip this check
+      // Invalid date format, mark as issue
+      issues.push(`invalid date format`);
     }
   }
   
@@ -1088,10 +1095,24 @@ async function postProcessAlerts(alerts: any[]): Promise<Alert[]> {
       let finalAlert = alert;
       
       if (qualityIssues.length > 0) {
+        // REJECT if stale/dated issues (non-negotiable)
+        const staleIssues = qualityIssues.filter(issue => 
+          issue.includes('stale event') || 
+          issue.includes('future date') || 
+          issue.includes('invalid date')
+        );
+        if (staleIssues.length > 0) {
+          console.warn(`  ⊘ REJECTED - Date validation failed: ${staleIssues.join(", ")}`);
+          if (isEarlySignals) {
+            console.log(`[EARLY_SIGNAL_POSTPROCESS] Rejected - ${staleIssues.join(", ")}`);
+          }
+          continue; // Reject stale/dated events - don't try to enhance
+        }
+        
         console.log(`  ⚠️ Quality issues detected: ${qualityIssues.join(", ")}`);
         console.log(`  🤖 Attempting Claude enhancement...`);
         
-        // Try Claude to enhance/fix the alert
+        // Try Claude to enhance/fix other issues (not dates)
         const enhanced = await enhanceAlertWithClaude(alert, ANTHROPIC_API_KEY);
         if (enhanced) {
           finalAlert = enhanced;
