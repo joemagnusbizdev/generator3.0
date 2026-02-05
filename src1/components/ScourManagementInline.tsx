@@ -306,7 +306,9 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
           <div className="flex flex-col">
             <h3 className="font-bold text-base">📊 Scour Management</h3>
             {!isExpanded && mostRecentScour && (
-              <span className="text-xs text-gray-500">Last scour: {formatTime(sourceGroups.find(g => g.lastScourTime && new Date(g.lastScourTime).getTime() === mostRecentScour)?.lastScourTime)}</span>
+              <span className="text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                ⏱ Last scour: {formatTime(sourceGroups.find(g => g.lastScourTime && new Date(g.lastScourTime).getTime() === mostRecentScour)?.lastScourTime)}
+              </span>
             )}
           </div>
         </div>
@@ -351,7 +353,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-xs">{group.name}</div>
                       {group.lastScourTime && (
-                        <div className="text-xs text-gray-500">Last: {formatTime(group.lastScourTime)}</div>
+                        <div className="text-xs font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded mt-1 inline-block">⏱ {formatTime(group.lastScourTime)}</div>
                       )}
                     </div>
                     <div className="flex-shrink-0 flex items-center gap-1">
@@ -384,12 +386,14 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
               
               return (
                 <div key={group.id} className="border rounded p-2 bg-white text-xs">
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center justify-between mb-2">
                     <div className="font-semibold text-xs">{group.name}</div>
-                    {group.lastScourTime && (
-                      <div className="text-xs text-gray-500">Last: {formatTime(group.lastScourTime)}</div>
-                    )}
                   </div>
+                  {group.lastScourTime && (
+                    <div className="mb-2 font-semibold text-sm text-blue-600 bg-blue-50 px-2 py-1.5 rounded border border-blue-200">
+                      ✓ Scoured: {formatTime(group.lastScourTime)}
+                    </div>
+                  )}
                   {statusMsg && (
                     <div className="text-xs text-gray-700 mb-2">{statusMsg}</div>
                   )}
