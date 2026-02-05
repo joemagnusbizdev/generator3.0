@@ -519,7 +519,7 @@ JSON output format:
 NOTE: geoJSON is OPTIONAL - if missing, we'll auto-generate from latitude/longitude/radiusKm
 NOTE: latitude, longitude, radiusKm, event_start_date, event_end_date are ALL REQUIRED`;
 
-  const userPrompt = `Extract alerts from this ${sourceName} content. ENSURE all output is in English and GeoJSON is accurate to event location. CRITICAL: Only include events from last 7 days - reject historical/archived content:`;
+  const userPrompt = `Extract alerts from this ${sourceName} content. ENSURE all output is in English and GeoJSON is accurate to event location. CRITICAL: Only include events from last 7 days - reject historical/archived content:
 
 ${content.slice(0, 15000)}`;
 
