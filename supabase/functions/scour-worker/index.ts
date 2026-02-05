@@ -2341,3 +2341,4 @@ Deno.serve({ skipJwtVerification: true }, async (req: Request) => {
     console.error(`🔴 [SCOUR-WORKER] Error stack:`, err);
     return json({ error: err.message || String(err) }, 500);
   }
+});
