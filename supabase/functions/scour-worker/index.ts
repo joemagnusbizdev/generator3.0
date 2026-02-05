@@ -530,7 +530,8 @@ ${content.slice(0, 15000)}`;
         const searchQuery = `${sourceName} travel alerts incidents`;
         console.log(`  🌐 Brave Search for: "${searchQuery}"`);
         
-        const braveUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(searchQuery)}&count=5`;
+        // Add parameters to prioritize news/recent results over archived content
+        const braveUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(searchQuery)}&count=10&spellcheck=1&result_filter=news`;
         const braveResponse = await fetch(braveUrl, {
           headers: {
             'Accept': 'application/json',
@@ -2013,7 +2014,11 @@ async function executeEarlySignalQuery(query: string, config: ScourConfig): Prom
     if (config.braveApiKey) {
       console.log(`[CLAUDE_DASHBOARD_LOG] Brave Search API call for: "${query}"`);
       try {
-        const braveUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5`;
+        // Add search parameters to prioritize recent/news results
+        // spellcheck=1: fix typos
+        // count=10: get more results to filter from
+        // search_lang=en: English results only
+        const braveUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10&spellcheck=1&result_filter=news`;
         const braveResponse = await fetch(braveUrl, {
           headers: {
             'Accept': 'application/json',
