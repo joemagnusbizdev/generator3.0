@@ -2038,12 +2038,14 @@ async function executeEarlySignalQuery(query: string, config: ScourConfig): Prom
       body: JSON.stringify({
         model: 'claude-3-haiku-20240307',
         max_tokens: 1024,
-        system: `You are a travel safety alert extraction system. Extract travel safety incidents from the provided content.
-Return only REAL, verifiable incidents with: title, location (city), country, event_type, severity (low/medium/high), description, and URL.
-Format as JSON array of incidents. If no incidents found, return [].`,
+        system: `You are a travel safety alert extraction system. Extract ONLY recent (within last 7 days), verifiable incidents from the provided content.
+Return ONLY real incidents with: title, location (city), country, event_type, severity (low/medium/high), description, event_start_date (YYYY-MM-DD or ISO format), and url.
+REJECT: stale/historical events, vague locations, generic titles, events older than 7 days.
+Format as JSON array. If no valid incidents found, return [].`,
         messages: [{ 
           role: 'user', 
-          content: `Extract travel safety incidents from this content about "${query}":\n\n${searchContent}\n\nReturn JSON array with: title, location, country, event_type (earthquake/flood/protest/explosion/airport_closure/weather/health/security/other), severity, description, and url (MANDATORY - source URL from the search results or content).`
+          content: `Extract travel safety incidents from this content about "${query}":\n\n${searchContent}\n\nReturn JSON array with: title, location, country, event_type (earthquake/flood/protest/explosion/airport_closure/weather/health/security/other), severity, description, event_start_date, and url.
+CRITICAL: Only include incidents from last 7 days. MUST include actual news article URL from search results. Reject vague locations, outdated events, or irrelevant content.`
         }]
       }),
       signal: AbortSignal.timeout(15000),
@@ -2078,30 +2080,49 @@ Format as JSON array of incidents. If no incidents found, return [].`,
                 
                 for (const item of parsed) {
                   if (item.title && item.country && item.location) {
-                    // Validate that alert has a source URL (not optional - essential for verification)
+                    // Validate that alert has a source URL (essential for verification)
                     if (!item.url || typeof item.url !== 'string' || item.url.trim().length === 0) {
                       console.log(`[EARLY_SIGNAL_VALIDATION] Rejected alert without source URL: "${item.title}"`);
                       continue; // Skip alerts without source
                     }
                     
-                    // Validate event date is recent (not older than 60 days)
+                    // Validate URL is from credible news source (not social media)
+                    const urlStr = item.url.toLowerCase();
+                    const invalidDomains = ['reddit.com', 'facebook.com', 'instagram.com', 'twitter.com', 'youtube.com', 'wikipedia.org'];
+                    const isFromInvalidDomain = invalidDomains.some(domain => urlStr.includes(domain));
+                    if (isFromInvalidDomain) {
+                      console.log(`[EARLY_SIGNAL_VALIDATION] Rejected alert with social media URL: "${item.title}" from ${item.url}`);
+                      continue; // Skip social media URLs
+                    }
+                    
+                    // Validate event date is recent (not older than 7 days - STRICT)
                     let isStale = false;
                     if (item.event_start_date) {
                       try {
                         const eventDate = new Date(item.event_start_date);
                         const now = new Date();
                         const daysSinceEvent = (now.getTime() - eventDate.getTime()) / (1000 * 60 * 60 * 24);
-                        if (daysSinceEvent > 60) {
-                          console.log(`[EARLY_SIGNAL_VALIDATION] Rejected stale event: "${item.title}" (from ${daysSinceEvent.toFixed(0)} days ago on ${item.event_start_date})`);
+                        // STRICT: Only accept events from last 7 days (not 60)
+                        if (daysSinceEvent > 7) {
+                          console.log(`[EARLY_SIGNAL_VALIDATION] Rejected stale event: "${item.title}" (from ${daysSinceEvent.toFixed(1)} days ago, dated ${item.event_start_date}) - exceeds 7 day threshold`);
+                          isStale = true;
+                        }
+                        // Also reject if date is in future (invalid)
+                        if (daysSinceEvent < -1) {
+                          console.log(`[EARLY_SIGNAL_VALIDATION] Rejected event with future date: "${item.title}" (${item.event_start_date})`);
                           isStale = true;
                         }
                       } catch (e) {
-                        // Invalid date format, continue processing
+                        console.log(`[EARLY_SIGNAL_VALIDATION] Rejected event with invalid date format: "${item.title}" (${item.event_start_date})`);
+                        isStale = true; // Reject if date can't be parsed
                       }
+                    } else {
+                      console.log(`[EARLY_SIGNAL_VALIDATION] Rejected event without date: "${item.title}"`);
+                      isStale = true; // Reject if no date provided
                     }
                     
                     if (isStale) {
-                      continue; // Skip this stale alert
+                      continue; // Skip this stale/invalid alert
                     }
                     
                     const alert: Alert = {
