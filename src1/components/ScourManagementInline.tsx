@@ -159,6 +159,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         const alerts = result.created || 0;
         const dupes = result.duplicatesSkipped || 0;
         const errors = result.errorCount || 0;
+        const now = new Date().toISOString();
         
         setSourceGroups(prev =>
           prev.map(g =>
@@ -166,6 +167,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
               ? { 
                   ...g, 
                   status: 'completed', 
+                  lastScourTime: now,
                   results: { 
                     alerts_created: alerts, 
                     duplicates_skipped: dupes, 
@@ -177,9 +179,6 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
               : g
           )
         );
-        
-        // Reload sources to get updated last_scoured_at from database (for multi-user sync)
-        await loadAndGroupSources();
         addStatusMessage(groupId, `Complete: ${alerts} alerts, ${dupes} dupes`);
       } else {
         addStatusMessage(groupId, `Scouring ${group.sources.length} sources...`);
