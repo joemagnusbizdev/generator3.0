@@ -199,9 +199,16 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         const alerts = result.created || 0;
         const dupes = result.duplicatesSkipped || 0;
         const errors = result.errorCount || 0;
+        const disabledSourceIds = result.disabled_source_ids || result.error_source_ids || [];
         const now = new Date().toISOString();
-        addStatusMessage(groupId, `Created ${alerts} alerts, ${dupes} dupes`);
+        
+        if (errors > 0 && disabledSourceIds.length === 0) {
+          addStatusMessage(groupId, `⚠️ Created ${alerts} alerts, ${dupes} dupes, ${errors} errors (sources with errors will be disabled)`);
+        } else {
+          addStatusMessage(groupId, `Created ${alerts} alerts, ${dupes} dupes`);
+        }
 
+        // Update group with results and disabled sources
         setSourceGroups(prev =>
           prev.map(g =>
             g.id === groupId
@@ -209,21 +216,23 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
                   ...g, 
                   status: 'completed', 
                   lastScourTime: now,
+                  // Remove disabled sources from the group
+                  sources: g.sources.filter(s => !disabledSourceIds.includes(s.id)),
                   results: { 
                     alerts_created: alerts, 
                     duplicates_skipped: dupes, 
                     errors: errors, 
-                    disabled_sources: 0, 
-                    disabled_source_ids: [] 
+                    disabled_sources: disabledSourceIds.length, 
+                    disabled_source_ids: disabledSourceIds 
                   } 
                 }
               : g
           )
         );
 
-        if (result.disabled_source_ids?.length > 0) {
-          addStatusMessage(groupId, `Disabling ${result.disabled_source_ids.length} sources...`);
-          for (const sourceId of result.disabled_source_ids) {
+        if (disabledSourceIds.length > 0) {
+          addStatusMessage(groupId, `Disabling ${disabledSourceIds.length} sources due to errors...`);
+          for (const sourceId of disabledSourceIds) {
             await fetch(
               `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/sources?id=eq.${sourceId}`,
               {
