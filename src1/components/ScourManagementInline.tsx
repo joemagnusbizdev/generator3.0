@@ -86,20 +86,26 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
 
       const groups: SourceGroup[] = [];
 
-      // Add Early Signals as first group
+      // Add Early Signals as first group, preserving its state if it exists
+      const existingEarlySignals = sourceGroups.find(g => g.id === 'early-signals');
       groups.push({
         id: 'early-signals',
         type: 'early_signals',
         name: 'Early Signals Scour',
         sources: [],
-        status: 'pending',
-        lastScourTime: undefined,
+        status: existingEarlySignals?.status || 'pending',
+        lastScourTime: existingEarlySignals?.lastScourTime,
+        results: existingEarlySignals?.results,
       });
 
       groupedByType.forEach((typeSourceList, type) => {
         for (let i = 0; i < typeSourceList.length; i += 50) {
           const batch = typeSourceList.slice(i, i + 50);
           const groupIndex = Math.floor(i / 50);
+          const groupId = `${type}-${groupIndex}`;
+          
+          // Preserve existing group state if it exists
+          const existingGroup = sourceGroups.find(g => g.id === groupId);
           
           // Get the most recent scour time from sources in this batch
           const mostRecentScourTime = batch
@@ -108,12 +114,13 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
             .sort((a, b) => b - a)[0];
           
           groups.push({
-            id: `${type}-${groupIndex}`,
+            id: groupId,
             type,
             name: `${type.charAt(0).toUpperCase() + type.slice(1)} - Group ${groupIndex + 1} (${batch.length} sources)`,
             sources: batch,
-            status: 'pending',
-            lastScourTime: mostRecentScourTime ? new Date(mostRecentScourTime).toISOString() : undefined,
+            status: existingGroup?.status || 'pending',
+            lastScourTime: existingGroup?.lastScourTime || (mostRecentScourTime ? new Date(mostRecentScourTime).toISOString() : undefined),
+            results: existingGroup?.results,
           });
         }
       });
