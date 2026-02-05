@@ -2285,8 +2285,12 @@ CRITICAL: Only include incidents from last 7 days. MUST include actual news arti
 Deno.serve({ skipJwtVerification: true }, async (req: Request) => {
   console.log(`🔵 [SCOUR-WORKER] Received request: ${req.method} ${new URL(req.url).pathname}`);
   
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { 
+      status: 200,
+      headers: corsHeaders 
+    });
   }
   
   try {
@@ -2337,4 +2341,3 @@ Deno.serve({ skipJwtVerification: true }, async (req: Request) => {
     console.error(`🔴 [SCOUR-WORKER] Error stack:`, err);
     return json({ error: err.message || String(err) }, 500);
   }
-});
