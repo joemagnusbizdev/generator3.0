@@ -1798,6 +1798,26 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
     
     console.log(`✅ Batch completed: ${stats.created} created, ${stats.skipped} skipped, ${stats.duplicatesSkipped} duplicates`);
     
+    // Update last_scoured_at timestamp for processed sources (multi-user sync)
+    if (config.sourceIds && config.sourceIds.length > 0) {
+      try {
+        const now = new Date().toISOString();
+        const sourceIdList = config.sourceIds.map(id => `"${id}"`).join(',');
+        await querySupabaseRest(`/sources?id=in.(${config.sourceIds.join(',')})`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal',
+          },
+          body: JSON.stringify({ last_scoured_at: now }),
+        });
+        logger.log(`✅ Updated ${config.sourceIds.length} sources with last_scoured_at: ${now}`);
+      } catch (err: any) {
+        logger.log(`⚠️ Failed to update source timestamps: ${err.message}`);
+        console.error(`Failed to update source timestamps:`, err);
+      }
+    }
+    
     // Add batch metadata to stats
     stats.phase = "done";
     stats.hasMoreBatches = hasMoreBatches;

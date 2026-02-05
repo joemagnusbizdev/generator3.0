@@ -6,6 +6,7 @@ interface Source {
   type: string;
   url: string;
   enabled: boolean;
+  last_scoured_at?: string | null;
 }
 
 interface SourceGroup {
@@ -56,7 +57,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
   const loadAndGroupSources = async () => {
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/sources?enabled=eq.true&order=type,name`,
+        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/sources?enabled=eq.true&select=*,last_scoured_at&order=type,name`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -99,13 +100,20 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         for (let i = 0; i < typeSourceList.length; i += 50) {
           const batch = typeSourceList.slice(i, i + 50);
           const groupIndex = Math.floor(i / 50);
+          
+          // Get the most recent scour time from sources in this batch
+          const mostRecentScourTime = batch
+            .filter(s => s.last_scoured_at)
+            .map(s => new Date(s.last_scoured_at!).getTime())
+            .sort((a, b) => b - a)[0];
+          
           groups.push({
             id: `${type}-${groupIndex}`,
             type,
             name: `${type.charAt(0).toUpperCase() + type.slice(1)} - Group ${groupIndex + 1} (${batch.length} sources)`,
             sources: batch,
             status: 'pending',
-            lastScourTime: undefined,
+            lastScourTime: mostRecentScourTime ? new Date(mostRecentScourTime).toISOString() : undefined,
           });
         }
       });
@@ -151,7 +159,6 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         const alerts = result.created || 0;
         const dupes = result.duplicatesSkipped || 0;
         const errors = result.errorCount || 0;
-        const now = new Date().toISOString();
         
         setSourceGroups(prev =>
           prev.map(g =>
@@ -159,7 +166,6 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
               ? { 
                   ...g, 
                   status: 'completed', 
-                  lastScourTime: now,
                   results: { 
                     alerts_created: alerts, 
                     duplicates_skipped: dupes, 
@@ -171,6 +177,9 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
               : g
           )
         );
+        
+        // Reload sources to get updated last_scoured_at from database (for multi-user sync)
+        await loadAndGroupSources();
         addStatusMessage(groupId, `Complete: ${alerts} alerts, ${dupes} dupes`);
       } else {
         addStatusMessage(groupId, `Scouring ${group.sources.length} sources...`);
@@ -200,7 +209,6 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         const dupes = result.duplicatesSkipped || 0;
         const errors = result.errorCount || 0;
         const disabledSourceIds = result.disabled_source_ids || result.error_source_ids || [];
-        const now = new Date().toISOString();
         
         if (errors > 0 && disabledSourceIds.length === 0) {
           addStatusMessage(groupId, `⚠️ Created ${alerts} alerts, ${dupes} dupes, ${errors} errors (sources with errors will be disabled)`);
@@ -215,7 +223,6 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
               ? { 
                   ...g, 
                   status: 'completed', 
-                  lastScourTime: now,
                   // Remove disabled sources from the group
                   sources: g.sources.filter(s => !disabledSourceIds.includes(s.id)),
                   results: { 
@@ -229,6 +236,9 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
               : g
           )
         );
+        
+        // Reload sources to get updated last_scoured_at from database (for multi-user sync)
+        await loadAndGroupSources();
 
         if (disabledSourceIds.length > 0) {
           addStatusMessage(groupId, `Disabling ${disabledSourceIds.length} sources due to errors...`);
