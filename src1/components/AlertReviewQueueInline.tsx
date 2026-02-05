@@ -82,6 +82,73 @@ const INTELLIGENCE_TOPIC_OPTIONS = [
   "Flight Disruptions", "Gas Leaks", "Pro-Palestinian Protest",
 ];
 
+// Helper function to map country to mainland
+function getMainlandFromCountry(country?: string): string {
+  if (!country) return "";
+  
+  const countryToMainland: Record<string, string> = {
+    // Africa
+    "Algeria": "Africa", "Angola": "Africa", "Benin": "Africa", "Botswana": "Africa", "Burkina Faso": "Africa",
+    "Burundi": "Africa", "Cameroon": "Africa", "Cape Verde": "Africa", "Central African Republic": "Africa", "Chad": "Africa",
+    "Comoros": "Africa", "Congo": "Africa", "Democratic Republic of Congo": "Africa", "Djibouti": "Africa", "Egypt": "Africa",
+    "Equatorial Guinea": "Africa", "Eritrea": "Africa", "Ethiopia": "Africa", "Gabon": "Africa", "Gambia": "Africa",
+    "Ghana": "Africa", "Guinea": "Africa", "Guinea-Bissau": "Africa", "Ivory Coast": "Africa", "Kenya": "Africa",
+    "Lesotho": "Africa", "Liberia": "Africa", "Libya": "Africa", "Madagascar": "Africa", "Malawi": "Africa",
+    "Mali": "Africa", "Mauritania": "Africa", "Mauritius": "Africa", "Morocco": "Africa", "Mozambique": "Africa",
+    "Namibia": "Africa", "Niger": "Africa", "Nigeria": "Africa", "Rwanda": "Africa", "Sao Tome and Principe": "Africa",
+    "Senegal": "Africa", "Seychelles": "Africa", "Sierra Leone": "Africa", "Somalia": "Africa", "South Africa": "Africa",
+    "South Sudan": "Africa", "Sudan": "Africa", "Tanzania": "Africa", "Togo": "Africa", "Tunisia": "Africa",
+    "Uganda": "Africa", "Zambia": "Africa", "Zimbabwe": "Africa",
+    
+    // Asia
+    "Afghanistan": "Asia", "Armenia": "Asia", "Azerbaijan": "Asia", "Bahrain": "Asia", "Bangladesh": "Asia",
+    "Bhutan": "Asia", "Brunei": "Asia", "Cambodia": "Asia", "China": "Asia", "Cyprus": "Asia",
+    "Georgia": "Asia", "Hong Kong": "Asia", "India": "Asia", "Indonesia": "Asia", "Iran": "Asia",
+    "Iraq": "Asia", "Israel": "Asia", "Japan": "Asia", "Jordan": "Asia", "Kazakhstan": "Asia",
+    "North Korea": "Asia", "South Korea": "Asia", "Kuwait": "Asia", "Kyrgyzstan": "Asia", "Laos": "Asia",
+    "Lebanon": "Asia", "Malaysia": "Asia", "Maldives": "Asia", "Mongolia": "Asia", "Myanmar": "Asia",
+    "Nepal": "Asia", "Oman": "Asia", "Pakistan": "Asia", "Palestine": "Asia", "Philippines": "Asia",
+    "Qatar": "Asia", "Saudi Arabia": "Asia", "Singapore": "Asia", "Sri Lanka": "Asia", "Syria": "Asia",
+    "Taiwan": "Asia", "Tajikistan": "Asia", "Thailand": "Asia", "East Timor": "Asia", "Turkey": "Asia",
+    "Turkmenistan": "Asia", "United Arab Emirates": "Asia", "Uzbekistan": "Asia", "Vietnam": "Asia",
+    "Yemen": "Asia",
+    
+    // Europe
+    "Albania": "Europe", "Andorra": "Europe", "Austria": "Europe", "Belarus": "Europe", "Belgium": "Europe",
+    "Bosnia and Herzegovina": "Europe", "Bulgaria": "Europe", "Croatia": "Europe", "Czech Republic": "Europe", "Czechia": "Europe",
+    "Denmark": "Europe", "Estonia": "Europe", "Finland": "Europe", "France": "Europe", "Germany": "Europe",
+    "Greece": "Europe", "Hungary": "Europe", "Iceland": "Europe", "Ireland": "Europe", "Italy": "Europe",
+    "Kosovo": "Europe", "Latvia": "Europe", "Liechtenstein": "Europe", "Lithuania": "Europe", "Luxembourg": "Europe",
+    "Malta": "Europe", "Moldova": "Europe", "Monaco": "Europe", "Montenegro": "Europe", "Netherlands": "Europe",
+    "Norway": "Europe", "Poland": "Europe", "Portugal": "Europe", "Romania": "Europe", "Russia": "Europe",
+    "San Marino": "Europe", "Serbia": "Europe", "Slovakia": "Europe", "Slovenia": "Europe", "Spain": "Europe",
+    "Sweden": "Europe", "Switzerland": "Europe", "Ukraine": "Europe", "United Kingdom": "Europe",
+    
+    // North America
+    "Antigua and Barbuda": "North America", "Bahamas": "North America", "Barbados": "North America", "Belize": "North America",
+    "Canada": "North America", "Costa Rica": "North America", "Cuba": "North America", "Dominica": "North America",
+    "Dominican Republic": "North America", "El Salvador": "North America", "Grenada": "North America", "Guatemala": "North America",
+    "Haiti": "North America", "Honduras": "North America", "Jamaica": "North America", "Mexico": "North America",
+    "Nicaragua": "North America", "Panama": "North America", "Saint Kitts and Nevis": "North America",
+    "Saint Lucia": "North America", "Saint Vincent and the Grenadines": "North America", "Trinidad and Tobago": "North America",
+    "United States": "North America", "USA": "North America",
+    
+    // South America
+    "Argentina": "South America", "Bolivia": "South America", "Brazil": "South America", "Chile": "South America",
+    "Colombia": "South America", "Ecuador": "South America", "Guyana": "South America", "Paraguay": "South America",
+    "Peru": "South America", "Suriname": "South America", "Uruguay": "South America", "Venezuela": "South America",
+    
+    // Oceania / Australia
+    "Australia": "Australia (Oceania)", "Fiji": "Australia (Oceania)", "Kiribati": "Australia (Oceania)",
+    "Marshall Islands": "Australia (Oceania)", "Micronesia": "Australia (Oceania)", "Nauru": "Australia (Oceania)",
+    "New Zealand": "Australia (Oceania)", "Palau": "Australia (Oceania)", "Papua New Guinea": "Australia (Oceania)",
+    "Samoa": "Australia (Oceania)", "Solomon Islands": "Australia (Oceania)", "Tonga": "Australia (Oceania)",
+    "Tuvalu": "Australia (Oceania)", "Vanuatu": "Australia (Oceania)",
+  };
+  
+  return countryToMainland[country] || "";
+}
+
 const SEVERITY_META: Record<
   Alert["severity"],
   { emoji: string; label: string; color: string; bgColor?: string }
@@ -247,6 +314,30 @@ function normalizeSources(raw: any): { url?: string; title?: string }[] {
   return [];
 }
 
+// Helper to check if alert is within acceptable age window
+function isAlertWithinTimeWindow(alert: Alert): boolean {
+  const now = new Date();
+  const createdAt = new Date(alert.created_at);
+  
+  // Check if alert is from the last 14 days
+  const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+  if (createdAt >= fourteenDaysAgo) {
+    return true;
+  }
+  
+  // Check if it's related to an ongoing event (event_end_date is in future)
+  if (alert.event_end_date) {
+    const eventEndDate = new Date(alert.event_end_date);
+    if (eventEndDate > now) {
+      // Event is ongoing, check if created within last 30 days
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      return createdAt >= thirtyDaysAgo;
+    }
+  }
+  
+  return false;
+}
+
 function trimOrNull(value: any): string | null {
   const t = typeof value === "string" ? value.trim() : String(value ?? "").trim();
   return t ? t : null;
@@ -341,8 +432,14 @@ export default function AlertReviewQueueInline({ permissions, accessToken }: Pro
         }
       }
       const data = await res.json();
-      console.log(`[LOAD_ALERTS] Got ${data.alerts?.length || 0} alerts from server:`, data.alerts?.map((a: Alert) => a.id));
-      setAlerts(Array.isArray(data.alerts) ? data.alerts : []);
+      
+      // Filter alerts to only show those from last 14 days (or 30 days if ongoing event)
+      const filteredAlerts = Array.isArray(data.alerts) 
+        ? data.alerts.filter(isAlertWithinTimeWindow)
+        : [];
+      
+      console.log(`[LOAD_ALERTS] Got ${data.alerts?.length || 0} alerts from server, ${filteredAlerts.length} within time window`);
+      setAlerts(filteredAlerts);
     } catch (e: any) {
       setError(e?.message || "Failed to load alerts");
     }
@@ -383,7 +480,21 @@ export default function AlertReviewQueueInline({ permissions, accessToken }: Pro
 
   function startEdit(a: Alert) {
     setEditing((e) => ({ ...e, [a.id]: true }));
-    setDrafts((ds) => ({ ...ds, [a.id]: { ...a } }));
+    
+    // Set defaults for mainland and intelligence_topics based on alert
+    const defaults: Partial<Alert> = { ...a };
+    
+    // Auto-populate mainland from country if not already set
+    if (!defaults.mainland && defaults.country) {
+      defaults.mainland = getMainlandFromCountry(defaults.country);
+    }
+    
+    // Auto-populate intelligence_topics from event_type if not already set
+    if (!defaults.intelligence_topics && defaults.event_type) {
+      defaults.intelligence_topics = defaults.event_type;
+    }
+    
+    setDrafts((ds) => ({ ...ds, [a.id]: defaults }));
   }
 
   function cancelEdit(id: string) {
@@ -416,8 +527,14 @@ export default function AlertReviewQueueInline({ permissions, accessToken }: Pro
     setEditing((e) => ({ ...e, [id]: false }));
   }
 
-  async function approve(id: string) {
+  async function approve(id: string, alertData?: Alert) {
     try {
+      // Copy to clipboard with approved template if alert data provided
+      if (alertData) {
+        const template = whatsappTemplate(alertData);
+        await navigator.clipboard.writeText(template);
+      }
+      
       const res = await fetch(`${API_BASE}/alerts/${id}/approve`, { method: "POST" });
       const data = await res.json();
       
@@ -426,6 +543,12 @@ export default function AlertReviewQueueInline({ permissions, accessToken }: Pro
         alert(`❌ Error:\n\n${errorMsg}`);
         return;
       }
+      
+      // Show success message
+      const successMsg = alertData 
+        ? "✓ Alert approved & posted to WordPress\n✓ WhatsApp template copied to clipboard"
+        : "✓ Alert approved & posted to WordPress";
+      alert(successMsg);
       
       setAlerts((a) => a.filter((x) => x.id !== id));
     } catch (err: any) {
@@ -695,7 +818,17 @@ export default function AlertReviewQueueInline({ permissions, accessToken }: Pro
                     <span className="text-sm font-semibold px-2 py-1 rounded" style={{ backgroundColor: MAGNUS_COLORS.deepGreen, color: 'white' }}>
                       #{alertNumber}
                     </span>
-                    <h3 className="text-lg font-bold" style={{ color: MAGNUS_COLORS.darkGreen }}>{a.title}</h3>
+                    {edit ? (
+                      <input
+                        type="text"
+                        value={drafts[a.id]?.title || a.title}
+                        onChange={(e) => setDrafts((d) => ({ ...d, [a.id]: { ...d[a.id], title: e.target.value } }))}
+                        className="flex-1 text-lg font-bold px-2 py-1 border rounded"
+                        style={{ borderColor: MAGNUS_COLORS.border, color: MAGNUS_COLORS.darkGreen }}
+                      />
+                    ) : (
+                      <h3 className="text-lg font-bold" style={{ color: MAGNUS_COLORS.darkGreen }}>{a.title}</h3>
+                    )}
                   </div>
                   <div className="flex gap-2 items-center flex-wrap">
                   {edit ? (
@@ -804,17 +937,6 @@ export default function AlertReviewQueueInline({ permissions, accessToken }: Pro
                   ⊘ Dismiss
                 </button>
               )}
-
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(whatsappTemplate(d));
-                  window.alert("✓ Copied WhatsApp alert");
-                }}
-                className="text-white px-4 py-2 rounded font-semibold text-sm transition hover:opacity-90"
-                style={{ backgroundColor: MAGNUS_COLORS.deepGreen }}
-              >
-                💬 Copy WhatsApp
-              </button>
 
               {permissions.canDelete && (
                 <button
@@ -1231,6 +1353,52 @@ export default function AlertReviewQueueInline({ permissions, accessToken }: Pro
 
               <div className="pt-4 border-t" style={{ color: MAGNUS_COLORS.tertiaryText, fontSize: "0.75rem" }}>
                 ID: {a.id}
+              </div>
+
+              {/* Action Buttons - Only show when expanded */}
+              <div className="pt-4 border-t flex gap-2 flex-wrap">
+                {permissions.canApproveAndPost && !editing[a.id] && (
+                  <button
+                    onClick={() => approve(a.id, d)}
+                    className="text-white px-4 py-2 rounded font-semibold text-sm transition hover:opacity-90"
+                    style={{ backgroundColor: MAGNUS_COLORS.deepGreen }}
+                  >
+                    ✓ Approve & Post (+ Copy WhatsApp)
+                  </button>
+                )}
+
+                {permissions.canDismiss && !editing[a.id] && (
+                  <button
+                    onClick={() => dismiss(a.id)}
+                    className="text-white px-4 py-2 rounded font-semibold text-sm transition hover:opacity-90"
+                    style={{ backgroundColor: MAGNUS_COLORS.orange }}
+                  >
+                    ⊘ Dismiss
+                  </button>
+                )}
+
+                {!editing[a.id] && (
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(whatsappTemplate(d));
+                      window.alert("✓ Copied WhatsApp alert");
+                    }}
+                    className="text-white px-4 py-2 rounded font-semibold text-sm transition hover:opacity-90"
+                    style={{ backgroundColor: MAGNUS_COLORS.deepGreen }}
+                  >
+                    💬 Copy WhatsApp
+                  </button>
+                )}
+
+                {permissions.canDelete && (
+                  <button
+                    onClick={() => del(a.id)}
+                    className="text-white px-4 py-2 rounded font-semibold text-sm transition hover:opacity-90"
+                    style={{ backgroundColor: MAGNUS_COLORS.critical }}
+                  >
+                    🗑 Delete
+                  </button>
+                )}
               </div>
             </div>
           )}

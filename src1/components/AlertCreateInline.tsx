@@ -385,6 +385,119 @@ export default function AlertCreateInline({
     }
   }, [formData, validation, accessToken, onAlertCreated, resetForm]);
 
+  const handlePostAndCopy = useCallback(async () => {
+    if (!validation.isValid) {
+      setError(validation.errors.join('. '));
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      // First create and post the alert
+      const createResult = await apiPostJson<{ ok: boolean; alert: any; error?: string }>(
+        '/alerts',
+        {
+          title: formData.title,
+          summary: formData.summary,
+          location: formData.location,
+          country: formData.country,
+          region: formData.location,
+          mainland: formData.mainland,
+          event_type: formData.event_type,
+          severity: formData.severity,
+          recommendations: formData.recommendations.filter(r => r.trim()),
+          sources: formData.sources.filter(s => s.url.trim()).map(s => ({ url: s.url, title: s.title || s.url })),
+          article_url: formData.sources[0]?.url || '',
+          source_url: formData.sources[0]?.url || '',
+          latitude: parseFloat(formData.latitude) || 0,
+          longitude: parseFloat(formData.longitude) || 0,
+          radiusKm: parseFloat(formData.radius_km) || 25,
+          geo_json: formData.geoJSON ? JSON.parse(formData.geoJSON) : undefined,
+          geojson: formData.geoJSON,
+          event_start_date: formData.event_start_date || undefined,
+          event_end_date: formData.event_end_date || undefined,
+        },
+        accessToken
+      );
+
+      if (!createResult.ok || !createResult.alert) {
+        throw new Error(createResult.error || 'Failed to create alert');
+      }
+
+      // Then publish to WordPress
+      const publishResult = await apiPostJson<{ ok: boolean; error?: string; message?: string; wordpress_error_text?: string }>(
+        `/alerts/${createResult.alert.id}/publish`,
+        {},
+        accessToken
+      );
+
+      if (publishResult.ok) {
+        // Now copy to clipboard using same formatting as handleCopyWhatsApp
+        try {
+          // Format for WhatsApp (same logic as handleCopyWhatsApp)
+          const formatDateRange = (start?: string, end?: string): string => {
+            if (!start) return '';
+            const formatDate = (dateStr: string) => {
+              const d = new Date(dateStr);
+              const day = String(d.getDate()).padStart(2, '0');
+              const month = String(d.getMonth() + 1).padStart(2, '0');
+              const year = d.getFullYear();
+              return `${day}/${month}/${year}`;
+            };
+            const startStr = formatDate(start);
+            
+            if (!end) return startStr;
+            const endStr = formatDate(end);
+            
+            if (start === end) return startStr;
+            return `${startStr} - ${endStr}`;
+          };
+
+          const dateRange = formatDateRange(formData.event_start_date, formData.event_end_date);
+          const recText = formData.recommendations
+            .filter(r => r.trim())
+            .map((r, i) => `${i + 1}. ${r.trim()}`)
+            .join('\n');
+
+          const whatsappTemplate = `📍 *Location:* ${formData.location.trim()}, ${formData.country.trim()}${dateRange ? `\n📅 *Date:* ${dateRange}` : ''}\n\n` +
+            `*${formData.title.trim()}*\n\n` +
+            `${formData.summary.trim()}\n\n` +
+            (recText ? `*Traveler Recommendations:*\n${recText}\n\n` : '');
+          
+          await navigator.clipboard.writeText(whatsappTemplate);
+        } catch (clipErr) {
+          console.error('Failed to copy to clipboard:', clipErr);
+          throw new Error('Alert posted but failed to copy WhatsApp template to clipboard');
+        }
+
+        setSuccess(`Alert posted to WordPress successfully! WhatsApp template copied to clipboard.`);
+        onAlertCreated?.(createResult.alert);
+        resetForm();
+      } else {
+        // Build detailed error message
+        const errorParts = [];
+        if (publishResult.error) errorParts.push(publishResult.error);
+        if (publishResult.message) errorParts.push(publishResult.message);
+        if (publishResult.wordpress_error_text) {
+          try {
+            const wpError = JSON.parse(publishResult.wordpress_error_text);
+            if (wpError.message) errorParts.push(`WordPress: ${wpError.message}`);
+            if (wpError.code) errorParts.push(`Code: ${wpError.code}`);
+          } catch {
+            errorParts.push(`WordPress: ${publishResult.wordpress_error_text.substring(0, 200)}`);
+          }
+        }
+        const finalError = errorParts.length > 0 ? errorParts.join('\n') : 'Failed to publish to WordPress';
+        throw new Error(finalError);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to post alert';
+      setError(message);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [formData, validation, accessToken, onAlertCreated, resetForm]);
+
   const handlePost = useCallback(async () => {
     if (!validation.isValid) {
       setError(validation.errors.join('. '));
@@ -1244,7 +1357,7 @@ export default function AlertCreateInline({
 
             <button
               type="button"
-              onClick={handlePost}
+              onClick={handlePostAndCopy}
               disabled={submitting || !validation.isValid}
               style={{
                 ...buttons.primary,
@@ -1252,7 +1365,7 @@ export default function AlertCreateInline({
                 cursor: (submitting || !validation.isValid) ? 'not-allowed' : 'pointer',
               }}
             >
-              {submitting ? 'Posting...' : 'Post to WordPress'}
+              {submitting ? 'Posting...' : 'Post to WordPress (+ Copy WhatsApp)'}
             </button>
           </div>
         </div>

@@ -22,6 +22,7 @@ interface SourceGroup {
     disabled_source_ids: string[];
   };
   error?: string;
+  lastScourTime?: string;
 }
 
 interface ScourManagementProps {
@@ -35,7 +36,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
   const [allComplete, setAllComplete] = useState(false);
   const [statusMessages, setStatusMessages] = useState<Record<string, string>>({});
   const [lastSourceCount, setLastSourceCount] = useState<number>(0);
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   useEffect(() => {
     loadAndGroupSources();
@@ -91,6 +92,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         name: 'Early Signals Scour',
         sources: [],
         status: 'pending',
+        lastScourTime: undefined,
       });
 
       groupedByType.forEach((typeSourceList, type) => {
@@ -103,6 +105,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
             name: `${type.charAt(0).toUpperCase() + type.slice(1)} - Group ${groupIndex + 1} (${batch.length} sources)`,
             sources: batch,
             status: 'pending',
+            lastScourTime: undefined,
           });
         }
       });
@@ -148,6 +151,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         const alerts = result.created || 0;
         const dupes = result.duplicatesSkipped || 0;
         const errors = result.errorCount || 0;
+        const now = new Date().toISOString();
         
         setSourceGroups(prev =>
           prev.map(g =>
@@ -155,6 +159,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
               ? { 
                   ...g, 
                   status: 'completed', 
+                  lastScourTime: now,
                   results: { 
                     alerts_created: alerts, 
                     duplicates_skipped: dupes, 
@@ -194,6 +199,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         const alerts = result.created || 0;
         const dupes = result.duplicatesSkipped || 0;
         const errors = result.errorCount || 0;
+        const now = new Date().toISOString();
         addStatusMessage(groupId, `Created ${alerts} alerts, ${dupes} dupes`);
 
         setSourceGroups(prev =>
@@ -202,6 +208,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
               ? { 
                   ...g, 
                   status: 'completed', 
+                  lastScourTime: now,
                   results: { 
                     alerts_created: alerts, 
                     duplicates_skipped: dupes, 
@@ -237,8 +244,14 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
       const allDone = sourceGroups.every(g => g.id === groupId || g.status === 'completed');
       if (allDone) setAllComplete(true);
     } catch (e: any) {
-      addStatusMessage(groupId, `Error: ${e.message}`);
-      setSourceGroups(prev => prev.map(g => g.id === groupId ? { ...g, status: 'error', error: e.message } : g));
+      // Show error but keep any accumulated results
+      const errorMsg = `Error: ${e.message}`;
+      addStatusMessage(groupId, errorMsg);
+      setSourceGroups(prev => prev.map(g => 
+        g.id === groupId 
+          ? { ...g, status: 'error', error: e.message } 
+          : g
+      ));
     } finally {
       setRunningGroupId(null);
     }
@@ -256,6 +269,23 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
     return <div className="text-sm text-gray-500">Loading sources...</div>;
   }
 
+  // Get most recent scour time from any group
+  const mostRecentScour = sourceGroups
+    .filter(g => g.lastScourTime)
+    .map(g => new Date(g.lastScourTime!).getTime())
+    .sort((a, b) => b - a)[0];
+  
+  const formatTime = (timestamp?: string) => {
+    if (!timestamp) return 'Never';
+    const date = new Date(timestamp);
+    return date.toLocaleString(undefined, { 
+      month: 'short', 
+      day: 'numeric', 
+      hour: '2-digit', 
+      minute: '2-digit'
+    });
+  };
+
   return (
     <div className="border rounded-lg p-4 bg-gray-50">
       <div className="flex items-center justify-between mb-4">
@@ -264,7 +294,12 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
           className="flex-1 cursor-pointer flex items-center gap-2 hover:opacity-80"
         >
           <span className="text-lg">{isExpanded ? '▼' : '▶'}</span>
-          <h3 className="font-bold text-base">📊 Scour Management</h3>
+          <div className="flex flex-col">
+            <h3 className="font-bold text-base">📊 Scour Management</h3>
+            {!isExpanded && mostRecentScour && (
+              <span className="text-xs text-gray-500">Last scour: {formatTime(sourceGroups.find(g => g.lastScourTime && new Date(g.lastScourTime).getTime() === mostRecentScour)?.lastScourTime)}</span>
+            )}
+          </div>
         </div>
         <div className="flex gap-2">
           <button
