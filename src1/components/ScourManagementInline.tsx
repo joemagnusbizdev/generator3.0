@@ -341,6 +341,9 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-xs">{group.name}</div>
+                      {group.lastScourTime && (
+                        <div className="text-xs text-gray-500">Last: {formatTime(group.lastScourTime)}</div>
+                      )}
                     </div>
                     <div className="flex-shrink-0 flex items-center gap-1">
                       {group.status === 'pending' && (
@@ -372,7 +375,12 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
               
               return (
                 <div key={group.id} className="border rounded p-2 bg-white text-xs">
-                  <div className="font-semibold text-xs mb-1">{group.name}</div>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="font-semibold text-xs">{group.name}</div>
+                    {group.lastScourTime && (
+                      <div className="text-xs text-gray-500">Last: {formatTime(group.lastScourTime)}</div>
+                    )}
+                  </div>
                   {statusMsg && (
                     <div className="text-xs text-gray-700 mb-2">{statusMsg}</div>
                   )}

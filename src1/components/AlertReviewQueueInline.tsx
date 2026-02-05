@@ -791,7 +791,13 @@ export default function AlertReviewQueueInline({ permissions, accessToken }: Pro
       const meta = SEVERITY_META[severity];
       const open = !!expanded[a.id];
       const edit = !!editing[a.id];
-      const d = (drafts[a.id] || a) as Alert;
+      let d = (drafts[a.id] || a) as Alert;
+      
+      // Ensure mainland is populated (auto-derive from country if missing)
+      if (!d.mainland && d.country) {
+        d = { ...d, mainland: getMainlandFromCountry(d.country) };
+      }
+      
       const geojson = parseGeoJsonValue(d.geo_json ?? d.geojson);
       const sourcesList = normalizeSources(d.sources);
 
@@ -855,7 +861,7 @@ export default function AlertReviewQueueInline({ permissions, accessToken }: Pro
                   {a.confidence_score !== undefined && (
                     <ConfidenceBadge score={a.confidence_score} />
                   )}
-                  <span className="text-sm font-medium" style={{ color: MAGNUS_COLORS.secondaryText }}>📍 {d.location}, {d.country}</span>
+                  <span className="text-sm font-medium" style={{ color: MAGNUS_COLORS.secondaryText }}>📍 {d.location}, {d.country}{d.mainland ? ` (${d.mainland})` : ''}</span>
                   <span className="text-sm" style={{ color: MAGNUS_COLORS.secondaryText }}>🕐 {formatDateRange(d)}</span>
                   </div>
                 </div>
@@ -920,11 +926,11 @@ export default function AlertReviewQueueInline({ permissions, accessToken }: Pro
 
               {permissions.canApproveAndPost && !editing[a.id] && (
                 <button
-                  onClick={() => approve(a.id)}
+                  onClick={() => approve(a.id, d)}
                   className="text-white px-4 py-2 rounded font-semibold text-sm transition hover:opacity-90"
                   style={{ backgroundColor: MAGNUS_COLORS.deepGreen }}
                 >
-                  ✓ Approve & Post
+                  ✓ Approve & Post (+ Copy WhatsApp)
                 </button>
               )}
 
@@ -1374,19 +1380,6 @@ export default function AlertReviewQueueInline({ permissions, accessToken }: Pro
                     style={{ backgroundColor: MAGNUS_COLORS.orange }}
                   >
                     ⊘ Dismiss
-                  </button>
-                )}
-
-                {!editing[a.id] && (
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(whatsappTemplate(d));
-                      window.alert("✓ Copied WhatsApp alert");
-                    }}
-                    className="text-white px-4 py-2 rounded font-semibold text-sm transition hover:opacity-90"
-                    style={{ backgroundColor: MAGNUS_COLORS.deepGreen }}
-                  >
-                    💬 Copy WhatsApp
                   </button>
                 )}
 

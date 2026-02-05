@@ -433,6 +433,7 @@ export default function AlertCreateInline({
 
       if (publishResult.ok) {
         // Now copy to clipboard using same formatting as handleCopyWhatsApp
+        let copiedSuccessfully = false;
         try {
           // Format for WhatsApp (same logic as handleCopyWhatsApp)
           const formatDateRange = (start?: string, end?: string): string => {
@@ -464,13 +465,42 @@ export default function AlertCreateInline({
             `${formData.summary.trim()}\n\n` +
             (recText ? `*Traveler Recommendations:*\n${recText}\n\n` : '');
           
-          await navigator.clipboard.writeText(whatsappTemplate);
+          console.log('Attempting to copy WhatsApp template to clipboard...');
+          console.log('Template length:', whatsappTemplate.length);
+          
+          // Use the modern Clipboard API
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(whatsappTemplate);
+            copiedSuccessfully = true;
+            console.log('✅ Successfully copied to clipboard via Clipboard API');
+          } else {
+            // Fallback for older browsers
+            console.warn('Clipboard API not available, attempting fallback...');
+            const textArea = document.createElement('textarea');
+            textArea.value = whatsappTemplate;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            const success = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            if (success) {
+              copiedSuccessfully = true;
+              console.log('✅ Successfully copied to clipboard via execCommand fallback');
+            } else {
+              console.error('❌ Fallback copy failed');
+            }
+          }
         } catch (clipErr) {
           console.error('Failed to copy to clipboard:', clipErr);
-          throw new Error('Alert posted but failed to copy WhatsApp template to clipboard');
         }
 
-        setSuccess(`Alert posted to WordPress successfully! WhatsApp template copied to clipboard.`);
+        if (copiedSuccessfully) {
+          setSuccess(`Alert posted to WordPress successfully! WhatsApp template copied to clipboard.`);
+        } else {
+          setSuccess(`Alert posted to WordPress successfully, but could not copy WhatsApp template to clipboard. Please use "Copy to WhatsApp" button instead.`);
+        }
         onAlertCreated?.(createResult.alert);
         resetForm();
       } else {
@@ -1337,22 +1367,6 @@ export default function AlertCreateInline({
               }}
             >
               {submitting ? 'Saving...' : 'Save Draft'}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleCopyWhatsApp}
-              disabled={submitting || !validation.isValid}
-              style={{
-                ...buttons.secondary,
-                backgroundColor: colors.green50,
-                color: '#25D366',
-                border: '1px solid #25D366',
-                opacity: (submitting || !validation.isValid) ? 0.6 : 1,
-                cursor: (submitting || !validation.isValid) ? 'not-allowed' : 'pointer',
-              }}
-            >
-              Copy to WhatsApp
             </button>
 
             <button
