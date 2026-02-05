@@ -208,6 +208,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         const dupes = result.duplicatesSkipped || 0;
         const errors = result.errorCount || 0;
         const disabledSourceIds = result.disabled_source_ids || result.error_source_ids || [];
+        const now = new Date().toISOString();
         
         if (errors > 0 && disabledSourceIds.length === 0) {
           addStatusMessage(groupId, `⚠️ Created ${alerts} alerts, ${dupes} dupes, ${errors} errors (sources with errors will be disabled)`);
@@ -222,6 +223,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
               ? { 
                   ...g, 
                   status: 'completed', 
+                  lastScourTime: now,
                   // Remove disabled sources from the group
                   sources: g.sources.filter(s => !disabledSourceIds.includes(s.id)),
                   results: { 
@@ -235,9 +237,6 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
               : g
           )
         );
-        
-        // Reload sources to get updated last_scoured_at from database (for multi-user sync)
-        await loadAndGroupSources();
 
         if (disabledSourceIds.length > 0) {
           addStatusMessage(groupId, `Disabling ${disabledSourceIds.length} sources due to errors...`);
