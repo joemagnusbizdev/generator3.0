@@ -88,6 +88,11 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
 
       // Add Early Signals as first group, preserving its state if it exists
       const existingEarlySignals = sourceGroups.find(g => g.id === 'early-signals');
+      console.log(`[Polling] Early signals state:`, { 
+        exists: !!existingEarlySignals, 
+        status: existingEarlySignals?.status,
+        lastScourTime: existingEarlySignals?.lastScourTime 
+      });
       groups.push({
         id: 'early-signals',
         type: 'early_signals',
@@ -168,6 +173,8 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         const errors = result.errorCount || 0;
         const now = new Date().toISOString();
         
+        console.log(`[Early Signals] Setting timestamp: ${now}`, { alerts, dupes, errors });
+        
         setSourceGroups(prev =>
           prev.map(g =>
             g.id === groupId
@@ -186,7 +193,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
               : g
           )
         );
-        addStatusMessage(groupId, `Complete: ${alerts} alerts, ${dupes} dupes`);
+        console.log(`[Early Signals] Complete: ${alerts} alerts, ${dupes} dupes`);
       } else {
         addStatusMessage(groupId, `Scouring ${group.sources.length} sources...`);
 
