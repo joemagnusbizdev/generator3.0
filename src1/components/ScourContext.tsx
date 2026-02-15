@@ -110,7 +110,10 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
         token
       );
 
-      if (!res?.ok || !res.job) return;
+      if (!res?.ok || !res.job) {
+        console.log(`[ScourContext.pollStatus] Response not ok or missing job:`, { ok: res?.ok, hasJob: !!res?.job });
+        return;
+      }
 
       const job = res.job;
       console.log(`[ScourContext.pollStatus] Got job for ${currentJobId}:`, {
@@ -118,8 +121,17 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
         processed: job.processed,
         created: job.created,
         hasActivityLog: !!job.activityLog,
-        activityLogLength: job.activityLog?.length || 0
+        activityLogLength: job.activityLog?.length || 0,
+        activityLogType: typeof job.activityLog,
+        jobKeys: Object.keys(job),
       });
+      
+      // Debug: Check what's in activityLog
+      if (job.activityLog) {
+        console.log(`[ScourContext.pollStatus] First activityLog entry:`, job.activityLog[0]);
+        console.log(`[ScourContext.pollStatus] Last activityLog entry:`, job.activityLog[job.activityLog.length - 1]);
+      }
+      
       setScourJob(job);
 
       if (job.status === "done" || job.status === "error") {
