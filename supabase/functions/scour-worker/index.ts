@@ -2123,7 +2123,6 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
     
     // Process Israeli tourism destinations with more queries (higher priority)
     // Use sequential processing (1 request at a time) with 1 second delay to avoid 429 rate limit errors
-    const totalQueries = baseQueries.length * countries.length;
     
     for (let queryIdx = 0; queryIdx < baseQueries.length; queryIdx++) {
       const baseQuery = baseQueries[queryIdx];
