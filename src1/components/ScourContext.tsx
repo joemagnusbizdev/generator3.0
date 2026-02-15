@@ -113,6 +113,13 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
       if (!res?.ok || !res.job) return;
 
       const job = res.job;
+      console.log(`[ScourContext.pollStatus] Got job for ${currentJobId}:`, {
+        phase: job.phase,
+        processed: job.processed,
+        created: job.created,
+        hasActivityLog: !!job.activityLog,
+        activityLogLength: job.activityLog?.length || 0
+      });
       setScourJob(job);
 
       if (job.status === "done" || job.status === "error") {

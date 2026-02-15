@@ -43,6 +43,8 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
     // First, use activityLog from scourJob if available (already polled every 400ms)
     if (scourJob.activityLog && Array.isArray(scourJob.activityLog) && scourJob.activityLog.length > 0) {
       console.log(`[EarlySignals] Using activityLog from scourJob: ${scourJob.activityLog.length} entries`);
+      console.log(`[EarlySignals] First log:`, scourJob.activityLog[0]);
+      console.log(`[EarlySignals] Last log:`, scourJob.activityLog[scourJob.activityLog.length - 1]);
       setLiveLogs(scourJob.activityLog);
       
       // Parse Early Signals progress from logs using progress bar pattern
@@ -61,6 +63,12 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
         }
       }
       return; // Don't need to fetch if we have logs
+    } else {
+      console.log(`[EarlySignals] scourJob.activityLog not available or empty`, { 
+        hasActivityLog: !!scourJob?.activityLog, 
+        isArray: Array.isArray(scourJob?.activityLog),
+        length: scourJob?.activityLog?.length 
+      });
     }
 
     // Fallback: Fetch from logs endpoint if not in scourJob
