@@ -1974,11 +1974,11 @@ const EARLY_SIGNAL_CATEGORIES: QueryCategory[] = [
       'tsunami warning',
       'volcanic eruption',
       'severe flooding',
-      'wildfire emergency',
-      'hurricane warning',
-      'tornado warning',
-      'landslide alert',
-      'avalanche warning',
+      'wildfire',
+      'hurricane',
+      'tornado',
+      'landslide',
+      'avalanche',
       'severe drought',
     ],
   },
@@ -1989,37 +1989,67 @@ const EARLY_SIGNAL_CATEGORIES: QueryCategory[] = [
       'armed conflict',
       'terrorist attack',
       'active shooter',
-      'bombing incident',
+      'bombing',
       'civil unrest',
-      'riot warning',
-      'gunfire incident',
-      'border skirmish',
+      'riot',
+      'gunfire',
+      'border conflict',
       'military operation',
-      'security breach',
+      'security incident',
     ],
   },
   {
-    name: 'Health & Pandemic',
+    name: 'Flight & Airport Emergencies',
+    severity: 'critical',
+    queries: [
+      'airport closure',
+      'flight cancellations',
+      'aviation incident',
+      'flight delay',
+      'airport emergency',
+      'runway closure',
+      'air traffic control',
+      'aircraft accident',
+      'emergency landing',
+      'airport strike',
+    ],
+  },
+  {
+    name: 'Border & Entry Alerts',
+    severity: 'critical',
+    queries: [
+      'border closure',
+      'entry ban',
+      'travel ban',
+      'visa suspension',
+      'border clash',
+      'crossing closed',
+      'checkpoint issue',
+      'entry restrictions',
+      'border lockdown',
+      'customs issue',
+    ],
+  },
+  {
+    name: 'Health & Medical Emergencies',
     severity: 'warning',
     queries: [
       'disease outbreak',
-      'epidemic alert',
-      'pandemic warning',
+      'epidemic',
+      'pandemic alert',
       'health emergency',
-      'biological threat',
-      'food poisoning outbreak',
+      'hospital emergency',
+      'medical disaster',
+      'food poisoning',
       'cholera outbreak',
-      'measles outbreak',
-      'anthrax alert',
-      'vaccine shortage',
+      'dengue fever',
+      'yellow fever',
     ],
   },
   {
     name: 'Transportation Disruption',
     severity: 'warning',
     queries: [
-      'airport closure',
-      'flight cancellations',
       'port closure',
       'railway disruption',
       'highway closure',
@@ -2027,7 +2057,9 @@ const EARLY_SIGNAL_CATEGORIES: QueryCategory[] = [
       'tunnel disaster',
       'train derailment',
       'cruise ship emergency',
-      'aviation incident',
+      'bus accident',
+      'transportation strike',
+      'road accident',
     ],
   },
   {
@@ -2038,12 +2070,44 @@ const EARLY_SIGNAL_CATEGORIES: QueryCategory[] = [
       'water shortage',
       'gas leak',
       'pipeline rupture',
-      'dam failure',
-      'bridge failure',
       'building collapse',
       'electrical failure',
       'water contamination',
       'sewage emergency',
+      'infrastructure collapse',
+      'utility failure',
+    ],
+  },
+  {
+    name: 'Tourist Area Incidents',
+    severity: 'warning',
+    queries: [
+      'tourist area incident',
+      'hotel emergency',
+      'resort evacuation',
+      'beach incident',
+      'tourist stampede',
+      'attraction closure',
+      'concert incident',
+      'stadium emergency',
+      'nightclub incident',
+      'tourist killed',
+    ],
+  },
+  {
+    name: 'Weather & Environmental',
+    severity: 'caution',
+    queries: [
+      'severe weather',
+      'heavy snow',
+      'extreme heat',
+      'extreme cold',
+      'air quality alert',
+      'pollution emergency',
+      'smog alert',
+      'hail storm',
+      'lightning',
+      'monsoon warning',
     ],
   },
   {
@@ -2052,30 +2116,14 @@ const EARLY_SIGNAL_CATEGORIES: QueryCategory[] = [
     queries: [
       'cyber attack',
       'data breach',
-      'ransomware attack',
+      'ransomware',
       'bank failure',
       'stock market crash',
       'currency crisis',
-      'protest economic',
+      'protest',
       'supply chain disruption',
       'port strike',
       'hacking incident',
-    ],
-  },
-  {
-    name: 'Weather & Environmental',
-    severity: 'caution',
-    queries: [
-      'severe weather alert',
-      'heavy snow storm',
-      'extreme heat warning',
-      'extreme cold alert',
-      'acid rain',
-      'air quality alert',
-      'pollution emergency',
-      'smog alert',
-      'hail storm',
-      'lightning strike',
     ],
   },
 ];
@@ -2126,9 +2174,15 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
     console.log(`🌍 Global Coverage: ${GLOBAL_COVERAGE_COUNTRIES.length} countries (processed after)`);
     
     // Build expanded query list with categories
-    const baseQueries = EARLY_SIGNAL_CATEGORIES.flatMap(cat =>
-      cat.queries.map(q => `${q} travel alert`)
-    );
+    // Use more Brave-friendly query formats instead of always appending "travel alert"
+    const baseQueries = EARLY_SIGNAL_CATEGORIES.flatMap(cat => {
+      // Natural Disasters and Security: search for "[alert type] [country]"
+      if (cat.name === 'Natural Disasters' || cat.name === 'Security & Conflict') {
+        return cat.queries.map(q => q); // Just the base query like "earthquake"
+      }
+      // Other categories: use more specific search patterns
+      return cat.queries.map(q => q); // Use base queries as-is
+    });
     
     // Combine countries: Israeli tourism destinations first, then global
     const countries = [...new Set([...ISRAELI_TOURISM_PRIORITY, ...GLOBAL_COVERAGE_COUNTRIES])];
