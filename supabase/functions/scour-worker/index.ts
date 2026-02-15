@@ -1870,10 +1870,35 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
 // JOB STATUS TRACKING
 // ============================================================================
 
+// Global activity logs map to accumulate logs during execution
+const jobActivityLogs = new Map<string, Array<{time: string; message: string}>>();
+
+function addJobLog(jobId: string, message: string): void {
+  if (!jobActivityLogs.has(jobId)) {
+    jobActivityLogs.set(jobId, []);
+  }
+  const logs = jobActivityLogs.get(jobId)!;
+  logs.push({
+    time: new Date().toISOString(),
+    message: message
+  });
+  // Keep only last 500 logs to prevent memory issues
+  if (logs.length > 500) {
+    logs.shift();
+  }
+}
+
 async function updateJobStatus(jobId: string, jobData: any): Promise<void> {
   try {
     const key = `scour-job-${jobId}`;
-    const value = JSON.stringify(jobData);
+    
+    // Include accumulated activity logs
+    const logsToInclude = jobActivityLogs.get(jobId) || [];
+    const valueWithLogs = {
+      ...jobData,
+      activityLog: logsToInclude
+    };
+    const value = JSON.stringify(valueWithLogs);
     
     // Try to update first with WHERE clause
     try {
@@ -2171,7 +2196,9 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
           
           // Live progress update
           const status = validAlerts.length > 0 ? `✓ ${validAlerts.length} alerts` : '·';
-          console.log(`  [${progressBar}] ${globalQueryNum}/${totalQueries} (${progressPercent}%) - "${baseQuery}" in ${country} → ${status}`);
+          const logMsg = `[${progressBar}] ${globalQueryNum}/${totalQueries} (${progressPercent}%) - "${baseQuery}" in ${country} → ${status}`;
+          console.log(`  ${logMsg}`);
+          addJobLog(jobId, logMsg);
           
           processedQueries++;
         } catch (e) {
@@ -2182,7 +2209,21 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
           const progressPercent = Math.round((globalQueryNum / totalQueries) * 100);
           const progressBar = '█'.repeat(Math.floor(progressPercent / 2)) + '░'.repeat(50 - Math.floor(progressPercent / 2));
           
-          console.warn(`  [${progressBar}] ${globalQueryNum}/${totalQueries} (${progressPercent}%) - "${baseQuery}" in ${country} → ✗ ${e.toString().slice(0, 40)}`);
+          const errorMsg = `[${progressBar}] ${globalQueryNum}/${totalQueries} (${progressPercent}%) - "${baseQuery}" in ${country} → ✗ ${e.toString().slice(0, 40)}`;
+          console.warn(`  ${errorMsg}`);
+          addJobLog(jobId, errorMsg);
+        }
+        
+        // Periodically update job status with logs (every 5 queries)
+        if (processedQueries % 5 === 0) {
+          await updateJobStatus(jobId, {
+            id: jobId,
+            status: "running",
+            phase: "early_signals",
+            processed: processedQueries,
+            created: alertsCreated,
+            total: totalQueries,
+          });
         }
         
         // 1 second delay between EVERY request to respect Brave API rate limits (1 req/sec = safe)
