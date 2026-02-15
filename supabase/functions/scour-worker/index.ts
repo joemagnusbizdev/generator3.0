@@ -229,7 +229,7 @@ async function setKV(key: string, value: any) {
 // ============================================================================
 
 async function fetchWithBraveSearch(query: string, apiKey: string): Promise<{ content: string; primaryUrl: string | null }> {
-  const maxRetries = 3;
+  const maxRetries = 5; // Increased max retries for rate limiting
   let retryCount = 0;
   
   while (retryCount < maxRetries) {
@@ -254,7 +254,8 @@ async function fetchWithBraveSearch(query: string, apiKey: string): Promise<{ co
       if (response.status === 429) {
         retryCount++;
         if (retryCount < maxRetries) {
-          const backoffMs = Math.min(1000 * Math.pow(2, retryCount - 1), 8000); // 1s, 2s, 4s max
+          // More aggressive backoff: 2s, 4s, 8s, 16s, 32s
+          const backoffMs = 2000 * Math.pow(2, retryCount - 1);
           console.warn(`⚠️ Brave API rate limited (429). Retrying in ${backoffMs}ms (attempt ${retryCount}/${maxRetries})`);
           await new Promise(resolve => setTimeout(resolve, backoffMs));
           continue; // Retry
@@ -2115,10 +2116,11 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
     const standardBatch = countries.slice(ISRAELI_TOURISM_PRIORITY.length);
     
     // Reduced batch size to avoid Brave API rate limiting
-    // 6 parallel requests × 60 queries = 360 concurrent - was causing 429 errors
-    // Now using 3 parallel to stay within Brave API limits
-    const batchSize = 8; // Increased to 8 to parallelize faster (CPU was idle)
-    const delayBetweenBatches = 500; // Reduced delay to 500ms - Brave can handle it
+    // Brave API has strict rate limits - need to be conservative
+    // Testing showed 8 parallel still causes 429 errors
+    // Using 2 parallel with 1 second delay = ~1 req/sec = well within limits
+    const batchSize = 2; // Max 2 parallel to avoid 429 rate limit errors
+    const delayBetweenBatches = 1000; // 1 second delay between batches
     let processedQueries = 0;
     
     // Process Israeli tourism destinations with more queries (higher priority)
