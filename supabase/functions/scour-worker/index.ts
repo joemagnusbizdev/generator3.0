@@ -1893,10 +1893,23 @@ async function updateJobStatus(jobId: string, jobData: any): Promise<void> {
   try {
     const key = `scour-job-${jobId}`;
     
+    // Get existing job data to preserve fields
+    let existingData: any = {};
+    try {
+      const existing = await querySupabaseRest(`/app_kv?key=eq.${key}&select=value`);
+      if (existing && existing.length > 0) {
+        const val = existing[0].value;
+        existingData = typeof val === 'string' ? JSON.parse(val) : val;
+      }
+    } catch (e) {
+      // If fetch fails, just use empty object
+    }
+    
     // Include accumulated activity logs
     const logsToInclude = jobActivityLogs.get(jobId) || [];
     const valueWithLogs = {
-      ...jobData,
+      ...existingData,  // Start with existing data to preserve all fields
+      ...jobData,       // Override with new data
       activityLog: logsToInclude
     };
     const value = JSON.stringify(valueWithLogs);
