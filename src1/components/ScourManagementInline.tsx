@@ -33,6 +33,13 @@ interface ScourManagementProps {
 
 export default function ScourManagementInline({ accessToken }: ScourManagementProps) {
   const { setScourJob, setJobId, startJobPolling } = useScour();
+  
+  // DEBUG: Verify setScourJob is the right function
+  console.log(`[ScourManagementInline] useScour destructure result:`, { 
+    hasSetScourJob: !!setScourJob,
+    setScourJobType: typeof setScourJob,
+    setScourJobName: setScourJob?.name
+  });
   const [sourceGroups, setSourceGroups] = useState<SourceGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [runningGroupId, setRunningGroupId] = useState<string | null>(null);
