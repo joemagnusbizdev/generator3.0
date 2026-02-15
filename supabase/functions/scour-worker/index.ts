@@ -110,6 +110,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "authorization, content-type, apikey",
   "Access-Control-Allow-Credentials": "true",
+  "Access-Control-Max-Age": "86400",
 };
 
 function json(data: any, status = 200) {
@@ -2578,20 +2579,16 @@ CRITICAL: Only include incidents from last 7 days. MUST include actual news arti
 Deno.serve({ skipJwtVerification: true }, async (req: Request) => {
   console.log(`🔵 [SCOUR-WORKER] Received request: ${req.method} ${new URL(req.url).pathname}`);
   
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response('', { 
-      status: 200,
-      headers: {
-        "Access-Control-Allow-Origin": "https://generator30.vercel.app",
-        "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "authorization, content-type, apikey",
-        "Access-Control-Max-Age": "86400",
-      }
-    });
-  }
-  
   try {
+    // Handle CORS preflight first, before any other processing
+    if (req.method === 'OPTIONS') {
+      console.log(`🔵 [SCOUR-WORKER] Handling CORS preflight`);
+      return new Response('', { 
+        status: 200,
+        headers: corsHeaders
+      });
+    }
+    
     const url = new URL(req.url);
     const method = req.method;
     
