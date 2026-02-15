@@ -395,14 +395,24 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
       try {
         // Query the app_kv table for job status
         const statusKey = `scour-job-${jobId}`;
+        console.log(`[/scour/status] Querying app_kv for key: ${statusKey}`);
         const result = await querySupabaseRest(`/app_kv?key=eq.${encodeURIComponent(statusKey)}&select=value`);
         
+        console.log(`[/scour/status] Query result: ${result ? (Array.isArray(result) ? `${result.length} rows` : 'object') : 'null'}`);
+        
         if (result && result.length > 0) {
+          console.log(`[/scour/status] Raw value type: ${typeof result[0].value}, length: ${JSON.stringify(result[0].value).length}`);
+          
           const jobData = typeof result[0].value === 'string' 
             ? JSON.parse(result[0].value) 
             : result[0].value;
           
-          console.log(`[/scour/status] Retrieved job ${jobId}: has activityLog=${!!jobData.activityLog}, entries=${jobData.activityLog?.length || 0}`);
+          console.log(`[/scour/status] Parsed jobData keys: ${Object.keys(jobData).join(', ')}`);
+          console.log(`[/scour/status] Has activityLog: ${!!jobData.activityLog}`);
+          if (jobData.activityLog) {
+            console.log(`[/scour/status] ActivityLog is array: ${Array.isArray(jobData.activityLog)}, length: ${jobData.activityLog.length}`);
+          }
+          console.log(`[/scour/status] Retrieved job ${jobId}: status=${jobData.status}, processed=${jobData.processed}, logs=${jobData.activityLog?.length || 0}`);
           
           return json({
             ok: true,
@@ -411,7 +421,7 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
         }
 
         // If not found in app_kv, return default job data
-        console.log(`[/scour/status] Job ${jobId} not found in app_kv`);
+        console.log(`[/scour/status] Job ${jobId} not found in app_kv (0 rows returned)`);
         return json({
           ok: true,
           job: {
