@@ -154,6 +154,14 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         console.log(`[Early Signals] Starting early signals scour...`);
         addStatusMessage(groupId, 'Triggering early signals...');
         
+        const jobId = 'early-signals-' + Date.now();
+        
+        // Start polling the job status BEFORE triggering the backend
+        // This ensures the UI starts watching for updates immediately
+        console.log(`[Early Signals] Starting scour polling for jobId: ${jobId}`);
+        await startScour(accessToken, { sourceIds: [], jobId });
+        
+        // Now trigger the actual Early Signals execution
         const response = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/scour-worker`,
           {
@@ -163,7 +171,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              jobId: 'early-signals-' + Date.now(),
+              jobId,
               earlySignalsOnly: true,
             }),
           }
@@ -176,34 +184,10 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
           throw new Error(`Failed: ${response.status}`);
         }
         
+        // Response will complete when Early Signals finishes
+        // But we don't wait for it - the polling system will handle it
         const result = await response.json();
-        console.log(`[Early Signals] Result received:`, result);
-        const alerts = result.created || 0;
-        const dupes = result.duplicatesSkipped || 0;
-        const errors = result.errorCount || 0;
-        const now = new Date().toISOString();
-        
-        console.log(`[Early Signals] Setting timestamp: ${now}`, { alerts, dupes, errors });
-        
-        setSourceGroups(prev =>
-          prev.map(g =>
-            g.id === groupId
-              ? { 
-                  ...g, 
-                  status: 'completed', 
-                  lastScourTime: now,
-                  results: { 
-                    alerts_created: alerts, 
-                    duplicates_skipped: dupes, 
-                    errors: errors, 
-                    disabled_sources: 0, 
-                    disabled_source_ids: [] 
-                  } 
-                }
-              : g
-          )
-        );
-        console.log(`[Early Signals] Complete: ${alerts} alerts, ${dupes} dupes`);
+        console.log(`[Early Signals] Final result:`, result);
       } else {
         addStatusMessage(groupId, `Scouring ${group.sources.length} sources...`);
 

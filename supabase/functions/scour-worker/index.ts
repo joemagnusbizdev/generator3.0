@@ -2137,6 +2137,17 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
       braveApiKey: BRAVE_API_KEY,
     };
     
+    // Initialize job status immediately so frontend can start polling
+    await updateJobStatus(jobId, {
+      id: jobId,
+      status: "running",
+      phase: "early_signals",
+      processed: 0,
+      created: 0,
+      total: totalQueries,
+      created_at: new Date().toISOString(),
+    });
+    
     // Smart batching: prioritize Israeli tourism destinations first
     const priorityBatch = countries.slice(0, ISRAELI_TOURISM_PRIORITY.length);
     const standardBatch = countries.slice(ISRAELI_TOURISM_PRIORITY.length);
