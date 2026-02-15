@@ -35,6 +35,14 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
     }
   }, [isScouring, scourJob?.status, runningEarlySignals]);
 
+  // Automatically set runningEarlySignals when entering early_signals phase
+  useEffect(() => {
+    if (scourJob?.phase === 'early_signals' && !runningEarlySignals) {
+      console.log(`[EarlySignals] Auto-enabling display for early_signals phase`);
+      setRunningEarlySignals(true);
+    }
+  }, [scourJob?.phase, runningEarlySignals]);
+
   // Fetch live logs from server and parse Early Signals progress
   // Also try to use activityLog from scourJob directly if available
   useEffect(() => {
