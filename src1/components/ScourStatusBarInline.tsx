@@ -41,14 +41,19 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
     console.log(`[EarlySignals.useEffect] Triggered:`, { 
       scourJobId: scourJob?.id, 
       isScouring,
+      phase: scourJob?.phase,
       hasActivityLog: !!scourJob?.activityLog,
       activityLogLength: scourJob?.activityLog?.length,
       activityLogType: typeof scourJob?.activityLog,
       isArray: Array.isArray(scourJob?.activityLog)
     });
     
-    if (!scourJob?.id || !isScouring) {
-      console.log(`[EarlySignals.useEffect] Returning early: scourJobId=${scourJob?.id}, isScouring=${isScouring}`);
+    // Check if we're in early signals phase OR actively scouring
+    const isEarlySignals = scourJob?.phase === 'early_signals' || runningEarlySignals;
+    const shouldDisplay = isScouring || isEarlySignals;
+    
+    if (!scourJob?.id || !shouldDisplay) {
+      console.log(`[EarlySignals.useEffect] Returning early: scourJobId=${scourJob?.id}, shouldDisplay=${shouldDisplay}`);
       return;
     }
 
@@ -119,7 +124,7 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
     }, 2000); // Poll every 2 seconds
 
     return () => clearInterval(interval);
-  }, [scourJob?.id, scourJob?.activityLog?.length, isScouring, accessToken]);
+  }, [scourJob?.id, scourJob?.activityLog?.length, scourJob?.phase, isScouring, runningEarlySignals, accessToken]);
 
   // Track early signals phase - keep running true while in early_signals phase
   useEffect(() => {
