@@ -47,6 +47,7 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
         ).then(r => r.json());
 
         if (res.ok && res.logs) {
+          console.log(`[EarlySignals] Fetched ${res.logs.length} logs from server`);
           setLiveLogs(res.logs);
           
           // Parse Early Signals progress from logs using progress bar pattern
@@ -65,9 +66,11 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
               setEarlySignalsProgress({ current, total });
             }
           }
+        } else {
+          console.log(`[EarlySignals] No logs in response or response not ok:`, res);
         }
       } catch (e) {
-        console.error('Error fetching logs:', e);
+        console.error('[EarlySignals] Error fetching logs:', e);
       }
     }, 2000); // Poll every 2 seconds
 
@@ -304,36 +307,47 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
             </div>
           </div>
 
-          {/* Live Queries Display */}
+          {/* Live Activity Log Display */}
           <div style={{ 
             marginTop: '1rem',
             padding: '0.75rem',
             backgroundColor: 'rgba(255, 140, 0, 0.03)',
             border: `1px solid ${MAGNUS_COLORS.border}`,
             borderRadius: '4px',
-            maxHeight: '200px',
+            maxHeight: '250px',
             overflowY: 'auto',
+            fontFamily: 'monospace',
           }}>
             <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: MAGNUS_COLORS.orange, marginBottom: '0.5rem' }}>
-              🔍 Recent Searches
+              📋 Activity Log ({liveLogs.length} entries)
             </div>
-            {liveLogs
-              .filter(log => log.message?.includes('Brave Search API call for:'))
-              .slice(-8)
-              .map((log, idx) => {
-                const match = log.message?.match(/Brave Search API call for: "([^"]+)"/);
-                const query = match?.[1] || log.message;
-                return (
+            {liveLogs.length === 0 ? (
+              <div style={{ fontSize: '0.8rem', color: MAGNUS_COLORS.border, padding: '0.5rem' }}>
+                Waiting for logs from server...
+              </div>
+            ) : (
+              liveLogs
+                .slice(-12)
+                .map((log, idx) => (
                   <div key={idx} style={{ 
-                    fontSize: '0.8rem', 
+                    fontSize: '0.75rem', 
                     color: MAGNUS_COLORS.deepGreen,
-                    padding: '0.25rem 0',
-                    borderBottom: `1px solid ${MAGNUS_COLORS.border}`,
+                    padding: '0.35rem 0.5rem',
+                    marginBottom: '0.25rem',
+                    backgroundColor: 'rgba(255, 140, 0, 0.05)',
+                    borderLeft: `2px solid ${MAGNUS_COLORS.orange}`,
+                    borderRadius: '2px',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
                   }}>
-                    📍 {query.length > 60 ? query.substring(0, 60) + '...' : query}
+                    <span style={{ color: MAGNUS_COLORS.orange }}>
+                      {new Date(log.time).toLocaleTimeString()}
+                    </span>
+                    {' '} {log.message}
                   </div>
-                );
-              })}
+                ))
+            )}
           </div>
         </div>
 
