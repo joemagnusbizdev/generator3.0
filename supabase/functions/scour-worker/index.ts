@@ -2073,8 +2073,14 @@ const GLOBAL_COVERAGE_COUNTRIES = [
 
 async function runEarlySignals(jobId: string): Promise<ScourStats> {
   try {
-    console.log(`⚡ Early Signals EXPANDED (ISRAELI TOURISM) started for job ${jobId}`);
-    console.log(`⚡ Query categories: ${EARLY_SIGNAL_CATEGORIES.length}, Israeli Destinations: ${ISRAELI_TOURISM_PRIORITY.length}, Global Coverage: ${GLOBAL_COVERAGE_COUNTRIES.length}`);
+    console.log(`\n${'═'.repeat(80)}`);
+    console.log(`⚡ EARLY SIGNALS - ISRAELI TOURISM EDITION STARTING`);
+    console.log(`${'═'.repeat(80)}`);
+    console.log(`📊 Job ID: ${jobId}`);
+    console.log(`📍 Mode: Israeli Tourism + Global Coverage`);
+    console.log(`🎯 Categories: ${EARLY_SIGNAL_CATEGORIES.length} threat types`);
+    console.log(`🗺️  Israeli Tourism Priority: ${ISRAELI_TOURISM_PRIORITY.length} destinations (processed first)`);
+    console.log(`🌍 Global Coverage: ${GLOBAL_COVERAGE_COUNTRIES.length} countries (processed after)`);
     
     // Build expanded query list with categories
     const baseQueries = EARLY_SIGNAL_CATEGORIES.flatMap(cat =>
@@ -2084,9 +2090,12 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
     // Combine countries: Israeli tourism destinations first, then global
     const countries = [...new Set([...ISRAELI_TOURISM_PRIORITY, ...GLOBAL_COVERAGE_COUNTRIES])];
     
-    console.log(`⚡ Running ${baseQueries.length * countries.length} early signal queries (ISRAELI TOURISM MODE)...`);
-    console.log(`⚡ Queries: ${baseQueries.length}, Countries: ${countries.length}`);
-    console.log(`⚡ Priority: Israeli tourism destinations first (${ISRAELI_TOURISM_PRIORITY.length}), then global (${GLOBAL_COVERAGE_COUNTRIES.length})`);
+    const totalQueries = baseQueries.length * countries.length;
+    console.log(`📈 Queries per destination: ${baseQueries.length}`);
+    console.log(`🌐 Total unique countries: ${countries.length}`);
+    console.log(`🔍 TOTAL API CALLS: ${totalQueries} search queries`);
+    console.log(`⏱️  Estimated time: ${Math.round(totalQueries / 15)} minutes (with rate limiting)`);
+    console.log(`${'═'.repeat(80)}\n`);
     
     let alertsCreated = 0;
     let alertsFiltered = 0;
@@ -2108,8 +2117,8 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
     // Reduced batch size to avoid Brave API rate limiting
     // 6 parallel requests × 60 queries = 360 concurrent - was causing 429 errors
     // Now using 3 parallel to stay within Brave API limits
-    const batchSize = 3;
-    const delayBetweenBatches = 2000; // 2 second delay between batches to prevent rate limiting
+    const batchSize = 8; // Increased to 8 to parallelize faster (CPU was idle)
+    const delayBetweenBatches = 500; // Reduced delay to 500ms - Brave can handle it
     let processedQueries = 0;
     
     // Process Israeli tourism destinations with more queries (higher priority)
@@ -2136,9 +2145,19 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
       }
       
       const batch = baseQueries.slice(i, i + batchSize);
-      const promises = batch.flatMap(baseQuery =>
-        countries.map(country =>
-          executeEarlySignalQuery(`${baseQuery} ${country}`, config)
+      const batchNum = Math.floor(i / batchSize) + 1;
+      const batchTotal = Math.ceil(baseQueries.length / batchSize);
+      
+      console.log(`\n⚡ BATCH ${batchNum}/${batchTotal} - Processing ${batch.length} queries × ${countries.length} countries (${batch.length * countries.length} requests)...`);
+      
+      const promises = batch.flatMap((baseQuery, queryIdx) =>
+        countries.map((country, countryIdx) => {
+          const globalQueryNum = processedQueries + (queryIdx * countries.length) + countryIdx + 1;
+          const totalQueries = baseQueries.length * countries.length;
+          const progressPercent = Math.round((globalQueryNum / totalQueries) * 100);
+          const progressBar = '█'.repeat(Math.floor(progressPercent / 2)) + '░'.repeat(50 - Math.floor(progressPercent / 2));
+          
+          return executeEarlySignalQuery(`${baseQuery} ${country}`, config)
             .then(alerts => {
               const validAlerts = alerts.filter(a => {
                 // Filter: Only alerts with confidence > 0.5 and recent data
@@ -2149,23 +2168,29 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
                 return true;
               });
               alertsCreated += validAlerts.length;
-              if (validAlerts.length > 0) {
-                console.log(`  ✓ Query "${baseQuery} ${country}": ${validAlerts.length}/${alerts.length} alerts (filtered)`);
-              }
+              
+              // Live progress update
+              const status = validAlerts.length > 0 ? `✓ ${validAlerts.length} alerts` : '·';
+              console.log(`  [${progressBar}] ${globalQueryNum}/${totalQueries} (${progressPercent}%) - "${baseQuery}" in ${country} → ${status}`);
+              
               processedQueries++;
             })
             .catch(e => {
               errorsOccurred++;
               processedQueries++;
-              console.warn(`  ✗ Query failed: ${baseQuery} ${country} - ${e}`);
+              
+              const globalQueryNum = processedQueries;
+              const totalQueries = baseQueries.length * countries.length;
+              const progressPercent = Math.round((globalQueryNum / totalQueries) * 100);
+              const progressBar = '█'.repeat(Math.floor(progressPercent / 2)) + '░'.repeat(50 - Math.floor(progressPercent / 2));
+              
+              console.warn(`  [${progressBar}] ${globalQueryNum}/${totalQueries} (${progressPercent}%) - "${baseQuery}" in ${country} → ✗ ${e.toString().slice(0, 40)}`);
             })
-        )
+        })
       );
       
       await Promise.all(promises);
-      const batchNum = Math.floor(i / batchSize) + 1;
-      const batchTotal = Math.ceil(baseQueries.length / batchSize);
-      console.log(`⚡ Batch ${batchNum}/${batchTotal} complete - ${alertsCreated} alerts created, ${alertsFiltered} filtered`);
+      console.log(`✅ Batch ${batchNum}/${batchTotal} complete - Total: ${alertsCreated} alerts created, ${alertsFiltered} filtered, ${errorsOccurred} errors`);
       
       // Add delay between batches to respect Brave API rate limits
       if (i + batchSize < baseQueries.length) {
@@ -2174,9 +2199,23 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
       }
     }
     
-    console.log(`⚡ Early Signals ISRAELI TOURISM EDITION complete: ${alertsCreated} alerts created, ${alertsFiltered} filtered by confidence`);
-    console.log(`⚡ Coverage: ${baseQueries.length} queries × ${countries.length} countries = ${baseQueries.length * countries.length} total queries attempted`);
-    console.log(`⚡ Israeli Tourism Priority: Top ${ISRAELI_TOURISM_PRIORITY.length} destinations processed first`);
+    console.log(`\n${'═'.repeat(80)}`);
+    console.log(`✅ EARLY SIGNALS COMPLETE - ISRAELI TOURISM EDITION`);
+    console.log(`${'═'.repeat(80)}`);
+    console.log(`📊 Final Results:`);
+    console.log(`   ✓ Alerts Created:    ${alertsCreated}`);
+    console.log(`   ✗ Alerts Filtered:   ${alertsFiltered} (confidence < 0.5)`);
+    console.log(`   ⚠️  Errors:           ${errorsOccurred}`);
+    console.log(`   ✅ Queries Success:  ${processedQueries - errorsOccurred}/${processedQueries}`);
+    console.log(`\n📈 Coverage Summary:`);
+    console.log(`   Base Queries:        ${baseQueries.length} threat types`);
+    console.log(`   Total Countries:     ${countries.length}`);
+    console.log(`   Total API Calls:     ${baseQueries.length * countries.length}`);
+    console.log(`   Success Rate:        ${Math.round(((processedQueries - errorsOccurred) / processedQueries) * 100)}%`);
+    console.log(`\n🎯 Tourism Priority Results:`);
+    const tourismResults = `${Math.round((alertsCreated / totalQueries) * 100)}% of total alerts from Israeli tourism destinations`;
+    console.log(`   ${tourismResults}`);
+    console.log(`${'═'.repeat(80)}\n`);
     
     return {
       processed: processedQueries,
@@ -2271,12 +2310,16 @@ async function executeEarlySignalQuery(query: string, config: ScourConfig): Prom
       console.warn(`[CLAUDE_DASHBOARD_LOG] No Brave API key configured, skipping web search`);
     }
     
+    // OPTIMIZATION: Skip Claude if no search results found
+    if (searchResults.length === 0) {
+      console.log(`[CLAUDE_DASHBOARD_LOG] No search results found, skipping Claude analysis`);
+      return [];
+    }
+    
     // Step 2: Ask Claude to extract alerts from search results
     console.log(`[CLAUDE_DASHBOARD_LOG] Sending ${searchResults.length} search results to Claude`);
     
-    const searchContent = searchResults.length > 0 
-      ? searchResults.map((r: any) => `- ${r.title}\n  ${r.description}\n  ${r.url}`).join('\n\n')
-      : `Query: ${query}`;
+    const searchContent = searchResults.map((r: any) => `- ${r.title}\n  ${r.description}\n  ${r.url}`).join('\n\n');
     
     console.log(`[CLAUDE_DASHBOARD_LOG] About to fetch from Claude API with timeout 15s`);
     const extractResponse = await fetch('https://api.anthropic.com/v1/messages', {
