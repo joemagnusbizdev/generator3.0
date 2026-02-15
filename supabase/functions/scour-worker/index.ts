@@ -1909,43 +1909,48 @@ async function updateJobStatus(jobId: string, jobData: any): Promise<void> {
     const value = JSON.stringify(valueToSave);
     console.log(`[UPDATE_JOB_STATUS] Payload size: ${value.length} bytes, activityLog entries: ${logsToInclude.length}`);
     
-    // Try to update first with WHERE clause
+    // Try to update first with WHERE clause (without return=minimal to see if rows were affected)
     try {
-      await querySupabaseRest(`/app_kv?key=eq.${key}`, {
+      const updateResult = await querySupabaseRest(`/app_kv?key=eq.${key}`, {
         method: 'PATCH',
-        headers: { 'Prefer': 'return=minimal' },
+        headers: { 'Prefer': 'return=representation' },
         body: JSON.stringify({ value }),
       });
-      console.log(`[UPDATE_JOB_STATUS] ✓ Updated ${jobId}`);
-      return;
-    } catch (e: any) {
-      // If update fails (no rows affected), insert
-      if (e.message?.includes('404') || e.message?.includes('no rows')) {
-        try {
-          await querySupabaseRest(`/app_kv`, {
-            method: 'POST',
-            body: JSON.stringify({ key, value }),
-          });
-          console.log(`[UPDATE_JOB_STATUS] ✓ Inserted ${jobId}`);
-          return;
-        } catch (insertErr: any) {
-          // If insert also fails with duplicate, try PATCH one more time
-          if (insertErr.message?.includes('23505')) {
-            await querySupabaseRest(`/app_kv?key=eq.${key}`, {
-              method: 'PATCH',
-              headers: { 'Prefer': 'return=minimal' },
-              body: JSON.stringify({ value }),
-            });
-            console.log(`[UPDATE_JOB_STATUS] ✓ Updated ${jobId} (retry)`);
-            return;
-          }
-          throw insertErr;
-        }
+      
+      // If we got a result, the update succeeded
+      if (updateResult && Array.isArray(updateResult) && updateResult.length > 0) {
+        console.log(`[UPDATE_JOB_STATUS] ✓ Updated ${jobId} (${updateResult.length} rows)`);
+        return;
       }
+      
+      // No rows updated, try INSERT
+      console.log(`[UPDATE_JOB_STATUS] No rows updated, attempting INSERT for ${jobId}`);
+      try {
+        await querySupabaseRest(`/app_kv`, {
+          method: 'POST',
+          body: JSON.stringify({ key, value }),
+        });
+        console.log(`[UPDATE_JOB_STATUS] ✓ Inserted ${jobId}`);
+        return;
+      } catch (insertErr: any) {
+        // If insert fails with duplicate key, try PATCH again
+        if (insertErr.message?.includes('23505') || insertErr.message?.includes('duplicate')) {
+          console.log(`[UPDATE_JOB_STATUS] Insert failed with duplicate, retrying PATCH for ${jobId}`);
+          await querySupabaseRest(`/app_kv?key=eq.${key}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ value }),
+          });
+          console.log(`[UPDATE_JOB_STATUS] ✓ Updated ${jobId} (retry after duplicate)`);
+          return;
+        }
+        throw insertErr;
+      }
+    } catch (e: any) {
+      console.warn(`[UPDATE_JOB_STATUS] ✗ Failed for ${jobId}: ${e.message}`);
       throw e;
     }
   } catch (e: any) {
-    console.warn(`[UPDATE_JOB_STATUS] ✗ Failed for ${jobId}: ${e.message}`);
+    console.warn(`[UPDATE_JOB_STATUS] ✗ Final error for ${jobId}: ${e.message}`);
   }
 }
 
