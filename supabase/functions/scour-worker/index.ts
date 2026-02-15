@@ -2164,6 +2164,7 @@ const GLOBAL_COVERAGE_COUNTRIES = [
 
 async function runEarlySignals(jobId: string): Promise<ScourStats> {
   try {
+    // Force rebuild timestamp: 2026-02-15T17:00:00Z
     console.log(`\n${'═'.repeat(80)}`);
     console.log(`⚡ EARLY SIGNALS - ISRAELI TOURISM EDITION STARTING`);
     console.log(`${'═'.repeat(80)}`);
