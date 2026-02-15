@@ -39,6 +39,8 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
   const [statusMessages, setStatusMessages] = useState<Record<string, string>>({});
   const [lastSourceCount, setLastSourceCount] = useState<number>(0);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [activityLogs, setActivityLogs] = useState<Record<string, Array<{ time: string; message: string }>>>({});
+  const [expandedActivityLogs, setExpandedActivityLogs] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadAndGroupSources();
@@ -50,6 +52,37 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
 
     return () => clearInterval(interval);
   }, [accessToken]);
+
+  // Poll for activity logs while Early Signals is running
+  useEffect(() => {
+    if (runningGroupId !== 'early-signals') return;
+
+    const pollActivityLogs = async () => {
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/status/${encodeURIComponent(runningGroupId)}`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.job?.activityLog && Array.isArray(data.job.activityLog)) {
+            setActivityLogs(prev => ({ ...prev, [runningGroupId]: data.job.activityLog }));
+          }
+        }
+      } catch (e) {
+        // Silently fail
+      }
+    };
+
+    // Poll every 500ms for live updates
+    const interval = setInterval(pollActivityLogs, 500);
+    return () => clearInterval(interval);
+  }, [runningGroupId, accessToken]);
 
   const addStatusMessage = (groupId: string, message: string) => {
     setStatusMessages(prev => ({ ...prev, [groupId]: message }));
@@ -377,6 +410,42 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
                   )}
                   {statusMsg && (
                     <div className="text-xs text-gray-700 mb-2">{statusMsg}</div>
+                  )}
+                  
+                  {/* Activity Log for running scours */}
+                  {runningGroupId === group.id && activityLogs[group.id] && activityLogs[group.id].length > 0 && (
+                    <div className="mb-2 border rounded bg-gray-50 overflow-hidden">
+                      <button
+                        onClick={() => {
+                          const newExpanded = new Set(expandedActivityLogs);
+                          if (newExpanded.has(group.id)) {
+                            newExpanded.delete(group.id);
+                          } else {
+                            newExpanded.add(group.id);
+                          }
+                          setExpandedActivityLogs(newExpanded);
+                        }}
+                        className="w-full text-left px-2 py-1 hover:bg-gray-200 font-semibold text-xs flex items-center justify-between"
+                      >
+                        <span>📋 Recent Searches ({activityLogs[group.id].length})</span>
+                        <span>{expandedActivityLogs.has(group.id) ? '▼' : '▶'}</span>
+                      </button>
+                      
+                      {expandedActivityLogs.has(group.id) && (
+                        <div className="max-h-48 overflow-y-auto border-t bg-white">
+                          {activityLogs[group.id].slice(-15).reverse().map((log, idx) => (
+                            <div
+                              key={idx}
+                              className="px-2 py-1 border-b text-xs text-gray-700 hover:bg-blue-50"
+                              title={log.message}
+                            >
+                              <span className="text-gray-500">{new Date(log.time).toLocaleTimeString()}</span>
+                              <span className="ml-2 truncate inline-block max-w-xs">{log.message}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
                   {group.results && (
                     <div className="grid grid-cols-2 gap-2 text-xs">
