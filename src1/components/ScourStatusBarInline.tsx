@@ -35,19 +35,36 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
     }
   }, [isScouring, scourJob?.status, runningEarlySignals]);
 
-  // Fetch live logs from server
+  // Fetch live logs from server and parse Early Signals progress
   useEffect(() => {
     if (!scourJob?.id || !isScouring) return;
 
     const interval = setInterval(async () => {
       try {
         const res = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/logs?jobId=${scourJob.id}&limit=100`,
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/logs?jobId=${scourJob.id}&limit=300`,
           { headers: { 'Authorization': `Bearer ${accessToken}` } }
         ).then(r => r.json());
 
         if (res.ok && res.logs) {
           setLiveLogs(res.logs);
+          
+          // Parse Early Signals progress from logs using progress bar pattern
+          // Format: [████████...░░░░░] 1234/3710 (33%) - query text
+          const progressLogs = res.logs.filter((log: any) => 
+            log.message?.includes('/') && log.message?.includes('%') && log.message?.includes('[')
+          );
+          
+          if (progressLogs.length > 0) {
+            const lastLog = progressLogs[progressLogs.length - 1].message;
+            const match = lastLog.match(/(\d+)\/(\d+)\s+\((\d+)%\)/);
+            if (match) {
+              const current = parseInt(match[1]);
+              const total = parseInt(match[2]);
+              const percent = parseInt(match[3]);
+              setEarlySignalsProgress({ current, total });
+            }
+          }
         }
       } catch (e) {
         console.error('Error fetching logs:', e);
@@ -202,35 +219,37 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
           </div>
 
           {/* Progress Stats */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'auto auto auto auto', gap: '2rem', marginBottom: '1rem', fontSize: '1rem', fontWeight: 'bold' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(150px, 1fr))', gap: '1.5rem', marginBottom: '1rem', fontSize: '0.95rem' }}>
             <div>
-              <div style={{ color: MAGNUS_COLORS.orange }}>🔍 Queries Completed</div>
-              <div style={{ fontSize: '1.3rem', color: MAGNUS_COLORS.deepGreen }}>
-                {earlySignalsProgress?.current || 0}/{earlySignalsProgress?.total || 80}
+              <div style={{ color: MAGNUS_COLORS.orange, fontSize: '0.9rem', marginBottom: '0.25rem' }}>🔍 Queries Done</div>
+              <div style={{ fontSize: '1.5rem', color: MAGNUS_COLORS.deepGreen, fontWeight: 'bold' }}>
+                {(earlySignalsProgress?.current || 0).toLocaleString()}
               </div>
             </div>
             <div>
-              <div style={{ color: MAGNUS_COLORS.orange }}>✓ Alerts Found</div>
-              <div style={{ fontSize: '1.3rem', color: MAGNUS_COLORS.deepGreen }}>
-                {scourJob.created}
+              <div style={{ color: MAGNUS_COLORS.orange, fontSize: '0.9rem', marginBottom: '0.25rem' }}>📊 Total Queries</div>
+              <div style={{ fontSize: '1.5rem', color: MAGNUS_COLORS.deepGreen, fontWeight: 'bold' }}>
+                {(earlySignalsProgress?.total || 3710).toLocaleString()}
               </div>
             </div>
             <div>
-              <div style={{ color: MAGNUS_COLORS.orange }}>📊 Progress</div>
-              <div style={{ fontSize: '1.3rem', color: MAGNUS_COLORS.deepGreen }}>
-                {Math.round(((earlySignalsProgress?.current || 0) / (earlySignalsProgress?.total || 80)) * 100)}%
+              <div style={{ color: MAGNUS_COLORS.orange, fontSize: '0.9rem', marginBottom: '0.25rem' }}>✓ Alerts Found</div>
+              <div style={{ fontSize: '1.5rem', color: MAGNUS_COLORS.deepGreen, fontWeight: 'bold' }}>
+                {(scourJob.created || 0).toLocaleString()}
               </div>
             </div>
             <div>
-              <div style={{ color: MAGNUS_COLORS.orange }}>⏱ Status</div>
-              <div style={{ fontSize: '1.3rem', color: '#ff8c00' }}>Searching...</div>
+              <div style={{ color: MAGNUS_COLORS.orange, fontSize: '0.9rem', marginBottom: '0.25rem' }}>⏱ Progress</div>
+              <div style={{ fontSize: '1.5rem', color: '#ff8c00', fontWeight: 'bold' }}>
+                {earlySignalsProgress?.total ? Math.round(((earlySignalsProgress?.current || 0) / earlySignalsProgress?.total) * 100) : 0}%
+              </div>
             </div>
           </div>
 
           {/* Progress Bar */}
           <div style={{
             width: '100%',
-            height: '16px',
+            height: '20px',
             backgroundColor: MAGNUS_COLORS.border,
             borderRadius: '8px',
             overflow: 'hidden',
@@ -239,7 +258,7 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
           }}>
             <div style={{
               height: '100%',
-              width: `${Math.round(((earlySignalsProgress?.current || 0) / (earlySignalsProgress?.total || 80)) * 100)}%`,
+              width: `${earlySignalsProgress?.total ? Math.round(((earlySignalsProgress?.current || 0) / earlySignalsProgress?.total) * 100) : 0}%`,
               backgroundColor: MAGNUS_COLORS.orange,
               transition: 'width 0.3s ease',
               background: `linear-gradient(90deg, ${MAGNUS_COLORS.orange}, #ff9f1c)`,
@@ -266,15 +285,55 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
 
           {/* Query Stats */}
           <div style={{
-            padding: '0.5rem 0.75rem',
-            backgroundColor: 'rgba(255, 140, 0, 0.03)',
-            borderLeft: `3px solid ${MAGNUS_COLORS.orange}`,
-            borderRadius: '2px',
-            fontSize: '0.85rem',
+            padding: '0.75rem 1rem',
+            backgroundColor: 'rgba(255, 140, 0, 0.05)',
+            borderLeft: `4px solid ${MAGNUS_COLORS.orange}`,
+            borderRadius: '4px',
+            fontSize: '0.9rem',
             color: MAGNUS_COLORS.deepGreen,
           }}>
-            <div>📍 Query Progress: {earlySignalsProgress?.current || 0} of {earlySignalsProgress?.total || 80} searches completed</div>
-            <div>⏱ Estimated Time: ~{Math.ceil(((earlySignalsProgress?.total || 80) - (earlySignalsProgress?.current || 0)) * 0.3)} seconds remaining</div>
+            <div style={{ marginBottom: '0.5rem', fontWeight: 'bold' }}>📍 Query Progress</div>
+            <div style={{ marginBottom: '0.25rem' }}>
+              {(earlySignalsProgress?.current || 0).toLocaleString()} of {(earlySignalsProgress?.total || 3710).toLocaleString()} searches completed
+            </div>
+            <div style={{ marginBottom: '0.25rem' }}>
+              {earlySignalsProgress?.total ? `⏱ ~${Math.ceil(((earlySignalsProgress?.total - (earlySignalsProgress?.current || 0)) * 15) / 60)} minutes remaining at current rate` : 'Initializing...'}
+            </div>
+            <div style={{ color: MAGNUS_COLORS.orange, fontWeight: 'bold' }}>
+              Rate: ~1 query/second (throttled for API stability)
+            </div>
+          </div>
+
+          {/* Live Queries Display */}
+          <div style={{ 
+            marginTop: '1rem',
+            padding: '0.75rem',
+            backgroundColor: 'rgba(255, 140, 0, 0.03)',
+            border: `1px solid ${MAGNUS_COLORS.border}`,
+            borderRadius: '4px',
+            maxHeight: '200px',
+            overflowY: 'auto',
+          }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: MAGNUS_COLORS.orange, marginBottom: '0.5rem' }}>
+              🔍 Recent Searches
+            </div>
+            {liveLogs
+              .filter(log => log.message?.includes('Brave Search API call for:'))
+              .slice(-8)
+              .map((log, idx) => {
+                const match = log.message?.match(/Brave Search API call for: "([^"]+)"/);
+                const query = match?.[1] || log.message;
+                return (
+                  <div key={idx} style={{ 
+                    fontSize: '0.8rem', 
+                    color: MAGNUS_COLORS.deepGreen,
+                    padding: '0.25rem 0',
+                    borderBottom: `1px solid ${MAGNUS_COLORS.border}`,
+                  }}>
+                    📍 {query.length > 60 ? query.substring(0, 60) + '...' : query}
+                  </div>
+                );
+              })}
           </div>
         </div>
 
