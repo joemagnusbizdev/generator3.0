@@ -59,6 +59,17 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
     return () => clearInterval(interval);
   }, [accessToken]);
 
+  // Clear runningGroupId when Early Signals job completes
+  useEffect(() => {
+    if (runningGroupId === 'early-signals') {
+      const earlySignalsGroup = sourceGroups.find(g => g.id === 'early-signals');
+      if (earlySignalsGroup && (earlySignalsGroup.status === 'completed' || earlySignalsGroup.status === 'error')) {
+        console.log(`[Early Signals] Job completed with status: ${earlySignalsGroup.status}, clearing runningGroupId`);
+        setRunningGroupId(null);
+      }
+    }
+  }, [sourceGroups, runningGroupId]);
+
   const addStatusMessage = (groupId: string, message: string) => {
     setStatusMessages(prev => ({ ...prev, [groupId]: message }));
   };
@@ -300,7 +311,11 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
           : g
       ));
     } finally {
-      setRunningGroupId(null);
+      // For Early Signals, don't clear runningGroupId here - let polling handle it
+      // For other scours, clear immediately since they complete in this function
+      if (groupId !== 'early-signals') {
+        setRunningGroupId(null);
+      }
     }
   };
 
