@@ -4,6 +4,7 @@ import GeoJsonPreview from "./GeoJsonPreview";
 import GeoJSONGeneratorModal from "./GeoJSONGeneratorModal";
 import MAGNUS_COLORS from "../styles/magnus-colors";
 import ScourManagementInline from "./ScourManagementInline";
+import ScourStatusBarInline from "./ScourStatusBarInline";
 
 
 // =========================
@@ -713,6 +714,9 @@ export default function AlertReviewQueueInline({ permissions, accessToken }: Pro
   <div className="space-y-4">
     {/* Scour Management - Main Scour Function (accessible to all users) */}
     {accessToken && <ScourManagementInline accessToken={accessToken} />}
+    
+    {/* Scour Status Bar - Shows early signals and main scour progress */}
+    <ScourStatusBarInline accessToken={accessToken} />
 
     {/* Batch actions */}
     {selected.size > 0 && (
