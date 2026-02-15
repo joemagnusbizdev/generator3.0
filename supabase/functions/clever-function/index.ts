@@ -335,7 +335,7 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
     }
 
     // GET /scour/status - Get current scour job status
-    if (path === "/scour/status" && method === "GET") {
+    if ((path === "/scour/status" || path === "/clever-function/scour/status") && method === "GET") {
       try {
         // Return all active scour jobs
         const allJobs = await querySupabaseRest(`/app_kv?key=like.scour-job-*&select=key,value`);
@@ -385,7 +385,8 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
     }
 
     // GET /scour/status/:jobId - Get specific job status
-    if (path.startsWith("/scour/status/") && method === "GET") {
+    if ((path.startsWith("/scour/status/") || path.startsWith("/clever-function/scour/status/")) && method === "GET") {
+      // Extract jobId from path, handling both /scour/status/{jobId} and /clever-function/scour/status/{jobId}
       const jobId = path.split('/').pop();
       if (!jobId) {
         return json({ ok: false, error: "Missing jobId parameter" }, 400);
@@ -429,7 +430,7 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
     }
 
     // GET /scour/logs - Get live logs from current job
-    if (path.startsWith("/scour/logs") && method === "GET") {
+    if ((path.startsWith("/scour/logs") || path.startsWith("/clever-function/scour/logs")) && method === "GET") {
       const jobId = urlObj.searchParams.get("jobId");
       const limit = parseInt(urlObj.searchParams.get("limit") || "50", 10);
       
