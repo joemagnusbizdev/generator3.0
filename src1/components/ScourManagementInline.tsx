@@ -151,7 +151,10 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
     addStatusMessage(groupId, 'Starting...');
 
     try {
-      addStatusMessage(groupId, `Scouring ${group.sources.length} sources...`);
+      const statusMsg = groupId === 'early-signals' 
+        ? 'Running web search scour...' 
+        : `Scouring ${group.sources.length} sources...`;
+      addStatusMessage(groupId, statusMsg);
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/scour-worker`,
