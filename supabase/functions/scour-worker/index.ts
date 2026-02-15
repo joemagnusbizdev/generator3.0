@@ -106,9 +106,10 @@ const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const BRAVE_API_KEY = Deno.env.get("BRAVRE_SEARCH_API_KEY");
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": "https://generator30.vercel.app",
   "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "authorization, content-type, apikey",
+  "Access-Control-Allow-Credentials": "true",
 };
 
 function json(data: any, status = 200) {
@@ -2528,9 +2529,14 @@ Deno.serve({ skipJwtVerification: true }, async (req: Request) => {
   
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, { 
+    return new Response('', { 
       status: 200,
-      headers: corsHeaders 
+      headers: {
+        "Access-Control-Allow-Origin": "https://generator30.vercel.app",
+        "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "authorization, content-type, apikey",
+        "Access-Control-Max-Age": "86400",
+      }
     });
   }
   
