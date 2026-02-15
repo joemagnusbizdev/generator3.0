@@ -1877,6 +1877,7 @@ const jobActivityLogs = new Map<string, Array<{time: string; message: string}>>(
 function addJobLog(jobId: string, message: string): void {
   if (!jobActivityLogs.has(jobId)) {
     jobActivityLogs.set(jobId, []);
+    console.log(`[JOB_LOG] Created new log array for jobId: ${jobId}`);
   }
   const logs = jobActivityLogs.get(jobId)!;
   logs.push({
@@ -1887,6 +1888,7 @@ function addJobLog(jobId: string, message: string): void {
   if (logs.length > 500) {
     logs.shift();
   }
+  console.log(`[JOB_LOG] Added log for ${jobId}: "${message.substring(0, 60)}..." (total logs: ${logs.length})`);
 }
 
 async function updateJobStatus(jobId: string, jobData: any): Promise<void> {
@@ -1907,12 +1909,16 @@ async function updateJobStatus(jobId: string, jobData: any): Promise<void> {
     
     // Include accumulated activity logs
     const logsToInclude = jobActivityLogs.get(jobId) || [];
+    console.log(`[UPDATE_JOB_STATUS] Updating jobId: ${jobId}, logs available: ${logsToInclude.length}, existing fields: ${Object.keys(existingData).length}`);
+    
     const valueWithLogs = {
       ...existingData,  // Start with existing data to preserve all fields
       ...jobData,       // Override with new data
       activityLog: logsToInclude
     };
     const value = JSON.stringify(valueWithLogs);
+    
+    console.log(`[UPDATE_JOB_STATUS] Saving data with activityLog array (${logsToInclude.length} entries) to app_kv`);
     
     // Try to update first with WHERE clause
     try {
@@ -1922,6 +1928,7 @@ async function updateJobStatus(jobId: string, jobData: any): Promise<void> {
         body: JSON.stringify({ value }),
       });
       // If update succeeded, we're done
+      console.log(`[UPDATE_JOB_STATUS] Successfully updated job status for ${jobId}`);
       return;
     } catch (e: any) {
       // If update fails (no rows affected), insert
@@ -1931,6 +1938,7 @@ async function updateJobStatus(jobId: string, jobData: any): Promise<void> {
             method: 'POST',
             body: JSON.stringify({ key, value }),
           });
+          console.log(`[UPDATE_JOB_STATUS] Successfully inserted new job status for ${jobId}`);
           return;
         } catch (insertErr: any) {
           // If insert also fails with duplicate, try PATCH one more time
@@ -1940,6 +1948,7 @@ async function updateJobStatus(jobId: string, jobData: any): Promise<void> {
               headers: { 'Prefer': 'return=minimal' },
               body: JSON.stringify({ value }),
             });
+            console.log(`[UPDATE_JOB_STATUS] Resolved duplicate - updated job status for ${jobId}`);
             return;
           }
           throw insertErr;

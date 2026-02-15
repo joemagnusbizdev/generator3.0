@@ -402,6 +402,8 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
             ? JSON.parse(result[0].value) 
             : result[0].value;
           
+          console.log(`[/scour/status] Retrieved job ${jobId}: has activityLog=${!!jobData.activityLog}, entries=${jobData.activityLog?.length || 0}`);
+          
           return json({
             ok: true,
             job: jobData,
@@ -409,6 +411,7 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
         }
 
         // If not found in app_kv, return default job data
+        console.log(`[/scour/status] Job ${jobId} not found in app_kv`);
         return json({
           ok: true,
           job: {
