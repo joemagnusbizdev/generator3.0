@@ -2226,17 +2226,15 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
           addJobLog(jobId, errorMsg);
         }
         
-        // Periodically update job status with logs (every 5 queries)
-        if (processedQueries % 5 === 0) {
-          await updateJobStatus(jobId, {
-            id: jobId,
-            status: "running",
-            phase: "early_signals",
-            processed: processedQueries,
-            created: alertsCreated,
-            total: totalQueries,
-          });
-        }
+        // Update job status every query (fast updates for real-time UI)
+        await updateJobStatus(jobId, {
+          id: jobId,
+          status: "running",
+          phase: "early_signals",
+          processed: processedQueries,
+          created: alertsCreated,
+          total: totalQueries,
+        });
         
         // 1 second delay between EVERY request to respect Brave API rate limits (1 req/sec = safe)
         if (queryIdx < baseQueries.length - 1 || countryIdx < countries.length - 1) {
