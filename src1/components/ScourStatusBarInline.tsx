@@ -36,9 +36,34 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
   }, [isScouring, scourJob?.status, runningEarlySignals]);
 
   // Fetch live logs from server and parse Early Signals progress
+  // Also try to use activityLog from scourJob directly if available
   useEffect(() => {
     if (!scourJob?.id || !isScouring) return;
 
+    // First, use activityLog from scourJob if available (already polled every 400ms)
+    if (scourJob.activityLog && Array.isArray(scourJob.activityLog) && scourJob.activityLog.length > 0) {
+      console.log(`[EarlySignals] Using activityLog from scourJob: ${scourJob.activityLog.length} entries`);
+      setLiveLogs(scourJob.activityLog);
+      
+      // Parse Early Signals progress from logs using progress bar pattern
+      // Format: [████████...░░░░░] 1234/3710 (33%) - query text
+      const progressLogs = scourJob.activityLog.filter((log: any) => 
+        log.message?.includes('/') && log.message?.includes('%') && log.message?.includes('[')
+      );
+      
+      if (progressLogs.length > 0) {
+        const lastLog = progressLogs[progressLogs.length - 1].message;
+        const match = lastLog.match(/(\d+)\/(\d+)\s+\((\d+)%\)/);
+        if (match) {
+          const current = parseInt(match[1]);
+          const total = parseInt(match[2]);
+          setEarlySignalsProgress({ current, total });
+        }
+      }
+      return; // Don't need to fetch if we have logs
+    }
+
+    // Fallback: Fetch from logs endpoint if not in scourJob
     const interval = setInterval(async () => {
       try {
         const res = await fetch(
@@ -47,7 +72,7 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
         ).then(r => r.json());
 
         if (res.ok && res.logs) {
-          console.log(`[EarlySignals] Fetched ${res.logs.length} logs from server`);
+          console.log(`[EarlySignals] Fetched ${res.logs.length} logs from server endpoint`);
           setLiveLogs(res.logs);
           
           // Parse Early Signals progress from logs using progress bar pattern
@@ -62,7 +87,6 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
             if (match) {
               const current = parseInt(match[1]);
               const total = parseInt(match[2]);
-              const percent = parseInt(match[3]);
               setEarlySignalsProgress({ current, total });
             }
           }
@@ -75,7 +99,7 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
     }, 2000); // Poll every 2 seconds
 
     return () => clearInterval(interval);
-  }, [scourJob?.id, isScouring, accessToken]);
+  }, [scourJob?.id, scourJob?.activityLog, isScouring, accessToken]);
 
   // Track early signals phase - keep running true while in early_signals phase
   useEffect(() => {
