@@ -2115,89 +2115,80 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
     const priorityBatch = countries.slice(0, ISRAELI_TOURISM_PRIORITY.length);
     const standardBatch = countries.slice(ISRAELI_TOURISM_PRIORITY.length);
     
-    // Reduced batch size to avoid Brave API rate limiting
-    // Brave API has strict rate limits - need to be conservative
-    // Testing showed 8 parallel still causes 429 errors
-    // Using 2 parallel with 1 second delay = ~1 req/sec = well within limits
-    const batchSize = 2; // Max 2 parallel to avoid 429 rate limit errors
-    const delayBetweenBatches = 1000; // 1 second delay between batches
+    // Sequential processing: 1 request at a time with 1 second delay
+    // This ensures ~1 query/second = well within Brave API rate limits
+    // No parallel requests = no 429 errors
     let processedQueries = 0;
     
     // Process Israeli tourism destinations with more queries (higher priority)
-    for (let i = 0; i < baseQueries.length; i += batchSize) {
-      // CHECK FOR STOP SIGNAL
-      try {
-        const stopFlag = await querySupabaseRest(`/app_kv?key=eq.scour-stop-${jobId}&select=value`);
-        if (stopFlag && Array.isArray(stopFlag) && stopFlag.length > 0) {
-          console.log(`⚡ Early Signals stopped by user at ${processedQueries} queries`);
-          return {
-            processed: processedQueries,
-            created: alertsCreated,
-            skipped: alertsFiltered,
-            duplicatesSkipped: 0,
-            errorCount: errorsOccurred,
-            errors: [],
-            disabled_source_ids: [],
-            jobId: jobId,
-            phase: 'early_signals'
-          };
+    // Use sequential processing (1 request at a time) with 1 second delay to avoid 429 rate limit errors
+    const totalQueries = baseQueries.length * countries.length;
+    
+    for (let queryIdx = 0; queryIdx < baseQueries.length; queryIdx++) {
+      const baseQuery = baseQueries[queryIdx];
+      
+      for (let countryIdx = 0; countryIdx < countries.length; countryIdx++) {
+        const country = countries[countryIdx];
+        
+        // CHECK FOR STOP SIGNAL
+        try {
+          const stopFlag = await querySupabaseRest(`/app_kv?key=eq.scour-stop-${jobId}&select=value`);
+          if (stopFlag && Array.isArray(stopFlag) && stopFlag.length > 0) {
+            console.log(`⚡ Early Signals stopped by user at ${processedQueries} queries`);
+            return {
+              processed: processedQueries,
+              created: alertsCreated,
+              skipped: alertsFiltered,
+              duplicatesSkipped: 0,
+              errorCount: errorsOccurred,
+              errors: [],
+              disabled_source_ids: [],
+              jobId: jobId,
+              phase: 'early_signals'
+            };
+          }
+        } catch (e) {
+          // Continue if check fails
         }
-      } catch (e) {
-        // Continue if check fails
-      }
-      
-      const batch = baseQueries.slice(i, i + batchSize);
-      const batchNum = Math.floor(i / batchSize) + 1;
-      const batchTotal = Math.ceil(baseQueries.length / batchSize);
-      
-      console.log(`\n⚡ BATCH ${batchNum}/${batchTotal} - Processing ${batch.length} queries × ${countries.length} countries (${batch.length * countries.length} requests)...`);
-      
-      const promises = batch.flatMap((baseQuery, queryIdx) =>
-        countries.map((country, countryIdx) => {
-          const globalQueryNum = processedQueries + (queryIdx * countries.length) + countryIdx + 1;
-          const totalQueries = baseQueries.length * countries.length;
+        
+        // Execute ONE query
+        const globalQueryNum = processedQueries + 1;
+        const progressPercent = Math.round((globalQueryNum / totalQueries) * 100);
+        const progressBar = '█'.repeat(Math.floor(progressPercent / 2)) + '░'.repeat(50 - Math.floor(progressPercent / 2));
+        
+        try {
+          const alerts = await executeEarlySignalQuery(`${baseQuery} ${country}`, config);
+          
+          const validAlerts = alerts.filter(a => {
+            // Filter: Only alerts with confidence > 0.5 and recent data
+            if (!a.confidence_score || a.confidence_score < 0.5) {
+              alertsFiltered++;
+              return false;
+            }
+            return true;
+          });
+          alertsCreated += validAlerts.length;
+          
+          // Live progress update
+          const status = validAlerts.length > 0 ? `✓ ${validAlerts.length} alerts` : '·';
+          console.log(`  [${progressBar}] ${globalQueryNum}/${totalQueries} (${progressPercent}%) - "${baseQuery}" in ${country} → ${status}`);
+          
+          processedQueries++;
+        } catch (e) {
+          errorsOccurred++;
+          processedQueries++;
+          
+          const globalQueryNum = processedQueries;
           const progressPercent = Math.round((globalQueryNum / totalQueries) * 100);
           const progressBar = '█'.repeat(Math.floor(progressPercent / 2)) + '░'.repeat(50 - Math.floor(progressPercent / 2));
           
-          return executeEarlySignalQuery(`${baseQuery} ${country}`, config)
-            .then(alerts => {
-              const validAlerts = alerts.filter(a => {
-                // Filter: Only alerts with confidence > 0.5 and recent data
-                if (!a.confidence_score || a.confidence_score < 0.5) {
-                  alertsFiltered++;
-                  return false;
-                }
-                return true;
-              });
-              alertsCreated += validAlerts.length;
-              
-              // Live progress update
-              const status = validAlerts.length > 0 ? `✓ ${validAlerts.length} alerts` : '·';
-              console.log(`  [${progressBar}] ${globalQueryNum}/${totalQueries} (${progressPercent}%) - "${baseQuery}" in ${country} → ${status}`);
-              
-              processedQueries++;
-            })
-            .catch(e => {
-              errorsOccurred++;
-              processedQueries++;
-              
-              const globalQueryNum = processedQueries;
-              const totalQueries = baseQueries.length * countries.length;
-              const progressPercent = Math.round((globalQueryNum / totalQueries) * 100);
-              const progressBar = '█'.repeat(Math.floor(progressPercent / 2)) + '░'.repeat(50 - Math.floor(progressPercent / 2));
-              
-              console.warn(`  [${progressBar}] ${globalQueryNum}/${totalQueries} (${progressPercent}%) - "${baseQuery}" in ${country} → ✗ ${e.toString().slice(0, 40)}`);
-            })
-        })
-      );
-      
-      await Promise.all(promises);
-      console.log(`✅ Batch ${batchNum}/${batchTotal} complete - Total: ${alertsCreated} alerts created, ${alertsFiltered} filtered, ${errorsOccurred} errors`);
-      
-      // Add delay between batches to respect Brave API rate limits
-      if (i + batchSize < baseQueries.length) {
-        console.log(`⏳ Waiting ${delayBetweenBatches}ms before next batch to avoid rate limiting...`);
-        await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
+          console.warn(`  [${progressBar}] ${globalQueryNum}/${totalQueries} (${progressPercent}%) - "${baseQuery}" in ${country} → ✗ ${e.toString().slice(0, 40)}`);
+        }
+        
+        // 1 second delay between EVERY request to respect Brave API rate limits (1 req/sec = safe)
+        if (queryIdx < baseQueries.length - 1 || countryIdx < countries.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
       }
     }
     
