@@ -60,6 +60,10 @@ export interface ScourContextType extends ScourState {
   runScour: (accessToken?: string, opts?: ScourStartOpts) => Promise<void>;
   stopScour: () => void;
   scourJobId: string | null;
+  // Methods for direct job management (used by Early Signals)
+  setScourJob: (job: ScourJob) => void;
+  setJobId: (jobId: string) => void;
+  startJobPolling: (jobId: string, accessToken?: string) => void;
 }
 
 // ============================================================================
@@ -319,6 +323,33 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
     stopPolling();
   }, [jobId, defaultAccessToken, stopPolling]);
 
+  // Helper methods for direct job management (used by Early Signals)
+  const setScourJobHelper = useCallback((job: ScourJob) => {
+    console.log(`[Scour] Directly setting scourJob:`, job);
+    setScourJob(job);
+  }, []);
+
+  const setJobIdHelper = useCallback((newJobId: string) => {
+    console.log(`[Scour] Directly setting jobId:`, newJobId);
+    setJobId(newJobId);
+  }, []);
+
+  const startJobPolling = useCallback((newJobId: string, token?: string) => {
+    console.log(`[Scour] Starting polling for jobId:`, newJobId);
+    setJobId(newJobId);
+    setIsScouring(true);
+    setLastError(null);
+    
+    // Start polling with fast interval for early signals
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+    }
+    
+    pollIntervalRef.current = setInterval(() => {
+      pollStatus(newJobId, token || defaultAccessToken);
+    }, 400); // Fast polling for real-time updates
+  }, [pollStatus, defaultAccessToken]);
+
   const value: ScourContextType = {
     isScouring,
     scourJob,
@@ -331,6 +362,9 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
     runScour: startScour,
     stopScour,
     scourJobId: jobId,
+    setScourJob: setScourJobHelper,
+    setJobId: setJobIdHelper,
+    startJobPolling,
   };
 
   return <ScourContext.Provider value={value}>{children}</ScourContext.Provider>;

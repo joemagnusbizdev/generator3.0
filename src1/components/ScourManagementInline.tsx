@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useScour } from './ScourContext';
 
 interface Source {
   id: string;
@@ -31,6 +32,7 @@ interface ScourManagementProps {
 }
 
 export default function ScourManagementInline({ accessToken }: ScourManagementProps) {
+  const { setScourJob, setJobId, startJobPolling } = useScour();
   const [sourceGroups, setSourceGroups] = useState<SourceGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [runningGroupId, setRunningGroupId] = useState<string | null>(null);
@@ -156,13 +158,25 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         
         const jobId = 'early-signals-' + Date.now();
         
-        // Start polling the job status BEFORE triggering the backend
-        // This ensures the UI starts watching for updates immediately
-        console.log(`[Early Signals] Starting scour polling for jobId: ${jobId}`);
-        await startScour(accessToken, { sourceIds: [], jobId });
+        // Directly set up the job in context for Early Signals
+        console.log(`[Early Signals] Setting up job in context for jobId: ${jobId}`);
+        setJobId(jobId);
+        setScourJob({
+          id: jobId,
+          status: 'running',
+          phase: 'early_signals',
+          processed: 0,
+          created: 0,
+          total: 3710, // Total queries
+        });
         
-        // Now trigger the actual Early Signals execution
-        const response = await fetch(
+        // Start polling the job status immediately
+        console.log(`[Early Signals] Starting polling for jobId: ${jobId}`);
+        startJobPolling(jobId, accessToken);
+        
+        // Now trigger the actual Early Signals execution in the background
+        // Don't await this - it will run asynchronously
+        fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/scour-worker`,
           {
             method: 'POST',
@@ -175,19 +189,20 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
               earlySignalsOnly: true,
             }),
           }
-        );
-
-        console.log(`[Early Signals] Response status: ${response.status}, ok: ${response.ok}`);
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`[Early Signals] Error response:`, errorText);
-          throw new Error(`Failed: ${response.status}`);
-        }
+        ).then(response => {
+          console.log(`[Early Signals] Response status: ${response.status}, ok: ${response.ok}`);
+          if (!response.ok) {
+            console.error(`[Early Signals] Error response status: ${response.status}`);
+          }
+          // Response will complete when Early Signals finishes
+          // But we don't wait for it - the polling system will handle it
+          return response.json();
+        }).then(result => {
+          console.log(`[Early Signals] Final result:`, result);
+        }).catch(e => {
+          console.error(`[Early Signals] Error:`, e);
+        });
         
-        // Response will complete when Early Signals finishes
-        // But we don't wait for it - the polling system will handle it
-        const result = await response.json();
-        console.log(`[Early Signals] Final result:`, result);
       } else {
         addStatusMessage(groupId, `Scouring ${group.sources.length} sources...`);
 
