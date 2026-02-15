@@ -1895,51 +1895,30 @@ async function updateJobStatus(jobId: string, jobData: any): Promise<void> {
   try {
     const key = `scour-job-${jobId}`;
     
-    // Get existing job data to preserve fields
-    let existingData: any = {};
-    try {
-      console.log(`[UPDATE_JOB_STATUS] Fetching existing data for key: ${key}`);
-      const existing = await querySupabaseRest(`/app_kv?key=eq.${key}&select=value`);
-      console.log(`[UPDATE_JOB_STATUS] Fetch result:`, existing ? `${existing.length} rows` : 'null');
-      
-      if (existing && existing.length > 0) {
-        const val = existing[0].value;
-        console.log(`[UPDATE_JOB_STATUS] Got value from app_kv, type: ${typeof val}, is string: ${typeof val === 'string'}`);
-        existingData = typeof val === 'string' ? JSON.parse(val) : val;
-        console.log(`[UPDATE_JOB_STATUS] Parsed existing data keys:`, Object.keys(existingData));
-      } else {
-        console.log(`[UPDATE_JOB_STATUS] No existing data found in app_kv`);
-      }
-    } catch (e: any) {
-      console.error(`[UPDATE_JOB_STATUS] Error fetching existing data:`, e.message);
-      // If fetch fails, just use empty object
-    }
-    
-    // Include accumulated activity logs
+    // Include accumulated activity logs - these are always included
     const logsToInclude = jobActivityLogs.get(jobId) || [];
-    console.log(`[UPDATE_JOB_STATUS] Updating jobId: ${jobId}, logs available: ${logsToInclude.length}, existing fields: ${Object.keys(existingData).length}`);
+    console.log(`[UPDATE_JOB_STATUS] Saving jobId: ${jobId} with ${logsToInclude.length} logs`);
     
-    const valueWithLogs = {
-      ...existingData,  // Start with existing data to preserve all fields
-      ...jobData,       // Override with new data
+    // Simply merge the new job data with the logs
+    // The jobData passed in should contain all fields we want to save
+    const valueToSave = {
+      ...jobData,
       activityLog: logsToInclude
     };
-    const value = JSON.stringify(valueWithLogs);
     
-    console.log(`[UPDATE_JOB_STATUS] Saving data with activityLog array (${logsToInclude.length} entries) to app_kv, total fields: ${Object.keys(valueWithLogs).length}`);
+    const value = JSON.stringify(valueToSave);
+    console.log(`[UPDATE_JOB_STATUS] Payload size: ${value.length} bytes, activityLog entries: ${logsToInclude.length}`);
     
     // Try to update first with WHERE clause
     try {
-      const response = await querySupabaseRest(`/app_kv?key=eq.${key}`, {
+      await querySupabaseRest(`/app_kv?key=eq.${key}`, {
         method: 'PATCH',
         headers: { 'Prefer': 'return=minimal' },
         body: JSON.stringify({ value }),
       });
-      // If update succeeded, we're done
-      console.log(`[UPDATE_JOB_STATUS] Successfully updated job status for ${jobId}`);
+      console.log(`[UPDATE_JOB_STATUS] ✓ Updated ${jobId}`);
       return;
     } catch (e: any) {
-      console.log(`[UPDATE_JOB_STATUS] PATCH failed, trying insert:`, e.message);
       // If update fails (no rows affected), insert
       if (e.message?.includes('404') || e.message?.includes('no rows')) {
         try {
@@ -1947,10 +1926,9 @@ async function updateJobStatus(jobId: string, jobData: any): Promise<void> {
             method: 'POST',
             body: JSON.stringify({ key, value }),
           });
-          console.log(`[UPDATE_JOB_STATUS] Successfully inserted new job status for ${jobId}`);
+          console.log(`[UPDATE_JOB_STATUS] ✓ Inserted ${jobId}`);
           return;
         } catch (insertErr: any) {
-          console.log(`[UPDATE_JOB_STATUS] INSERT failed, trying PATCH again:`, insertErr.message);
           // If insert also fails with duplicate, try PATCH one more time
           if (insertErr.message?.includes('23505')) {
             await querySupabaseRest(`/app_kv?key=eq.${key}`, {
@@ -1958,7 +1936,7 @@ async function updateJobStatus(jobId: string, jobData: any): Promise<void> {
               headers: { 'Prefer': 'return=minimal' },
               body: JSON.stringify({ value }),
             });
-            console.log(`[UPDATE_JOB_STATUS] Resolved duplicate - updated job status for ${jobId}`);
+            console.log(`[UPDATE_JOB_STATUS] ✓ Updated ${jobId} (retry)`);
             return;
           }
           throw insertErr;
@@ -1967,7 +1945,7 @@ async function updateJobStatus(jobId: string, jobData: any): Promise<void> {
       throw e;
     }
   } catch (e: any) {
-    console.warn(`[updateJobStatus] Failed to update status for ${jobId}: ${e.message}`);
+    console.warn(`[UPDATE_JOB_STATUS] ✗ Failed for ${jobId}: ${e.message}`);
   }
 }
 
