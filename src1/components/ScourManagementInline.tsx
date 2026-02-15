@@ -32,14 +32,6 @@ interface ScourManagementProps {
 }
 
 export default function ScourManagementInline({ accessToken }: ScourManagementProps) {
-  const { setScourJob, setJobId, startJobPolling } = useScour();
-  
-  // DEBUG: Verify setScourJob is the right function
-  console.log(`[ScourManagementInline] useScour destructure result:`, { 
-    hasSetScourJob: !!setScourJob,
-    setScourJobType: typeof setScourJob,
-    setScourJobName: setScourJob?.name
-  });
   const [sourceGroups, setSourceGroups] = useState<SourceGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [runningGroupId, setRunningGroupId] = useState<string | null>(null);
@@ -58,17 +50,6 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
 
     return () => clearInterval(interval);
   }, [accessToken]);
-
-  // Clear runningGroupId when Early Signals job completes
-  useEffect(() => {
-    if (runningGroupId === 'early-signals') {
-      const earlySignalsGroup = sourceGroups.find(g => g.id === 'early-signals');
-      if (earlySignalsGroup && (earlySignalsGroup.status === 'completed' || earlySignalsGroup.status === 'error')) {
-        console.log(`[Early Signals] Job completed with status: ${earlySignalsGroup.status}, clearing runningGroupId`);
-        setRunningGroupId(null);
-      }
-    }
-  }, [sourceGroups, runningGroupId]);
 
   const addStatusMessage = (groupId: string, message: string) => {
     setStatusMessages(prev => ({ ...prev, [groupId]: message }));
@@ -170,133 +151,81 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
     addStatusMessage(groupId, 'Starting...');
 
     try {
-      if (groupId === 'early-signals') {
-        console.log(`[Early Signals] Starting early signals scour...`);
-        addStatusMessage(groupId, 'Triggering early signals...');
-        
-        const jobId = 'early-signals-' + Date.now();
-        
-        // Directly set up the job in context for Early Signals
-        console.log(`[Early Signals] Setting up job in context for jobId: ${jobId}`);
-        setJobId(jobId);
-        setScourJob({
-          id: jobId,
-          status: 'running',
-          phase: 'early_signals',
-          processed: 0,
-          created: 0,
-          total: 3710, // Total queries
-        });
-        
-        // Start polling the job status immediately
-        console.log(`[Early Signals] Starting polling for jobId: ${jobId}`);
-        startJobPolling(jobId, accessToken);
-        
-        // Now trigger the actual Early Signals execution in the background
-        // Don't await this - it will run asynchronously
-        fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/scour-worker`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              jobId,
-              earlySignalsOnly: true,
-            }),
-          }
-        ).then(response => {
-          console.log(`[Early Signals] Response status: ${response.status}, ok: ${response.ok}`);
-          if (!response.ok) {
-            console.error(`[Early Signals] Error response status: ${response.status}`);
-          }
-          // Response will complete when Early Signals finishes
-          // But we don't wait for it - the polling system will handle it
-          return response.json();
-        }).then(result => {
-          console.log(`[Early Signals] Final result:`, result);
-        }).catch(e => {
-          console.error(`[Early Signals] Error:`, e);
-        });
-        
+      addStatusMessage(groupId, `Scouring ${group.sources.length} sources...`);
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/scour-worker`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            jobId: groupId,
+            sourceIds: groupId === 'early-signals' ? [] : group.sources.map(s => s.id),
+            earlySignalsOnly: groupId === 'early-signals',
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Scour failed');
+      }
+
+      const result = await response.json();
+      const alerts = result.created || 0;
+      const dupes = result.duplicatesSkipped || 0;
+      const errors = result.errorCount || 0;
+      const disabledSourceIds = result.disabled_source_ids || result.error_source_ids || [];
+      const now = new Date().toISOString();
+      
+      if (errors > 0 && disabledSourceIds.length === 0) {
+        addStatusMessage(groupId, `⚠️ Created ${alerts} alerts, ${dupes} dupes, ${errors} errors (sources with errors will be disabled)`);
       } else {
-        addStatusMessage(groupId, `Scouring ${group.sources.length} sources...`);
+        addStatusMessage(groupId, `Created ${alerts} alerts, ${dupes} dupes`);
+      }
 
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/scour-worker`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              jobId: groupId,
-              sourceIds: group.sources.map(s => s.id),
-            }),
-          }
-        );
-
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Scour failed');
-        }
-
-        const result = await response.json();
-        const alerts = result.created || 0;
-        const dupes = result.duplicatesSkipped || 0;
-        const errors = result.errorCount || 0;
-        const disabledSourceIds = result.disabled_source_ids || result.error_source_ids || [];
-        const now = new Date().toISOString();
-        
-        if (errors > 0 && disabledSourceIds.length === 0) {
-          addStatusMessage(groupId, `⚠️ Created ${alerts} alerts, ${dupes} dupes, ${errors} errors (sources with errors will be disabled)`);
-        } else {
-          addStatusMessage(groupId, `Created ${alerts} alerts, ${dupes} dupes`);
-        }
-
-        // Update group with results and disabled sources
-        setSourceGroups(prev =>
-          prev.map(g =>
-            g.id === groupId
-              ? { 
-                  ...g, 
-                  status: 'completed', 
-                  lastScourTime: now,
-                  // Remove disabled sources from the group
-                  sources: g.sources.filter(s => !disabledSourceIds.includes(s.id)),
-                  results: { 
-                    alerts_created: alerts, 
-                    duplicates_skipped: dupes, 
-                    errors: errors, 
-                    disabled_sources: disabledSourceIds.length, 
-                    disabled_source_ids: disabledSourceIds 
-                  } 
-                }
-              : g
-          )
-        );
-
-        if (disabledSourceIds.length > 0) {
-          addStatusMessage(groupId, `Disabling ${disabledSourceIds.length} sources due to errors...`);
-          for (const sourceId of disabledSourceIds) {
-            await fetch(
-              `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/sources?id=eq.${sourceId}`,
-              {
-                method: 'PATCH',
-                headers: {
-                  Authorization: `Bearer ${accessToken}`,
-                  apikey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ enabled: false }),
+      // Update group with results and disabled sources
+      setSourceGroups(prev =>
+        prev.map(g =>
+          g.id === groupId
+            ? { 
+                ...g, 
+                status: 'completed', 
+                lastScourTime: now,
+                // Remove disabled sources from the group (only for non-Early Signals)
+                sources: groupId === 'early-signals' ? g.sources : g.sources.filter(s => !disabledSourceIds.includes(s.id)),
+                results: { 
+                  alerts_created: alerts, 
+                  duplicates_skipped: dupes, 
+                  errors: errors, 
+                  disabled_sources: disabledSourceIds.length, 
+                  disabled_source_ids: disabledSourceIds 
+                } 
               }
-            );
-          }
-          addStatusMessage(groupId, 'Done');
+            : g
+        )
+      );
+
+      if (disabledSourceIds.length > 0 && groupId !== 'early-signals') {
+        addStatusMessage(groupId, `Disabling ${disabledSourceIds.length} sources due to errors...`);
+        for (const sourceId of disabledSourceIds) {
+          await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/sources?id=eq.${sourceId}`,
+            {
+              method: 'PATCH',
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                apikey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ enabled: false }),
+            }
+          );
         }
+        addStatusMessage(groupId, 'Done');
       }
 
       const allDone = sourceGroups.every(g => g.id === groupId || g.status === 'completed');
@@ -311,11 +240,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
           : g
       ));
     } finally {
-      // For Early Signals, don't clear runningGroupId here - let polling handle it
-      // For other scours, clear immediately since they complete in this function
-      if (groupId !== 'early-signals') {
-        setRunningGroupId(null);
-      }
+      setRunningGroupId(null);
     }
   };
 
