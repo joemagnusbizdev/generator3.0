@@ -38,7 +38,19 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
   // Fetch live logs from server and parse Early Signals progress
   // Also try to use activityLog from scourJob directly if available
   useEffect(() => {
-    if (!scourJob?.id || !isScouring) return;
+    console.log(`[EarlySignals.useEffect] Triggered:`, { 
+      scourJobId: scourJob?.id, 
+      isScouring,
+      hasActivityLog: !!scourJob?.activityLog,
+      activityLogLength: scourJob?.activityLog?.length,
+      activityLogType: typeof scourJob?.activityLog,
+      isArray: Array.isArray(scourJob?.activityLog)
+    });
+    
+    if (!scourJob?.id || !isScouring) {
+      console.log(`[EarlySignals.useEffect] Returning early: scourJobId=${scourJob?.id}, isScouring=${isScouring}`);
+      return;
+    }
 
     // First, use activityLog from scourJob if available (already polled every 400ms)
     if (scourJob.activityLog && Array.isArray(scourJob.activityLog) && scourJob.activityLog.length > 0) {
@@ -107,7 +119,7 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
     }, 2000); // Poll every 2 seconds
 
     return () => clearInterval(interval);
-  }, [scourJob?.id, scourJob?.activityLog, isScouring, accessToken]);
+  }, [scourJob?.id, scourJob?.activityLog?.length, isScouring, accessToken]);
 
   // Track early signals phase - keep running true while in early_signals phase
   useEffect(() => {
