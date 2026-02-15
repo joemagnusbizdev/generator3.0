@@ -229,42 +229,67 @@ async function setKV(key: string, value: any) {
 // ============================================================================
 
 async function fetchWithBraveSearch(query: string, apiKey: string): Promise<{ content: string; primaryUrl: string | null }> {
-  try {
-    const searchUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout for Brave API
-    
-    const response = await fetch(searchUrl, {
-      headers: { 'Accept': 'application/json', 'X-Subscription-Token': apiKey },
-      signal: controller.signal,
-    });
-    
-    clearTimeout(timeout);
-    
-    // Check for quota exceeded - throw special error to skip retries
-    if (response.status === 402) {
-      throw new Error('BRAVE_QUOTA_EXCEEDED');
+  const maxRetries = 3;
+  let retryCount = 0;
+  
+  while (retryCount < maxRetries) {
+    try {
+      const searchUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout for Brave API
+      
+      const response = await fetch(searchUrl, {
+        headers: { 'Accept': 'application/json', 'X-Subscription-Token': apiKey },
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeout);
+      
+      // Check for quota exceeded - throw special error to skip retries
+      if (response.status === 402) {
+        throw new Error('BRAVE_QUOTA_EXCEEDED');
+      }
+      
+      // Handle rate limiting (429) with exponential backoff
+      if (response.status === 429) {
+        retryCount++;
+        if (retryCount < maxRetries) {
+          const backoffMs = Math.min(1000 * Math.pow(2, retryCount - 1), 8000); // 1s, 2s, 4s max
+          console.warn(`⚠️ Brave API rate limited (429). Retrying in ${backoffMs}ms (attempt ${retryCount}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+          continue; // Retry
+        } else {
+          console.warn(`⚠️ Brave API rate limited after ${maxRetries} retries. Skipping query.`);
+          return { content: '', primaryUrl: null };
+        }
+      }
+      
+      if (!response.ok) throw new Error(`Brave API error: ${response.status}`);
+      
+      const data = await response.json();
+      const results = data.web || [];
+      
+      if (!results.length) return { content: '', primaryUrl: null };
+      
+      // Combine top results into content (GAP 9: min 500 chars)
+      let content = results.slice(0, 5).map((r: any) => {
+        return `Title: ${r.title}\nDescription: ${r.description || ''}\n`;
+      }).join('\n');
+      
+      const primaryUrl = results[0]?.url || null;
+      
+      return { content, primaryUrl };
+    } catch (e: any) {
+      if (e.message === 'BRAVE_QUOTA_EXCEEDED') {
+        console.warn(`💥 Brave API quota exceeded. Early signals paused.`);
+        return { content: '', primaryUrl: null };
+      }
+      console.warn(`Brave search failed: ${e.message}. Will fall back to scraping.`);
+      return { content: '', primaryUrl: null };
     }
-    
-    if (!response.ok) throw new Error(`Brave API error: ${response.status}`);
-    
-    const data = await response.json();
-    const results = data.web || [];
-    
-    if (!results.length) return { content: '', primaryUrl: null };
-    
-    // Combine top results into content (GAP 9: min 500 chars)
-    let content = results.slice(0, 5).map((r: any) => {
-      return `Title: ${r.title}\nDescription: ${r.description || ''}\n`;
-    }).join('\n');
-    
-    const primaryUrl = results[0]?.url || null;
-    
-    return { content, primaryUrl };
-  } catch (e: any) {
-    console.warn(`Brave search failed: ${e.message}. Will fall back to scraping.`);
-    return { content: '', primaryUrl: null };
   }
+  
+  return { content: '', primaryUrl: null };
 }
 
 async function scrapeUrl(url: string): Promise<string> {
@@ -2080,7 +2105,11 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
     const priorityBatch = countries.slice(0, ISRAELI_TOURISM_PRIORITY.length);
     const standardBatch = countries.slice(ISRAELI_TOURISM_PRIORITY.length);
     
-    const batchSize = 6; // Increased parallel batch size for efficiency
+    // Reduced batch size to avoid Brave API rate limiting
+    // 6 parallel requests × 60 queries = 360 concurrent - was causing 429 errors
+    // Now using 3 parallel to stay within Brave API limits
+    const batchSize = 3;
+    const delayBetweenBatches = 2000; // 2 second delay between batches to prevent rate limiting
     let processedQueries = 0;
     
     // Process Israeli tourism destinations with more queries (higher priority)
@@ -2137,6 +2166,12 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
       const batchNum = Math.floor(i / batchSize) + 1;
       const batchTotal = Math.ceil(baseQueries.length / batchSize);
       console.log(`⚡ Batch ${batchNum}/${batchTotal} complete - ${alertsCreated} alerts created, ${alertsFiltered} filtered`);
+      
+      // Add delay between batches to respect Brave API rate limits
+      if (i + batchSize < baseQueries.length) {
+        console.log(`⏳ Waiting ${delayBetweenBatches}ms before next batch to avoid rate limiting...`);
+        await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
+      }
     }
     
     console.log(`⚡ Early Signals ISRAELI TOURISM EDITION complete: ${alertsCreated} alerts created, ${alertsFiltered} filtered by confidence`);
