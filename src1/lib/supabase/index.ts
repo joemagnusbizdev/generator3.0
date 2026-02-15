@@ -464,6 +464,31 @@ Deno.serve(async (req) => {
       );
     }
 
+    // POST /alerts/:id/publish - Forward to clever-function (alias for approve)
+    if ((path.includes("/alerts/") && path.includes("/publish")) && req.method === "POST") {
+      console.log("[Supabase Proxy] POST /alerts/:id/publish - forwarding to clever-function");
+      const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/clever-function${path}`, {
+        method: "POST",
+        headers: {
+          "Authorization": req.headers.get("authorization") || "",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({})
+      });
+      
+      const data = await response.json();
+      return new Response(
+        JSON.stringify(data),
+        {
+          status: response.status,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          }
+        }
+      );
+    }
+
     // PATCH /alerts/:id
     if ((path.startsWith("/alerts/") || path.startsWith("/clever-function/alerts/")) && req.method === "PATCH") {
       const parts = path.split("/");

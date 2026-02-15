@@ -19,6 +19,7 @@ export interface Alert {
   country?: string;
   region?: string;
   event_type?: string;
+  intelligence_topics?: string;
   created_at?: string;
   status?: string;
 }
@@ -154,8 +155,8 @@ export function EnhancedAlertCard({
         {alert.region && (
           <span> {alert.region}</span>
         )}
-        {alert.event_type && (
-          <span> {alert.event_type}</span>
+        {(alert.intelligence_topics || alert.event_type) && (
+          <span> {alert.intelligence_topics || alert.event_type}</span>
         )}
         {alert.created_at && (
           <span> {new Date(alert.created_at).toLocaleDateString()}</span>

@@ -854,28 +854,23 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
       }
     }
 
-    // POST /trends/rebuild - Rebuild trend definitions from approved/dismissed alerts
+    // POST /trends/rebuild - Rebuild trend definitions from dismissed alerts only
     if ((path === "/trends/rebuild" || path === "/clever-function/trends/rebuild") && method === "POST") {
       try {
         console.log("[Trends] Starting rebuild...");
         
-        // Get all approved and posted alerts, plus all dismissed alerts in the last 14 days
+        // Get ONLY dismissed alerts in the last 14 days (not approved - those are already published)
+        // Trends help identify patterns in rejected/dismissed alerts for future improvements
         const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-        console.log(`[Trends] Rebuild: Filtering alerts from ${fourteenDaysAgo} onwards`);
+        console.log(`[Trends] Rebuild: Filtering dismissed alerts from ${fourteenDaysAgo} onwards`);
         
-        const approvedAlerts = await querySupabaseRest(
-          `/alerts?status=eq.approved&wordpress_post_id=not.is.null&created_at=gte.${encodeURIComponent(fourteenDaysAgo)}&order=created_at.desc`
-        );
         const dismissedAlerts = await querySupabaseRest(
           `/alerts?status=eq.dismissed&created_at=gte.${encodeURIComponent(fourteenDaysAgo)}&order=created_at.desc`
         );
         
-        const allAlerts = [
-          ...(Array.isArray(approvedAlerts) ? approvedAlerts : []),
-          ...(Array.isArray(dismissedAlerts) ? dismissedAlerts : [])
-        ];
+        const allAlerts = Array.isArray(dismissedAlerts) ? dismissedAlerts : [];
         
-        console.log(`[Trends] Found ${allAlerts.length} eligible alerts in last 14 days (${approvedAlerts?.length || 0} approved, ${dismissedAlerts?.length || 0} dismissed)`);
+        console.log(`[Trends] Found ${allAlerts.length} dismissed alerts in last 14 days for trend analysis`);
         if (allAlerts.length > 0) {
           const oldestAlert = allAlerts.reduce((oldest, a) => {
             const aDate = new Date(a.created_at).getTime();
@@ -985,12 +980,11 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
           trends, 
           count: trends.length,
           diagnostics: {
-            total_alerts_analyzed: allAlerts.length,
+            total_dismissed_alerts_analyzed: allAlerts.length,
             date_window: `${fourteenDaysAgo} to now`,
-            approved_alerts: Array.isArray(approvedAlerts) ? approvedAlerts.length : 0,
-            dismissed_alerts: Array.isArray(dismissedAlerts) ? dismissedAlerts.length : 0,
             trend_groups_found: Object.keys(trendGroups).length,
-            trends_created: trends.length
+            trends_created: trends.length,
+            note: "Trends are created from DISMISSED alerts only - helps identify patterns in rejected content"
           }
         });
       } catch (err: any) {

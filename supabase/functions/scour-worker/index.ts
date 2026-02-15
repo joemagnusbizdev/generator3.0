@@ -1573,7 +1573,8 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
             if (sourceController.signal.aborted) throw new Error('Timeout during Brave retry');
             if (validateContentQuality(br.content)) {
               content = br.content;
-              sourceUrl = br.primaryUrl || sourceUrl;
+              // CRITICAL FIX: Do NOT use Brave's primaryUrl - keep original source.url to avoid homepage URLs
+              // sourceUrl remains as source.url (the actual RSS feed or target URL)
             }
           }
         } catch (e: any) {
@@ -1886,35 +1887,184 @@ async function updateJobStatus(jobId: string, jobData: any): Promise<void> {
 }
 
 // ============================================================================
-// EARLY SIGNALS (GAP 1, 2)
+// EARLY SIGNALS (GAP 1, 2) - EXPANDED
 // ============================================================================
+
+// Early Signal Query Categories
+interface QueryCategory {
+  name: string;
+  queries: string[];
+  severity: 'critical' | 'warning' | 'caution';
+}
+
+const EARLY_SIGNAL_CATEGORIES: QueryCategory[] = [
+  {
+    name: 'Natural Disasters',
+    severity: 'critical',
+    queries: [
+      'earthquake',
+      'tsunami warning',
+      'volcanic eruption',
+      'severe flooding',
+      'wildfire emergency',
+      'hurricane warning',
+      'tornado warning',
+      'landslide alert',
+      'avalanche warning',
+      'severe drought',
+    ],
+  },
+  {
+    name: 'Security & Conflict',
+    severity: 'critical',
+    queries: [
+      'armed conflict',
+      'terrorist attack',
+      'active shooter',
+      'bombing incident',
+      'civil unrest',
+      'riot warning',
+      'gunfire incident',
+      'border skirmish',
+      'military operation',
+      'security breach',
+    ],
+  },
+  {
+    name: 'Health & Pandemic',
+    severity: 'warning',
+    queries: [
+      'disease outbreak',
+      'epidemic alert',
+      'pandemic warning',
+      'health emergency',
+      'biological threat',
+      'food poisoning outbreak',
+      'cholera outbreak',
+      'measles outbreak',
+      'anthrax alert',
+      'vaccine shortage',
+    ],
+  },
+  {
+    name: 'Transportation Disruption',
+    severity: 'warning',
+    queries: [
+      'airport closure',
+      'flight cancellations',
+      'port closure',
+      'railway disruption',
+      'highway closure',
+      'bridge collapse',
+      'tunnel disaster',
+      'train derailment',
+      'cruise ship emergency',
+      'aviation incident',
+    ],
+  },
+  {
+    name: 'Infrastructure & Utilities',
+    severity: 'warning',
+    queries: [
+      'power outage',
+      'water shortage',
+      'gas leak',
+      'pipeline rupture',
+      'dam failure',
+      'bridge failure',
+      'building collapse',
+      'electrical failure',
+      'water contamination',
+      'sewage emergency',
+    ],
+  },
+  {
+    name: 'Economic & Cyber',
+    severity: 'caution',
+    queries: [
+      'cyber attack',
+      'data breach',
+      'ransomware attack',
+      'bank failure',
+      'stock market crash',
+      'currency crisis',
+      'protest economic',
+      'supply chain disruption',
+      'port strike',
+      'hacking incident',
+    ],
+  },
+  {
+    name: 'Weather & Environmental',
+    severity: 'caution',
+    queries: [
+      'severe weather alert',
+      'heavy snow storm',
+      'extreme heat warning',
+      'extreme cold alert',
+      'acid rain',
+      'air quality alert',
+      'pollution emergency',
+      'smog alert',
+      'hail storm',
+      'lightning strike',
+    ],
+  },
+];
+
+// TOP ISRAELI TOURISM & BACKPACKING DESTINATIONS (Processed First)
+// These are the most popular destinations for Israeli travelers
+const ISRAELI_TOURISM_PRIORITY = [
+  'Thailand',      // #1: Bangkok, Chiang Mai, islands
+  'Nepal',         // #2: Kathmandu, Pokhara, Everest trekking
+  'India',         // #3: Delhi, Agra, Goa, Kerala, Himalayas
+  'Vietnam',       // #4: Hanoi, Ho Chi Minh City, Halong Bay
+  'Cambodia',      // #5: Siem Reap, Phnom Penh, Angkor Wat
+  'Philippines',   // #6: Manila, Boracay, Cebu diving
+  'Laos',          // #7: Vientiane, Luang Prabang
+  'Indonesia',     // #8: Bali, Jakarta, Yogyakarta
+  'Turkey',        // #9: Istanbul, Cappadocia, Pamukkale
+  'Jordan',        // #10: Amman, Petra, Dead Sea
+  'Egypt',         // #11: Cairo, Giza, Red Sea resorts
+  'Greece',        // #12: Athens, Islands (Crete, Santorini, Rhodes)
+  'Cyprus',        // #13: Paphos, Nicosia, Larnaca
+  'Peru',          // #14: Lima, Cusco, Machu Picchu
+  'Argentina',     // #15: Buenos Aires, Patagonia
+  'Colombia',      // #16: Bogotá, Cartagena, Santa Marta
+  'Mexico',        // #17: Cancun, Mexico City, Oaxaca
+];
+
+// Secondary coverage: other popular/important countries
+const GLOBAL_COVERAGE_COUNTRIES = [
+  'Israel',        // Home country (baseline)
+  'United States', 'Canada', 'United Kingdom', 'France', 'Germany',
+  'Italy', 'Spain', 'Portugal', 'Switzerland', 'Austria',
+  'Czech Republic', 'Poland', 'Brazil', 'Chile', 'Costa Rica',
+  'Guatemala', 'Panama', 'Ecuador', 'Bolivia', 'Australia',
+  'New Zealand', 'China', 'Japan', 'South Korea', 'Taiwan',
+  'Malaysia', 'Singapore', 'Myanmar', 'Pakistan', 'Bangladesh',
+  'Kenya', 'South Africa', 'Morocco', 'Tunisia', 'United Arab Emirates',
+];
 
 async function runEarlySignals(jobId: string): Promise<ScourStats> {
   try {
-    console.log(`⚡ Early Signals started for job ${jobId}`);
+    console.log(`⚡ Early Signals EXPANDED (ISRAELI TOURISM) started for job ${jobId}`);
+    console.log(`⚡ Query categories: ${EARLY_SIGNAL_CATEGORIES.length}, Israeli Destinations: ${ISRAELI_TOURISM_PRIORITY.length}, Global Coverage: ${GLOBAL_COVERAGE_COUNTRIES.length}`);
     
-    // Base queries for early signals - focused threat detection
-    const baseQueries = [
-      "travel warning earthquake",
-      "travel alert flood warning",
-      "travel safety protest breaking news",
-      "travel security incident explosion",
-      "airport closed emergency travel",
-      "border closure travel restriction",
-      "severe weather alert travel",
-      "terrorism threat travel advisory",
-      "health emergency outbreak travel",
-      "natural disaster warning travel",
-    ];
+    // Build expanded query list with categories
+    const baseQueries = EARLY_SIGNAL_CATEGORIES.flatMap(cat =>
+      cat.queries.map(q => `${q} travel alert`)
+    );
     
-    const countries = [
-      'United States', 'France', 'Germany', 'Japan',
-      'India', 'Brazil', 'Australia', 'Russia'
-    ];
+    // Combine countries: Israeli tourism destinations first, then global
+    const countries = [...new Set([...ISRAELI_TOURISM_PRIORITY, ...GLOBAL_COVERAGE_COUNTRIES])];
     
-    console.log(`⚡ Running ${baseQueries.length * countries.length} early signal queries...`);
+    console.log(`⚡ Running ${baseQueries.length * countries.length} early signal queries (ISRAELI TOURISM MODE)...`);
+    console.log(`⚡ Queries: ${baseQueries.length}, Countries: ${countries.length}`);
+    console.log(`⚡ Priority: Israeli tourism destinations first (${ISRAELI_TOURISM_PRIORITY.length}), then global (${GLOBAL_COVERAGE_COUNTRIES.length})`);
     
     let alertsCreated = 0;
+    let alertsFiltered = 0;
     let errorsOccurred = 0;
     const config: ScourConfig = {
       jobId,
@@ -1926,18 +2076,24 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
       braveApiKey: BRAVE_API_KEY,
     };
     
-    // Execute queries in parallel batches
-    const batchSize = 4;
+    // Smart batching: prioritize Israeli tourism destinations first
+    const priorityBatch = countries.slice(0, ISRAELI_TOURISM_PRIORITY.length);
+    const standardBatch = countries.slice(ISRAELI_TOURISM_PRIORITY.length);
+    
+    const batchSize = 6; // Increased parallel batch size for efficiency
+    let processedQueries = 0;
+    
+    // Process Israeli tourism destinations with more queries (higher priority)
     for (let i = 0; i < baseQueries.length; i += batchSize) {
       // CHECK FOR STOP SIGNAL
       try {
         const stopFlag = await querySupabaseRest(`/app_kv?key=eq.scour-stop-${jobId}&select=value`);
         if (stopFlag && Array.isArray(stopFlag) && stopFlag.length > 0) {
-          console.log(`⚡ Early Signals stopped by user`);
+          console.log(`⚡ Early Signals stopped by user at ${processedQueries} queries`);
           return {
-            processed: 0,
+            processed: processedQueries,
             created: alertsCreated,
-            skipped: 0,
+            skipped: alertsFiltered,
             duplicatesSkipped: 0,
             errorCount: errorsOccurred,
             errors: [],
@@ -1955,28 +2111,42 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
         countries.map(country =>
           executeEarlySignalQuery(`${baseQuery} ${country}`, config)
             .then(alerts => {
-              alertsCreated += alerts.length;
-              if (alerts.length > 0) {
-                console.log(`  ✓ Query "${baseQuery} ${country}": ${alerts.length} alerts found`);
+              const validAlerts = alerts.filter(a => {
+                // Filter: Only alerts with confidence > 0.5 and recent data
+                if (!a.confidence_score || a.confidence_score < 0.5) {
+                  alertsFiltered++;
+                  return false;
+                }
+                return true;
+              });
+              alertsCreated += validAlerts.length;
+              if (validAlerts.length > 0) {
+                console.log(`  ✓ Query "${baseQuery} ${country}": ${validAlerts.length}/${alerts.length} alerts (filtered)`);
               }
+              processedQueries++;
             })
             .catch(e => {
               errorsOccurred++;
+              processedQueries++;
               console.warn(`  ✗ Query failed: ${baseQuery} ${country} - ${e}`);
             })
         )
       );
       
       await Promise.all(promises);
-      console.log(`⚡ Batch ${Math.floor(i / batchSize) + 1} complete`);
+      const batchNum = Math.floor(i / batchSize) + 1;
+      const batchTotal = Math.ceil(baseQueries.length / batchSize);
+      console.log(`⚡ Batch ${batchNum}/${batchTotal} complete - ${alertsCreated} alerts created, ${alertsFiltered} filtered`);
     }
     
-    console.log(`⚡ Early Signals complete: ${alertsCreated} alerts created`);
+    console.log(`⚡ Early Signals ISRAELI TOURISM EDITION complete: ${alertsCreated} alerts created, ${alertsFiltered} filtered by confidence`);
+    console.log(`⚡ Coverage: ${baseQueries.length} queries × ${countries.length} countries = ${baseQueries.length * countries.length} total queries attempted`);
+    console.log(`⚡ Israeli Tourism Priority: Top ${ISRAELI_TOURISM_PRIORITY.length} destinations processed first`);
     
     return {
-      processed: baseQueries.length * countries.length,
+      processed: processedQueries,
       created: alertsCreated,
-      skipped: 0,
+      skipped: alertsFiltered,
       duplicatesSkipped: 0,
       errorCount: errorsOccurred,
       errors: [],

@@ -61,7 +61,7 @@ const HealthCheckModal: React.FC<HealthCheckModalProps> = ({ isOpen, onClose, ac
       '/alerts (GET)': { ok: false, message: 'Testing...' },
       '/admin/users (GET)': { ok: false, message: 'Testing...' },
       '/trends (GET)': { ok: false, message: 'Testing...' },
-      '/status (GET)': { ok: false, message: 'Testing...' },
+      '/scour/status (GET)': { ok: false, message: 'Testing...' },
     };
 
     // Test each route with a timeout
@@ -69,7 +69,7 @@ const HealthCheckModal: React.FC<HealthCheckModalProps> = ({ isOpen, onClose, ac
       { key: '/alerts (GET)', path: '/alerts?limit=1' },
       { key: '/admin/users (GET)', path: '/admin/users' },
       { key: '/trends (GET)', path: '/trends' },
-      { key: '/status (GET)', path: '/status' },
+      { key: '/scour/status (GET)', path: '/scour/status' },
     ];
 
     for (const route of testRoutes) {

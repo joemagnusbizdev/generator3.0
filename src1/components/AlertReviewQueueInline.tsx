@@ -153,10 +153,10 @@ const SEVERITY_META: Record<
   Alert["severity"],
   { emoji: string; label: string; color: string; bgColor?: string }
 > = {
-  critical: { emoji: "", label: "CRITICAL", color: "text-white px-3 py-1 rounded-full font-semibold", bgColor: MAGNUS_COLORS.critical },
-  warning: { emoji: "", label: "WARNING", color: "text-white px-3 py-1 rounded-full font-semibold", bgColor: MAGNUS_COLORS.warning },
-  caution: { emoji: "", label: "CAUTION", color: "text-white px-3 py-1 rounded-full font-semibold", bgColor: MAGNUS_COLORS.caution },
-  informative: { emoji: "", label: "INFO", color: "text-white px-3 py-1 rounded-full font-semibold", bgColor: MAGNUS_COLORS.informative },
+  critical: { emoji: "🚩", label: "CRITICAL", color: "text-white px-3 py-1 rounded-full font-semibold", bgColor: MAGNUS_COLORS.critical },
+  warning: { emoji: "⚠️", label: "WARNING", color: "text-white px-3 py-1 rounded-full font-semibold", bgColor: MAGNUS_COLORS.warning },
+  caution: { emoji: "🟡", label: "CAUTION", color: "text-white px-3 py-1 rounded-full font-semibold", bgColor: MAGNUS_COLORS.caution },
+  informative: { emoji: "ℹ️", label: "INFO", color: "text-white px-3 py-1 rounded-full font-semibold", bgColor: MAGNUS_COLORS.informative },
 };
 
 function formatEventTime(a: Alert) {
@@ -266,9 +266,9 @@ function normalizeRecommendations(raw?: string | string[] | null): string[] {
     // not JSON
   }
 
-  // Split on newlines or commas
+  // Split on newlines only (not commas - commas are part of normal text)
   const fromLines = text
-    .split(/\r?\n|,/)
+    .split(/\r?\n/)
     .map((line) => line.replace(/^[-*\d\.\)\s]+/, "").trim())
     .filter(Boolean);
   if (fromLines.length > 1) return fromLines;
