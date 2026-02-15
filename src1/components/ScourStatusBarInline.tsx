@@ -27,6 +27,17 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
   const [showLogs, setShowLogs] = useState(false);
   const [liveLogs, setLiveLogs] = useState<Array<{ time: string; message: string }>>([]);
 
+  // DEBUG: Log scourJob changes
+  useEffect(() => {
+    console.log(`[ScourStatusBarInline] scourJob updated:`, { 
+      id: scourJob?.id, 
+      phase: scourJob?.phase, 
+      status: scourJob?.status,
+      processed: scourJob?.processed,
+      activityLogLength: scourJob?.activityLog?.length
+    });
+  }, [scourJob]);
+
   // Reset early signals flag when scour completes
   useEffect(() => {
     if (!isScouring && scourJob?.status === "done" && runningEarlySignals) {
