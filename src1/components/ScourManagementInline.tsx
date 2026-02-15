@@ -88,6 +88,18 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
     setStatusMessages(prev => ({ ...prev, [groupId]: message }));
   };
 
+  // Parse log message to extract just the query and country
+  const parseActivityLogMessage = (message: string): string => {
+    // Format: [progress bar] N/TOTAL (%)% - "query" in Country → status
+    // Extract: "query" in Country
+    const match = message.match(/-\s+"([^"]+)"\s+in\s+([^→]+)→/);
+    if (match) {
+      return `${match[1]} • ${match[2].trim()}`;
+    }
+    // Fallback to original if format doesn't match
+    return message.replace(/^\[[█░\s]+\]\s+\d+\/\d+\s+\(\d+%\)\s+-\s+/, '');
+  };
+
   const loadAndGroupSources = async () => {
     try {
       const response = await fetch(
@@ -439,8 +451,8 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
                               className="px-2 py-1 border-b text-xs text-gray-700 hover:bg-blue-50"
                               title={log.message}
                             >
-                              <span className="text-gray-500">{new Date(log.time).toLocaleTimeString()}</span>
-                              <span className="ml-2 truncate inline-block max-w-xs">{log.message}</span>
+                              <span className="text-gray-500 font-mono text-xs">{new Date(log.time).toLocaleTimeString()}</span>
+                              <span className="ml-2 text-gray-800">🔍 {parseActivityLogMessage(log.message)}</span>
                             </div>
                           ))}
                         </div>
