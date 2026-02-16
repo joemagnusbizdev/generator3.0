@@ -1559,6 +1559,8 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
       // Periodically update job status in app_kv so frontend can see progress
       if (stats.processed % 5 === 0) {
         try {
+          const recentLogs = logger.getLogs();
+          console.log(`[PERIODIC_UPDATE] Logger has ${recentLogs?.length || 0} logs (type: ${typeof recentLogs})`);
           await updateJobStatus(config.jobId, {
             id: config.jobId,
             status: 'running',
@@ -1566,7 +1568,7 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
             processed: stats.processed,
             created: stats.created,
             total: batchSources.length,
-            activityLog: logger.getLogs(),
+            activityLog: recentLogs,
             updated_at: nowIso(),
           });
         } catch (kvErr) {
