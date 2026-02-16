@@ -334,6 +334,31 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
       return json(health, health.allHealthy ? 200 : 503);
     }
 
+    // POST /scour/run - Proxy to scour-worker (avoids CORS issues)
+    if ((path === "/scour/run" || path === "/clever-function/scour/run") && method === "POST") {
+      try {
+        const body = await req.json();
+        const response = await fetch(`${supabaseUrl}/functions/v1/scour-worker`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          return json({ ok: false, error: `Scour worker error: ${response.status} ${errorText}` }, response.status);
+        }
+
+        const result = await response.json();
+        return json(result);
+      } catch (error: any) {
+        console.error('[POST /scour/run] Error:', error);
+        return json({ ok: false, error: error?.message }, 500);
+      }
+    }
+
     // GET /scour/status - Get current scour job status
     if ((path === "/scour/status" || path === "/clever-function/scour/status") && method === "GET") {
       try {
@@ -396,28 +421,72 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
         // Query the app_kv table for job status
         const statusKey = `scour-job-${jobId}`;
         console.log(`[/scour/status] Querying app_kv for key: ${statusKey}`);
-        const result = await querySupabaseRest(`/app_kv?key=eq.${encodeURIComponent(statusKey)}&select=value`);
+        
+        let result;
+        try {
+          result = await querySupabaseRest(`/app_kv?key=eq.${encodeURIComponent(statusKey)}&select=value`);
+        } catch (queryErr: any) {
+          console.error(`[/scour/status] Query failed:`, queryErr.message);
+          // Return unknown status instead of erroring
+          return json({
+            ok: true,
+            job: {
+              id: jobId,
+              status: "unknown",
+              processed: 0,
+              total: 0,
+              created: 0,
+              phase: "unknown",
+              activityLog: [],
+            },
+          });
+        }
         
         console.log(`[/scour/status] Query result: ${result ? (Array.isArray(result) ? `${result.length} rows` : 'object') : 'null'}`);
         
         if (result && result.length > 0) {
-          console.log(`[/scour/status] Raw value type: ${typeof result[0].value}, length: ${JSON.stringify(result[0].value).length}`);
-          
-          const jobData = typeof result[0].value === 'string' 
-            ? JSON.parse(result[0].value) 
-            : result[0].value;
-          
-          console.log(`[/scour/status] Parsed jobData keys: ${Object.keys(jobData).join(', ')}`);
-          console.log(`[/scour/status] Has activityLog: ${!!jobData.activityLog}`);
-          if (jobData.activityLog) {
-            console.log(`[/scour/status] ActivityLog is array: ${Array.isArray(jobData.activityLog)}, length: ${jobData.activityLog.length}`);
+          try {
+            const rawValue = result[0].value;
+            console.log(`[/scour/status] Raw value type: ${typeof rawValue}`);
+            
+            let jobData;
+            if (typeof rawValue === 'string') {
+              jobData = JSON.parse(rawValue);
+            } else if (typeof rawValue === 'object') {
+              jobData = rawValue;
+            } else {
+              console.warn(`[/scour/status] Unexpected value type: ${typeof rawValue}`);
+              jobData = { status: "unknown", activityLog: [] };
+            }
+            
+            console.log(`[/scour/status] Parsed jobData keys: ${Object.keys(jobData).join(', ')}`);
+            console.log(`[/scour/status] Has activityLog: ${!!jobData.activityLog}`);
+            if (jobData.activityLog) {
+              console.log(`[/scour/status] ActivityLog is array: ${Array.isArray(jobData.activityLog)}, length: ${jobData.activityLog.length}`);
+            }
+            console.log(`[/scour/status] Retrieved job ${jobId}: status=${jobData.status}, processed=${jobData.processed}, logs=${jobData.activityLog?.length || 0}`);
+            
+            return json({
+              ok: true,
+              job: jobData,
+            });
+          } catch (parseErr: any) {
+            console.error(`[/scour/status] Parse error:`, parseErr.message);
+            // Return what we can even if parsing fails
+            return json({
+              ok: true,
+              job: {
+                id: jobId,
+                status: "error",
+                processed: 0,
+                total: 0,
+                created: 0,
+                phase: "unknown",
+                activityLog: [],
+                parseError: parseErr.message,
+              },
+            });
           }
-          console.log(`[/scour/status] Retrieved job ${jobId}: status=${jobData.status}, processed=${jobData.processed}, logs=${jobData.activityLog?.length || 0}`);
-          
-          return json({
-            ok: true,
-            job: jobData,
-          });
         }
 
         // If not found in app_kv, return default job data
@@ -431,13 +500,14 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
             total: 0,
             created: 0,
             phase: "unknown",
+            activityLog: [],
           },
         });
       } catch (e: any) {
-        console.error(`[scour/status] Error querying job status:`, e);
+        console.error(`[scour/status] Unexpected error:`, e.message, e.stack);
         return json({ 
           ok: false, 
-          error: `Failed to get job status: ${e.message}` 
+          error: `Failed to get job status: ${e.message}`
         }, 500);
       }
     }
@@ -489,6 +559,77 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
           ok: false, 
           error: `Failed to get logs: ${e.message}` 
         }, 500);
+      }
+    }
+
+    // POST /alerts - Create a new alert
+    if ((path === "/alerts" || path === "/clever-function/alerts") && method === "POST") {
+      try {
+        const body = await req.json();
+        
+        // Valid columns in alerts table
+        const validColumns = new Set([
+          'id', 'title', 'summary', 'location', 'country', 'region',
+          'event_type', 'severity', 'status',
+          'source_id', 'source_url', 'article_url', 'sources',
+          'event_start_date', 'event_end_date',
+          'ai_generated', 'ai_model', 'ai_confidence', 'generation_metadata',
+          'wordpress_post_id', 'wordpress_url', 'exported_at', 'export_error', 'export_error_at',
+          'trend_id', 'created_at', 'updated_at',
+          // UI sends these but they need special handling
+          'latitude', 'longitude', 'radiusKm', 'geo_json', 'geojson'
+        ]);
+
+        // Build the alert payload
+        const alertPayload: any = {
+          id: crypto.randomUUID(),
+          status: body.status || "draft",
+          created_at: nowIso(),
+          updated_at: nowIso(),
+        };
+
+        // Copy valid columns
+        for (const [key, value] of Object.entries(body)) {
+          if (key === 'radiusKm' || key === 'latitude' || key === 'longitude' || key === 'geo_json' || key === 'geojson') {
+            // These go into generation_metadata
+            if (!alertPayload.generation_metadata) {
+              alertPayload.generation_metadata = {};
+            }
+            if (typeof alertPayload.generation_metadata === 'string') {
+              alertPayload.generation_metadata = JSON.parse(alertPayload.generation_metadata);
+            }
+            
+            if (key === 'radiusKm') {
+              alertPayload.generation_metadata.radiusKm = value;
+            } else if (key === 'latitude') {
+              alertPayload.generation_metadata.latitude = value;
+            } else if (key === 'longitude') {
+              alertPayload.generation_metadata.longitude = value;
+            } else if (key === 'geo_json' || key === 'geojson') {
+              alertPayload.generation_metadata.geoJSON = key === 'geo_json' ? value : (typeof value === 'string' ? JSON.parse(value) : value);
+            }
+          } else if (validColumns.has(key) && key !== 'id' && key !== 'created_at' && key !== 'updated_at') {
+            alertPayload[key] = value;
+          }
+        }
+
+        // Ensure generation_metadata is a JSON string if it exists
+        if (alertPayload.generation_metadata && typeof alertPayload.generation_metadata !== 'string') {
+          alertPayload.generation_metadata = JSON.stringify(alertPayload.generation_metadata);
+        }
+
+        const newAlert = await querySupabaseRest("/alerts", {
+          method: "POST",
+          body: JSON.stringify(alertPayload),
+          headers: {
+            "Prefer": "return=representation"
+          }
+        });
+        
+        return json({ ok: true, alert: newAlert && newAlert[0] ? newAlert[0] : newAlert });
+      } catch (error: any) {
+        console.error('[POST /alerts] Error:', error);
+        return json({ ok: false, error: error?.message }, 500);
       }
     }
 
@@ -620,7 +761,7 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
         
         // Store in KV that this is an early signals job
         try {
-          await setKV(`scour_job:${jobId}`, {
+          await setKV(`scour-job-${jobId}`, {
             id: jobId,
             status: "running",
             phase: "early_signals",
@@ -633,8 +774,9 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
             currentActivity: "Early Signals queued...",
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
+            activityLog: [],
           });
-          console.log(`[Early Signals] Job stored in KV`);
+          console.log(`[Early Signals] Job stored in KV with key: scour-job-${jobId}`);
         } catch (kvErr: any) {
           console.warn(`[Early Signals] KV storage failed: ${kvErr.message}`);
           // Continue anyway - the job will still be created

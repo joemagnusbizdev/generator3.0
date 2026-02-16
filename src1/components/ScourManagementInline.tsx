@@ -195,6 +195,8 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
     setSourceGroups(prev => prev.map(g => g.id === groupId ? { ...g, status: 'running' } : g));
     addStatusMessage(groupId, 'Starting...');
 
+    const now = new Date().toISOString(); // Set timestamp at the start
+
     try {
       const statusMsg = groupId === 'early-signals' 
         ? 'Running web search scour...' 
@@ -202,12 +204,14 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
       addStatusMessage(groupId, statusMsg);
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/scour-worker`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/run?t=${Date.now()}`,
         {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
           },
           body: JSON.stringify({
             jobId: groupId,
@@ -218,8 +222,8 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
       );
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Scour failed');
+        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        throw new Error(error.error || `Scour failed with status ${response.status}`);
       }
 
       const result = await response.json();
@@ -227,7 +231,6 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
       const dupes = result.duplicatesSkipped || 0;
       const errors = result.errorCount || 0;
       const disabledSourceIds = result.disabled_source_ids || result.error_source_ids || [];
-      const now = new Date().toISOString();
       
       if (errors > 0 && disabledSourceIds.length === 0) {
         addStatusMessage(groupId, `⚠️ Created ${alerts} alerts, ${dupes} dupes, ${errors} errors (sources with errors will be disabled)`);
@@ -279,14 +282,98 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
       const allDone = sourceGroups.every(g => g.id === groupId || g.status === 'completed');
       if (allDone) setAllComplete(true);
     } catch (e: any) {
-      // Show error but keep any accumulated results
-      const errorMsg = `Error: ${e.message}`;
-      addStatusMessage(groupId, errorMsg);
-      setSourceGroups(prev => prev.map(g => 
-        g.id === groupId 
-          ? { ...g, status: 'error', error: e.message } 
-          : g
-      ));
+      const errorMsg = e.message || 'Unknown error';
+      const now = new Date().toISOString();
+      
+      // If 504 timeout and not Early Signals, retry with batching
+      if (errorMsg.includes('504') && groupId !== 'early-signals') {
+        addStatusMessage(groupId, `⚠️ ${errorMsg} - Retrying with batch processing...`);
+        
+        try {
+          // Split sources into batches of 10 and process each
+          const sources = group.sources;
+          const batchSize = 10;
+          const batches = Math.ceil(sources.length / batchSize);
+          let totalAlerts = 0;
+          let totalDupes = 0;
+          let totalErrors = 0;
+          const allDisabledSources: string[] = [];
+
+          for (let batch = 0; batch < batches; batch++) {
+            const offset = batch * batchSize;
+            addStatusMessage(groupId, `Processing batch ${batch + 1}/${batches} (${offset + 1}-${Math.min(offset + batchSize, sources.length)} of ${sources.length} sources)...`);
+
+            const response = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/run?t=${Date.now()}`,
+              {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                  'Content-Type': 'application/json',
+                  'Cache-Control': 'no-cache, no-store, must-revalidate',
+                  'Pragma': 'no-cache',
+                },
+                body: JSON.stringify({
+                  jobId: groupId,
+                  sourceIds: sources.slice(offset, offset + batchSize).map((s: any) => s.id),
+                  batchOffset: offset,
+                  batchSize: batchSize,
+                }),
+              }
+            );
+
+            if (!response.ok) {
+              const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+              throw new Error(`Batch ${batch + 1} failed: ${error.error || response.statusText}`);
+            }
+
+            const result = await response.json();
+            totalAlerts += result.created || 0;
+            totalDupes += result.duplicatesSkipped || 0;
+            totalErrors += result.errorCount || 0;
+            if (result.disabled_source_ids) {
+              allDisabledSources.push(...result.disabled_source_ids);
+            }
+          }
+
+          addStatusMessage(groupId, `Created ${totalAlerts} alerts (batch mode), ${totalDupes} dupes`);
+          
+          setSourceGroups(prev =>
+            prev.map(g =>
+              g.id === groupId
+                ? { 
+                    ...g, 
+                    status: 'completed', 
+                    lastScourTime: now,
+                    sources: g.sources.filter(s => !allDisabledSources.includes(s.id)),
+                    results: { 
+                      alerts_created: totalAlerts, 
+                      duplicates_skipped: totalDupes, 
+                      errors: totalErrors, 
+                      disabled_sources: allDisabledSources.length, 
+                      disabled_source_ids: allDisabledSources 
+                    } 
+                  }
+                : g
+            )
+          );
+        } catch (batchError: any) {
+          addStatusMessage(groupId, `Error: ${batchError.message}`);
+          setSourceGroups(prev => prev.map(g => 
+            g.id === groupId 
+              ? { ...g, status: 'error', error: batchError.message, lastScourTime: now } 
+              : g
+          ));
+        }
+      } else {
+        // Not a 504 timeout or is Early Signals - regular error handling
+        addStatusMessage(groupId, `Error: ${errorMsg}`);
+        setSourceGroups(prev => prev.map(g => 
+          g.id === groupId 
+            ? { ...g, status: 'error', error: errorMsg, lastScourTime: now } 
+            : g
+        ));
+      }
     } finally {
       setRunningGroupId(null);
     }

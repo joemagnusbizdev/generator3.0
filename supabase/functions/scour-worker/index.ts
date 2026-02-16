@@ -7,6 +7,7 @@
  * Implements all 10 gap fixes from ground up
  * 
  * DEPLOYMENT: Early Signals uses Claude Haiku model for all queries
+ * Cache bust: 2026-02-16T12:00:00Z - Added batch retry on 504, fixed timestamp tracking
  */
 
 console.log("=== Scour Worker Function Starting ===");
@@ -106,10 +107,9 @@ const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const BRAVE_API_KEY = Deno.env.get("BRAVRE_SEARCH_API_KEY");
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "https://generator30.vercel.app",
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "authorization, content-type, apikey",
-  "Access-Control-Allow-Credentials": "true",
+  "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-requested-with",
   "Access-Control-Max-Age": "86400",
 };
 
@@ -2651,9 +2651,14 @@ Deno.serve({ skipJwtVerification: true }, async (req: Request) => {
     // Handle CORS preflight first, before any other processing
     if (req.method === 'OPTIONS') {
       console.log(`🔵 [SCOUR-WORKER] Handling CORS preflight`);
-      return new Response('', { 
-        status: 200,
-        headers: corsHeaders
+      return new Response(null, { 
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'authorization, content-type, apikey, x-requested-with',
+          'Access-Control-Max-Age': '86400',
+        }
       });
     }
     
@@ -2667,14 +2672,26 @@ Deno.serve({ skipJwtVerification: true }, async (req: Request) => {
       
       // Handle early signals mode
       if (body.earlySignalsOnly) {
-        console.log(`🔵 [SCOUR-WORKER] Early signals mode - starting web searches`);
-        try {
-          const stats = await runEarlySignals(body.jobId);
-          return json(stats);
-        } catch (e: any) {
-          console.error(`🔴 [SCOUR-WORKER] Early signals failed:`, e);
-          return json({ ok: false, error: e.message, created: 0, duplicatesSkipped: 0, errorCount: 0 }, 500);
-        }
+        console.log(`🔵 [SCOUR-WORKER] Early signals mode - queuing web searches (async, non-blocking)`);
+        const jobId = body.jobId;
+        
+        // Start Early Signals in background WITHOUT WAITING
+        // This returns immediately so the function doesn't timeout
+        // The frontend will poll /scour/status/{jobId} to get progress
+        runEarlySignals(jobId).catch(e => {
+          console.error(`🔴 [SCOUR-WORKER] Early signals background job failed:`, e);
+        });
+        
+        // Return immediately with queued status
+        return json({
+          ok: true,
+          jobId: jobId,
+          status: "queued",
+          phase: "early_signals",
+          processed: 0,
+          created: 0,
+          message: "Early Signals job queued. Check status via polling."
+        });
       }
       
       const config: ScourConfig = {
