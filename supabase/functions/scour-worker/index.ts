@@ -1480,12 +1480,12 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
         phase: 'main_scour',
         processed: 0,
         created: 0,
-        total: config.sourceIds?.length || 0,
+        total: batchSources.length,  // Use actual batch size, not all config.sourceIds
         activityLog: [],
         created_at: nowIso(),
         updated_at: nowIso(),
       });
-      console.log(`[runScourWorker] Job ${config.jobId} initialized in app_kv`);
+      console.log(`[runScourWorker] Job ${config.jobId} initialized in app_kv with ${batchSources.length} sources to process`);
     } catch (kvErr) {
       console.warn(`[runScourWorker] Failed to initialize job in KV:`, kvErr);
       // Continue anyway
