@@ -274,13 +274,15 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
                   addStatusMessage(groupId, `Created ${alerts} alerts, ${dupes} dupes`);
                 }
                 
+                // Update completion timestamp to current time
+                const completionTime = new Date().toISOString();
                 setSourceGroups(prev =>
                   prev.map(g =>
                     g.id === groupId
                       ? { 
                           ...g, 
                           status: job.status === 'error' ? 'error' : 'completed', 
-                          lastScourTime: now,
+                          lastScourTime: completionTime,
                           sources: groupId === 'early-signals' ? g.sources : g.sources.filter(s => !disabledSourceIds.includes(s.id)),
                           results: { 
                             alerts_created: alerts, 
@@ -328,13 +330,14 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
       }
 
       // Update group with results and disabled sources
+      const completionTime = new Date().toISOString();
       setSourceGroups(prev =>
         prev.map(g =>
           g.id === groupId
             ? { 
                 ...g, 
                 status: 'completed', 
-                lastScourTime: now,
+                lastScourTime: completionTime,
                 // Remove disabled sources from the group (only for non-Early Signals)
                 sources: groupId === 'early-signals' ? g.sources : g.sources.filter(s => !disabledSourceIds.includes(s.id)),
                 results: { 
@@ -427,13 +430,14 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
 
           addStatusMessage(groupId, `Created ${totalAlerts} alerts (batch mode), ${totalDupes} dupes`);
           
+          const batchCompletionTime = new Date().toISOString();
           setSourceGroups(prev =>
             prev.map(g =>
               g.id === groupId
                 ? { 
                     ...g, 
                     status: 'completed', 
-                    lastScourTime: now,
+                    lastScourTime: batchCompletionTime,
                     sources: g.sources.filter(s => !allDisabledSources.includes(s.id)),
                     results: { 
                       alerts_created: totalAlerts, 
@@ -448,18 +452,20 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
           );
         } catch (batchError: any) {
           addStatusMessage(groupId, `Error: ${batchError.message}`);
+          const errorTime = new Date().toISOString();
           setSourceGroups(prev => prev.map(g => 
             g.id === groupId 
-              ? { ...g, status: 'error', error: batchError.message, lastScourTime: now } 
+              ? { ...g, status: 'error', error: batchError.message, lastScourTime: errorTime } 
               : g
           ));
         }
       } else {
         // Not a 504 timeout or is Early Signals - regular error handling
         addStatusMessage(groupId, `Error: ${errorMsg}`);
+        const finalErrorTime = new Date().toISOString();
         setSourceGroups(prev => prev.map(g => 
           g.id === groupId 
-            ? { ...g, status: 'error', error: errorMsg, lastScourTime: now } 
+            ? { ...g, status: 'error', error: errorMsg, lastScourTime: finalErrorTime } 
             : g
         ));
       }
