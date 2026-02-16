@@ -1414,7 +1414,7 @@ function validateGeoJSON(alert: Alert): { valid: boolean; requiresReview: boolea
 
 class ActivityLogger {
   private logs: ActivityLogEntry[] = [];
-  private maxLogs = 20;
+  private maxLogs = 500;  // Keep up to 500 entries to show full scour activity
   private jobId: string;
   
   constructor(jobId: string) {

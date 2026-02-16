@@ -621,7 +621,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
                             }}
                             className="w-full text-left px-2 py-1 hover:bg-gray-200 font-semibold text-xs flex items-center justify-between"
                           >
-                            <span>📋 Recent Searches ({logCount})</span>
+                            <span>📋 Activity Log ({logCount})</span>
                             <span>{expandedActivityLogs.has(group.id) ? '▼' : '▶'}</span>
                           </button>
                           
