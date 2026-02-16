@@ -2379,8 +2379,7 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
           const status = validAlerts.length > 0 ? `✓ ${validAlerts.length} alerts` : '·';
           const logMsg = `[${progressBar}] ${globalQueryNum}/${totalQueries} (${progressPercent}%) - "${baseQuery}" in ${country} → ${status}`;
           console.log(`  ${logMsg}`);
-          // Don't add early signal queries to main activity log - keep it for source processing only
-          // addJobLog(jobId, logMsg);
+          addJobLog(jobId, logMsg);
           
           processedQueries++;
         } catch (e) {
@@ -2393,8 +2392,7 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
           
           const errorMsg = `[${progressBar}] ${globalQueryNum}/${totalQueries} (${progressPercent}%) - "${baseQuery}" in ${country} → ✗ ${e.toString().slice(0, 40)}`;
           console.warn(`  ${errorMsg}`);
-          // Don't add early signal queries to main activity log - keep it for source processing only
-          // addJobLog(jobId, errorMsg);
+          addJobLog(jobId, errorMsg);
         }
         
         // Update job status every query (fast updates for real-time UI)
