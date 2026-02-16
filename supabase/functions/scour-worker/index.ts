@@ -1472,6 +1472,25 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
     logger.log(`🚀 Starting Scour Batch: offset=${batchOffset}, size=${batchSize}, daysBack=${config.daysBack || 14}`);
     console.log(`Config: ${JSON.stringify(config)}`);
     
+    // Initialize job status in app_kv so frontend can track progress
+    try {
+      await updateJobStatus(config.jobId, {
+        id: config.jobId,
+        status: 'running',
+        phase: 'main_scour',
+        processed: 0,
+        created: 0,
+        total: config.sourceIds?.length || 0,
+        activityLog: [],
+        created_at: nowIso(),
+        updated_at: nowIso(),
+      });
+      console.log(`[runScourWorker] Job ${config.jobId} initialized in app_kv`);
+    } catch (kvErr) {
+      console.warn(`[runScourWorker] Failed to initialize job in KV:`, kvErr);
+      // Continue anyway
+    }
+    
     // GAP 1: Run early signals in parallel (async, non-blocking) - only on first batch
     let earlySignalsPromise: Promise<void> | null = null;
     if (config.braveApiKey && batchOffset === 0) {
@@ -1854,6 +1873,25 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
     stats.totalSources = totalSources;
     stats.jobId = config.jobId;
     
+    // Update job status to completed in app_kv
+    try {
+      await updateJobStatus(config.jobId, {
+        id: config.jobId,
+        status: 'completed',
+        phase: 'done',
+        processed: stats.processed,
+        created: stats.created,
+        duplicatesSkipped: stats.duplicatesSkipped,
+        errorCount: stats.errorCount,
+        activityLog: logger.getLogs(),
+        created_at: nowIso(),
+        updated_at: nowIso(),
+      });
+      console.log(`[runScourWorker] Job ${config.jobId} marked as completed in app_kv`);
+    } catch (kvErr) {
+      console.warn(`[runScourWorker] Failed to update job completion in KV:`, kvErr);
+    }
+    
     return stats;
     
   } catch (err: any) {
@@ -1862,6 +1900,26 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
     stats.errors.push(`Fatal: ${err.message}`);
     stats.errorCount++;
     stats.phase = "done";
+    
+    // Update job status to error in app_kv
+    try {
+      await updateJobStatus(config.jobId, {
+        id: config.jobId,
+        status: 'error',
+        phase: 'done',
+        processed: stats.processed,
+        created: stats.created,
+        errorCount: stats.errorCount,
+        errors: stats.errors,
+        activityLog: logger.getLogs(),
+        created_at: nowIso(),
+        updated_at: nowIso(),
+      });
+      console.log(`[runScourWorker] Job ${config.jobId} marked as error in app_kv`);
+    } catch (kvErr) {
+      console.warn(`[runScourWorker] Failed to update job error in KV:`, kvErr);
+    }
+    
     // Return partial results even on fatal error - don't throw
     return stats;
   }
