@@ -1560,7 +1560,10 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
       if (stats.processed % 5 === 0) {
         try {
           const recentLogs = logger.getLogs();
-          console.log(`[PERIODIC_UPDATE] Logger has ${recentLogs?.length || 0} logs (type: ${typeof recentLogs})`);
+          console.log(`[PERIODIC_UPDATE] Processed ${stats.processed}, Logger returned: ${recentLogs ? `array with ${recentLogs.length} items` : 'null/undefined'}`);
+          if (recentLogs && recentLogs.length > 0) {
+            console.log(`[PERIODIC_UPDATE] First log: ${JSON.stringify(recentLogs[0])}`);
+          }
           await updateJobStatus(config.jobId, {
             id: config.jobId,
             status: 'running',
@@ -1976,8 +1979,14 @@ async function updateJobStatus(jobId: string, jobData: any): Promise<void> {
     
     // Use the activityLog that's passed in the jobData
     // If not provided, fall back to jobActivityLogs map (for backwards compatibility)
-    const logsToInclude = jobData.activityLog || jobActivityLogs.get(jobId) || [];
-    console.log(`[UPDATE_JOB_STATUS] Saving jobId: ${jobId} with ${logsToInclude.length} logs, activityLog provided: ${!!jobData.activityLog}`);
+    const activityLogFromParam = jobData.activityLog;
+    const activityLogFromMap = jobActivityLogs.get(jobId) || [];
+    const logsToInclude = activityLogFromParam || activityLogFromMap;
+    
+    console.log(`[UPDATE_JOB_STATUS] Saving jobId: ${jobId}`);
+    console.log(`  - activityLog param: ${activityLogFromParam ? `array(${activityLogFromParam.length})` : 'not provided'}`);
+    console.log(`  - jobActivityLogs map: array(${activityLogFromMap.length})`);
+    console.log(`  - using: ${activityLogFromParam ? 'param' : 'map'} with ${logsToInclude.length} logs`);
     
     // Simply merge the new job data with the logs
     // The jobData passed in should contain all fields we want to save
