@@ -1998,13 +1998,14 @@ async function updateJobStatus(jobId: string, jobData: any): Promise<void> {
     console.log(`  - using: ${activityLogFromParam ? 'param' : 'map'} with ${logsToInclude.length} logs`);
     
     // Simply merge the new job data with the logs
-    // The jobData passed in should contain all fields we want to save
+    // ALWAYS include the current logs from jobActivityLogs Map since that's where we accumulate them
     const valueToSave = {
       ...jobData,
-      activityLog: logsToInclude
+      activityLog: logsToInclude,
     };
     
     const value = JSON.stringify(valueToSave);
+    console.log(`[UPDATE_JOB_STATUS] Final save: activityLog=${logsToInclude.length} entries (${logsToInclude.length > 0 ? `last: "${logsToInclude[logsToInclude.length - 1].message.substring(0, 40)}"` : 'empty'})`);
     console.log(`[UPDATE_JOB_STATUS] Payload size: ${value.length} bytes, activityLog entries: ${logsToInclude.length}`);
     
     // Try to update first with WHERE clause (without return=minimal to see if rows were affected)
