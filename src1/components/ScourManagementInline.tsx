@@ -53,9 +53,9 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
     return () => clearInterval(interval);
   }, [accessToken]);
 
-  // Poll for activity logs while Early Signals is running
+  // Poll for activity logs while any scour is running
   useEffect(() => {
-    if (runningGroupId !== 'early-signals') return;
+    if (!runningGroupId) return;
 
     const pollActivityLogs = async () => {
       try {
@@ -72,6 +72,10 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
           const data = await response.json();
           if (data.job?.activityLog && Array.isArray(data.job.activityLog)) {
             setActivityLogs(prev => ({ ...prev, [runningGroupId]: data.job.activityLog }));
+            // Auto-expand logs section when logs appear
+            if (data.job.activityLog.length > 0 && !expandedActivityLogs.has(runningGroupId)) {
+              setExpandedActivityLogs(prev => new Set([...prev, runningGroupId]));
+            }
           }
         }
       } catch (e) {
@@ -597,40 +601,49 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
                   )}
                   
                   {/* Activity Log for running scours */}
-                  {runningGroupId === group.id && activityLogs[group.id] && activityLogs[group.id].length > 0 && (
-                    <div className="mb-2 border rounded bg-gray-50 overflow-hidden">
-                      <button
-                        onClick={() => {
-                          const newExpanded = new Set(expandedActivityLogs);
-                          if (newExpanded.has(group.id)) {
-                            newExpanded.delete(group.id);
-                          } else {
-                            newExpanded.add(group.id);
-                          }
-                          setExpandedActivityLogs(newExpanded);
-                        }}
-                        className="w-full text-left px-2 py-1 hover:bg-gray-200 font-semibold text-xs flex items-center justify-between"
-                      >
-                        <span>📋 Recent Searches ({activityLogs[group.id].length})</span>
-                        <span>{expandedActivityLogs.has(group.id) ? '▼' : '▶'}</span>
-                      </button>
-                      
-                      {expandedActivityLogs.has(group.id) && (
-                        <div className="max-h-48 overflow-y-auto border-t bg-white">
-                          {activityLogs[group.id].slice(-15).reverse().map((log, idx) => (
-                            <div
-                              key={idx}
-                              className="px-2 py-1 border-b text-xs text-gray-700 hover:bg-blue-50"
-                              title={log.message}
-                            >
-                              <span className="text-gray-500 font-mono text-xs">{new Date(log.time).toLocaleTimeString()}</span>
-                              <span className="ml-2 text-gray-800">🔍 {parseActivityLogMessage(log.message)}</span>
+                  {(() => {
+                    const isRunning = runningGroupId === group.id;
+                    const hasLogs = activityLogs[group.id];
+                    const logCount = hasLogs?.length || 0;
+                    
+                    if (isRunning && logCount > 0) {
+                      return (
+                        <div className="mb-2 border rounded bg-gray-50 overflow-hidden">
+                          <button
+                            onClick={() => {
+                              const newExpanded = new Set(expandedActivityLogs);
+                              if (newExpanded.has(group.id)) {
+                                newExpanded.delete(group.id);
+                              } else {
+                                newExpanded.add(group.id);
+                              }
+                              setExpandedActivityLogs(newExpanded);
+                            }}
+                            className="w-full text-left px-2 py-1 hover:bg-gray-200 font-semibold text-xs flex items-center justify-between"
+                          >
+                            <span>📋 Recent Searches ({logCount})</span>
+                            <span>{expandedActivityLogs.has(group.id) ? '▼' : '▶'}</span>
+                          </button>
+                          
+                          {expandedActivityLogs.has(group.id) && (
+                            <div className="max-h-48 overflow-y-auto border-t bg-white">
+                              {activityLogs[group.id].slice(-15).reverse().map((log, idx) => (
+                                <div
+                                  key={idx}
+                                  className="px-2 py-1 border-b text-xs text-gray-700 hover:bg-blue-50"
+                                  title={log.message}
+                                >
+                                  <span className="text-gray-500 font-mono text-xs">{new Date(log.time).toLocaleTimeString()}</span>
+                                  <span className="ml-2 text-gray-800">🔍 {parseActivityLogMessage(log.message)}</span>
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
                         </div>
-                      )}
-                    </div>
-                  )}
+                      );
+                    }
+                    return null;
+                  })()}
                   {group.results && (
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div className="flex items-center gap-1">
