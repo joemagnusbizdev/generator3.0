@@ -1592,6 +1592,7 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
       
       stats.processed++;
       logger.log(`📰 Processing: ${source.name}`);
+      addJobLog(config.jobId, `📰 Processing: ${source.name}`);
       
       // Use AbortController for true cancellation after 90 seconds
       const sourceController = new AbortController();
@@ -1694,6 +1695,7 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
           // Fallback to AI extraction
           if (!extractedAlerts.length && !sourceController.signal.aborted) {
             logger.log(`  🤖 AI extraction with Claude web search...`);
+            addJobLog(config.jobId, `  🤖 AI extraction with Claude web search...`);
             stats.aiActive = true;
             extractedAlerts = await extractAlertsWithAI(content, sourceUrl, source.name, sourceQuery);
             stats.aiActive = false;
@@ -1706,9 +1708,12 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
             }));
             
             if (extractedAlerts.length > 0) {
-              logger.log(`  ✓ AI extracted ${extractedAlerts.length} alerts (source set: ${sourceUrl})`);
+              const msg = `  ✓ AI extracted ${extractedAlerts.length} alerts`;
+              logger.log(msg);
+              addJobLog(config.jobId, msg);
             } else {
               logger.log(`  ⊘ AI extraction returned 0 alerts`);
+              addJobLog(config.jobId, `  ⊘ AI extraction returned 0 alerts`);
             }
           }
         } catch (e: any) {
