@@ -1559,11 +1559,15 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
       // Periodically update job status in app_kv so frontend can see progress
       if (stats.processed % 5 === 0) {
         try {
-          const recentLogs = logger.getLogs();
-          console.log(`[PERIODIC_UPDATE] Processed ${stats.processed}, Logger returned: ${recentLogs ? `array with ${recentLogs.length} items` : 'null/undefined'}`);
-          if (recentLogs && recentLogs.length > 0) {
-            console.log(`[PERIODIC_UPDATE] First log: ${JSON.stringify(recentLogs[0])}`);
-          }
+          // Combine both logging sources: ActivityLogger + jobActivityLogs Map
+          const activityLogs = logger.getLogs() || [];
+          const jobLogs = jobActivityLogs.get(config.jobId) || [];
+          
+          // Merge and deduplicate: prefer jobActivityLogs (which has progress bars) but include ActivityLogs
+          const allLogs = [...jobLogs, ...activityLogs.filter(log => !jobLogs.some(jl => jl.time === log.time && jl.message === log.message))];
+          
+          console.log(`[PERIODIC_UPDATE] Processed ${stats.processed}: ActivityLogger=${activityLogs.length}, JobMap=${jobLogs.length}, Total=${allLogs.length}`);
+          
           await updateJobStatus(config.jobId, {
             id: config.jobId,
             status: 'running',
@@ -1571,7 +1575,7 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
             processed: stats.processed,
             created: stats.created,
             total: batchSources.length,
-            activityLog: recentLogs,
+            activityLog: allLogs,
             updated_at: nowIso(),
           });
         } catch (kvErr) {
