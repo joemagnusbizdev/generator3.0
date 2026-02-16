@@ -1556,6 +1556,25 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
         break;
       }
       
+      // Periodically update job status in app_kv so frontend can see progress
+      if (stats.processed % 5 === 0) {
+        try {
+          await updateJobStatus(config.jobId, {
+            id: config.jobId,
+            status: 'running',
+            phase: 'main_scour',
+            processed: stats.processed,
+            created: stats.created,
+            total: batchSources.length,
+            activityLog: logger.getLogs(),
+            updated_at: nowIso(),
+          });
+        } catch (kvErr) {
+          // Silently fail - don't block progress
+          console.warn(`[runScourWorker] Failed to update job progress:`, kvErr);
+        }
+      }
+      
       if (source.enabled === false) {
         stats.skipped++;
         logger.log(`⊘ Skipped: ${source.name} (disabled)`);
@@ -1953,9 +1972,10 @@ async function updateJobStatus(jobId: string, jobData: any): Promise<void> {
   try {
     const key = `scour-job-${jobId}`;
     
-    // Include accumulated activity logs - these are always included
-    const logsToInclude = jobActivityLogs.get(jobId) || [];
-    console.log(`[UPDATE_JOB_STATUS] Saving jobId: ${jobId} with ${logsToInclude.length} logs`);
+    // Use the activityLog that's passed in the jobData
+    // If not provided, fall back to jobActivityLogs map (for backwards compatibility)
+    const logsToInclude = jobData.activityLog || jobActivityLogs.get(jobId) || [];
+    console.log(`[UPDATE_JOB_STATUS] Saving jobId: ${jobId} with ${logsToInclude.length} logs, activityLog provided: ${!!jobData.activityLog}`);
     
     // Simply merge the new job data with the logs
     // The jobData passed in should contain all fields we want to save
