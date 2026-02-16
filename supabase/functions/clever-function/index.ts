@@ -26,7 +26,7 @@ console.log(`  WORDPRESS_PASSWORD: ${WP_APP_PASSWORD ? "✅ SET" : "❌ NOT SET"
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, cache-control, pragma, x-requested-with",
 };
 
 function json(data: any, status: number = 200) {
