@@ -334,25 +334,32 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
       return json(health, health.allHealthy ? 200 : 503);
     }
 
-    // POST /scour/run - Proxy to scour-worker (avoids CORS issues)
+    // POST /scour/run - Proxy to scour-worker (avoids CORS issues) - ASYNC, NON-BLOCKING
     if ((path === "/scour/run" || path === "/clever-function/scour/run") && method === "POST") {
       try {
         const body = await req.json();
-        const response = await fetch(`${supabaseUrl}/functions/v1/scour-worker`, {
+        const jobId = body.jobId;
+        
+        // Start scour-worker in background WITHOUT WAITING
+        // This returns immediately so the function doesn't timeout
+        // The frontend will poll /scour/status/{jobId} to get progress
+        fetch(`${supabaseUrl}/functions/v1/scour-worker`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify(body),
+        }).catch(e => {
+          console.error(`[POST /scour/run] Background scour-worker job failed:`, e);
         });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          return json({ ok: false, error: `Scour worker error: ${response.status} ${errorText}` }, response.status);
-        }
-
-        const result = await response.json();
-        return json(result);
+        // Return immediately with queued status
+        return json({
+          ok: true,
+          jobId: jobId,
+          status: "queued",
+          message: "Scour job queued. Check status via polling."
+        });
       } catch (error: any) {
         console.error('[POST /scour/run] Error:', error);
         return json({ ok: false, error: error?.message }, 500);

@@ -227,6 +227,91 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
       }
 
       const result = await response.json();
+      
+      // If job is queued, poll for completion instead of getting immediate results
+      if (result.status === 'queued') {
+        addStatusMessage(groupId, 'Job queued, polling for status...');
+        
+        // Poll for job completion
+        let jobComplete = false;
+        let pollCount = 0;
+        const maxPolls = 600; // 5 minutes with 500ms interval
+        
+        while (!jobComplete && pollCount < maxPolls) {
+          await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms between polls
+          pollCount++;
+          
+          try {
+            const statusResponse = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/status/${encodeURIComponent(groupId)}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                },
+              }
+            );
+            
+            if (statusResponse.ok) {
+              const statusData = await statusResponse.json();
+              const job = statusData.job;
+              
+              if (job && (job.status === 'completed' || job.status === 'error' || job.status === 'done')) {
+                jobComplete = true;
+                
+                // Extract results from job data
+                const alerts = job.created || 0;
+                const dupes = job.duplicatesSkipped || 0;
+                const errors = job.errorCount || 0;
+                const disabledSourceIds = job.disabled_source_ids || [];
+                
+                if (errors > 0 && disabledSourceIds.length === 0) {
+                  addStatusMessage(groupId, `⚠️ Created ${alerts} alerts, ${dupes} dupes, ${errors} errors (sources with errors will be disabled)`);
+                } else {
+                  addStatusMessage(groupId, `Created ${alerts} alerts, ${dupes} dupes`);
+                }
+                
+                setSourceGroups(prev =>
+                  prev.map(g =>
+                    g.id === groupId
+                      ? { 
+                          ...g, 
+                          status: job.status === 'error' ? 'error' : 'completed', 
+                          lastScourTime: now,
+                          sources: groupId === 'early-signals' ? g.sources : g.sources.filter(s => !disabledSourceIds.includes(s.id)),
+                          results: { 
+                            alerts_created: alerts, 
+                            duplicates_skipped: dupes, 
+                            errors: errors, 
+                            disabled_sources: disabledSourceIds.length, 
+                            disabled_source_ids: disabledSourceIds 
+                          } 
+                        }
+                      : g
+                  )
+                );
+              } else if (job && job.status === 'running') {
+                // Still running, show progress
+                const processed = job.processed || 0;
+                const total = job.total || '?';
+                addStatusMessage(groupId, `Running: ${processed}/${total} sources processed...`);
+              }
+            }
+          } catch (pollError) {
+            // Polling error, continue trying
+            console.log(`[Scour polling] Error polling status:`, pollError);
+          }
+        }
+        
+        if (!jobComplete) {
+          throw new Error('Scour job polling timeout (5 minutes elapsed)');
+        }
+        
+        const allDone = sourceGroups.every(g => g.id === groupId || g.status === 'completed');
+        if (allDone) setAllComplete(true);
+        return;
+      }
+      
+      // Synchronous response (for non-queued jobs)
       const alerts = result.created || 0;
       const dupes = result.duplicatesSkipped || 0;
       const errors = result.errorCount || 0;
