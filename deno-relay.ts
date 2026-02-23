@@ -1,6 +1,12 @@
 const TELEGRAM_TOKEN = "8707153044:AAFQEQvq_3QmABdrQSQUHC7osDawsOVtUJc";
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") || "";
 
+console.log("=== BOT STARTUP ===");
+console.log("Telegram token present:", !!TELEGRAM_TOKEN);
+console.log("Anthropic API key present:", !!ANTHROPIC_API_KEY);
+console.log("API key length:", ANTHROPIC_API_KEY.length);
+console.log("API key starts with:", ANTHROPIC_API_KEY.substring(0, 10));
+
 const conversations = new Map();
 
 async function sendTelegramMessage(chatId, text) {
