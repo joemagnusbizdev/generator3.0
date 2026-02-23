@@ -1,0 +1,8 @@
+{
+  "functions": [
+    {
+      "slug": "telegram-claude",
+      "verify_jwt": false
+    }
+  ]
+}
