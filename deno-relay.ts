@@ -166,7 +166,7 @@ async function deployToVercel() {
     }
     
     const res = await fetch(
-      `https://api.vercel.com/v13/deployments?project=${VERCEL_PROJECT_ID}`,
+      `https://api.vercel.com/v13/projects/${VERCEL_PROJECT_ID}/deployments`,
       {
         method: "POST",
         headers: {
@@ -174,10 +174,10 @@ async function deployToVercel() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          name: VERCEL_PROJECT_ID,
           gitSource: {
+            type: "github",
             ref: GITHUB_BRANCH,
-            repoId: "joemagnusbizdev/generator3.0",
+            repo: "joemagnusbizdev/generator3.0",
           },
         }),
       }
@@ -187,7 +187,8 @@ async function deployToVercel() {
       const error = await res.text();
       return `❌ Vercel deploy failed (${res.status}): ${error.substring(0, 100)}`;
     }
-    return `✅ Vercel deployment triggered`;
+    const data = await res.json();
+    return `✅ Vercel deployment triggered (${data.uid})`;
   } catch (err) {
     return `Error: ${err.message}`;
   }
