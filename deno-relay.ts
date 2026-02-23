@@ -13,12 +13,16 @@ async function sendTelegramMessage(chatId, text) {
 }
 
 async function callClaude(userMessage, chatId) {
+  console.log("callClaude called with:", userMessage);
+  console.log("API Key present:", !!ANTHROPIC_API_KEY);
+  
   let conv = conversations.get(chatId) || { messages: [], lastTime: Date.now() };
   conv.lastTime = Date.now();
   conv.messages.push({ role: "user", content: userMessage });
   conversations.set(chatId, conv);
 
   try {
+    console.log("Calling Claude API...");
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -34,24 +38,28 @@ async function callClaude(userMessage, chatId) {
       }),
     });
 
+    console.log("Claude response status:", res.status);
+    
     if (!res.ok) {
       const error = await res.text();
       console.error("Claude API error:", res.status, error);
-      return "Sorry, Claude API error: " + res.status;
+      return "API Error " + res.status + ": " + error.substring(0, 100);
     }
 
     const data = await res.json();
+    console.log("Claude data:", JSON.stringify(data).substring(0, 200));
+    
     if (!data.content || !data.content[0]) {
       console.error("Invalid Claude response:", data);
-      return "Sorry, invalid Claude response";
+      return "Invalid response format";
     }
     const reply = data.content[0].text;
     conv.messages.push({ role: "assistant", content: reply });
     conversations.set(chatId, conv);
     return reply;
   } catch (err) {
-    console.error("Claude call error:", err);
-    return "Sorry, error calling Claude: " + err.message;
+    console.error("Claude call error:", err.message);
+    return "Error: " + err.message;
   }
 }
 
