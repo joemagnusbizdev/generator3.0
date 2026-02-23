@@ -37,7 +37,7 @@ async function callClaude(userMessage, chatId) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-3-5-sonnet-20240514",
+        model: "claude-3-5-haiku-20241022",
         max_tokens: 1500,
         system: "You are Claude on Telegram. Be helpful and concise.",
         messages: conv.messages,
