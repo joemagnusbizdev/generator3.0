@@ -1,6 +1,10 @@
 const TELEGRAM_TOKEN = "8707153044:AAFQEQvq_3QmABdrQSQUHC7osDawsOVtUJc";
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") || "";
 const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN") || "";
+const SUPABASE_PROJECT_ID = Deno.env.get("SUPABASE_PROJECT_ID") || "";
+const SUPABASE_API_KEY = Deno.env.get("SUPABASE_API_KEY") || "";
+const VERCEL_TOKEN = Deno.env.get("VERCEL_TOKEN") || "";
+const VERCEL_PROJECT_ID = Deno.env.get("VERCEL_PROJECT_ID") || "";
 const GITHUB_REPO = "joemagnusbizdev/generator3.0";
 const GITHUB_BRANCH = "main";
 
@@ -8,6 +12,8 @@ console.log("=== BOT STARTUP ===");
 console.log("Telegram token present:", !!TELEGRAM_TOKEN);
 console.log("Anthropic API key present:", !!ANTHROPIC_API_KEY);
 console.log("GitHub token present:", !!GITHUB_TOKEN);
+console.log("Supabase API key present:", !!SUPABASE_API_KEY);
+console.log("Vercel token present:", !!VERCEL_TOKEN);
 console.log("API key length:", ANTHROPIC_API_KEY.length);
 console.log("API key starts with:", ANTHROPIC_API_KEY.substring(0, 10));
 
@@ -128,6 +134,65 @@ async function writeFileToGitHub(filePath, content, message) {
   }
 }
 
+async function deployToSupabase() {
+  try {
+    if (!SUPABASE_PROJECT_ID || !SUPABASE_API_KEY) {
+      return "❌ Supabase not configured (missing SUPABASE_PROJECT_ID or SUPABASE_API_KEY)";
+    }
+    
+    const url = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/clever-function`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${SUPABASE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ action: "deploy" }),
+    });
+    
+    if (!res.ok) {
+      return `❌ Supabase deploy failed (${res.status})`;
+    }
+    return `✅ Supabase deployed successfully`;
+  } catch (err) {
+    return `Error: ${err.message}`;
+  }
+}
+
+async function deployToVercel() {
+  try {
+    if (!VERCEL_TOKEN || !VERCEL_PROJECT_ID) {
+      return "❌ Vercel not configured (missing VERCEL_TOKEN or VERCEL_PROJECT_ID)";
+    }
+    
+    const res = await fetch(
+      `https://api.vercel.com/v13/deployments?project=${VERCEL_PROJECT_ID}`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${VERCEL_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: VERCEL_PROJECT_ID,
+          gitSource: {
+            ref: GITHUB_BRANCH,
+            repoId: "joemagnusbizdev/generator3.0",
+          },
+        }),
+      }
+    );
+    
+    if (!res.ok) {
+      const error = await res.text();
+      return `❌ Vercel deploy failed (${res.status}): ${error.substring(0, 100)}`;
+    }
+    return `✅ Vercel deployment triggered`;
+  } catch (err) {
+    return `Error: ${err.message}`;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "POST") {
     const body = await req.json();
@@ -142,7 +207,9 @@ Deno.serve(async (req) => {
 /help - Show this help
 <question> - Ask Claude anything
 /read <file> - Read a file from repo
-/edit <file> <content> - Write to file`;
+/edit <file> <content> - Write to file
+/deploy supabase - Deploy to Supabase
+/deploy vercel - Deploy to Vercel`;
       } else if (text.startsWith("/read ")) {
         const filePath = text.substring(6).trim();
         reply = await readFileFromGitHub(filePath);
@@ -154,6 +221,15 @@ Deno.serve(async (req) => {
           reply = await writeFileToGitHub(filePath, content, `Updated ${filePath}`);
         } else {
           reply = "Error: /edit <file> <content>";
+        }
+      } else if (text.startsWith("/deploy ")) {
+        const target = text.substring(8).trim().toLowerCase();
+        if (target === "supabase") {
+          reply = await deployToSupabase();
+        } else if (target === "vercel") {
+          reply = await deployToVercel();
+        } else {
+          reply = "Error: /deploy [supabase|vercel]";
         }
       } else {
         reply = await callClaude(text, chatId);
