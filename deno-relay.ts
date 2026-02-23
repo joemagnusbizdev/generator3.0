@@ -11,15 +11,14 @@ const GITHUB_BRANCH = "main";
 console.log("=== BOT STARTUP ===");
 console.log("Telegram token present:", !!TELEGRAM_TOKEN);
 console.log("Anthropic API key present:", !!ANTHROPIC_API_KEY);
-console.log("GitHub token present:", !!GITHUB_TOKEN);
-console.log("Loading project context...");
+console.log("Loading project knowledge base...");
 
 const conversations = new Map();
 let projectContext = "";
 
-async function getGitHubTree(path = "", recursive = true) {
+async function getGitHubTree() {
   try {
-    const url = `https://api.github.com/repos/${GITHUB_REPO}/git/trees/${GITHUB_BRANCH}?recursive=${recursive ? 1 : 0}`;
+    const url = `https://api.github.com/repos/${GITHUB_REPO}/git/trees/${GITHUB_BRANCH}?recursive=1`;
     const res = await fetch(url, {
       headers: {
         "Authorization": `token ${GITHUB_TOKEN}`,
@@ -40,43 +39,16 @@ async function getGitHubTree(path = "", recursive = true) {
   }
 }
 
-async function loadProjectContext() {
-  let context = "# PROJECT STRUCTURE\n\n";
+async function loadSourceCode() {
+  let code = "## Key Source Files:\n\n";
   
-  // Load file tree (excluding node_modules, .git, etc)
-  const tree = await getGitHubTree();
-  
-  const excludePatterns = [
-    "node_modules/",
-    ".git/",
-    ".next/",
-    "dist/",
-    "build/",
-    ".env",
-  ];
-  
-  const filteredTree = tree.filter(item => 
-    !excludePatterns.some(pattern => item.path.startsWith(pattern)) &&
-    item.type === "blob"
-  );
-  
-  context += "## Project Files:\n";
-  filteredTree.slice(0, 100).forEach(item => {
-    context += `- ${item.path}\n`;
-  });
-  context += `\n(Total: ${filteredTree.length} files)\n\n`;
-  
-  // Load key config files
-  const filesToLoad = [
-    "package.json",
-    "README.md",
-    "deno.json",
-    ".env.example",
+  const sourceFiles = [
+    "src1/components/ScourManagementInline.tsx",
+    "src1/lib/supabase/index.ts",
+    "index.ts",
   ];
 
-  context += "## Key Files:\n\n";
-  
-  for (const filePath of filesToLoad) {
+  for (const filePath of sourceFiles) {
     try {
       const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${filePath}?ref=${GITHUB_BRANCH}`;
       const res = await fetch(url, {
@@ -88,17 +60,131 @@ async function loadProjectContext() {
       
       if (res.ok) {
         const content = await res.text();
-        const preview = content.length > 400 ? content.substring(0, 400) + "\n..." : content;
-        context += `### ${filePath}\n\`\`\`\n${preview}\n\`\`\`\n\n`;
+        const preview = content.length > 600 ? content.substring(0, 600) + "\n..." : content;
+        code += `### ${filePath}\n\`\`\`typescript\n${preview}\n\`\`\`\n\n`;
       }
     } catch (err) {
       console.error(`Failed to load ${filePath}:`, err.message);
     }
   }
   
+  return code;
+}
+
+async function loadSupabaseSchema() {
+  let schema = "## Supabase Database Schema:\n\n";
+  
+  try {
+    const url = `https://${SUPABASE_PROJECT_ID}.supabase.co/rest/v1/?apikey=${SUPABASE_SERVICE_ROLE_SECRET}`;
+    const res = await fetch(url, {
+      headers: {
+        "apikey": SUPABASE_SERVICE_ROLE_SECRET,
+        "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_SECRET}`,
+      },
+    });
+
+    if (res.ok) {
+      const tables = await res.json();
+      schema += `Available tables: ${tables.map(t => t.name).join(", ")}\n\n`;
+      
+      // Load schema for each table
+      for (const table of tables.slice(0, 5)) {
+        try {
+          const schemaUrl = `https://${SUPABASE_PROJECT_ID}.supabase.co/rest/v1/${table.name}?limit=0`;
+          const schemaRes = await fetch(schemaUrl, {
+            headers: {
+              "apikey": SUPABASE_SERVICE_ROLE_SECRET,
+              "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_SECRET}`,
+            },
+          });
+          
+          if (schemaRes.ok) {
+            const headers = schemaRes.headers;
+            schema += `Table "${table.name}": `;
+            schema += Array.from(headers.entries())
+              .filter(([k]) => k === "content-range")
+              .map(([k, v]) => `${v}`)
+              .join("; ") || "schema loaded";
+            schema += "\n";
+          }
+        } catch (err) {
+          console.error(`Failed to load schema for ${table.name}:`, err.message);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Error loading Supabase schema:", err.message);
+    schema += "Unable to load schema\n";
+  }
+  
+  return schema;
+}
+
+async function loadGitHistory() {
+  let history = "## Recent Git History:\n\n";
+  
+  try {
+    const url = `https://api.github.com/repos/${GITHUB_REPO}/commits?per_page=10&sha=${GITHUB_BRANCH}`;
+    const res = await fetch(url, {
+      headers: {
+        "Authorization": `token ${GITHUB_TOKEN}`,
+        "Accept": "application/vnd.github.v3+json",
+      },
+    });
+
+    if (res.ok) {
+      const commits = await res.json();
+      commits.slice(0, 8).forEach(commit => {
+        history += `- ${commit.commit.message.split('\n')[0]} (${commit.sha.substring(0, 7)})\n`;
+      });
+    }
+  } catch (err) {
+    console.error("Error loading git history:", err.message);
+    history += "Unable to load history\n";
+  }
+  
+  return history;
+}
+
+async function loadProjectContext() {
+  let context = "# PROJECT KNOWLEDGE BASE\n\n";
+  
+  // Load file tree
+  console.log("Loading file tree...");
+  const tree = await getGitHubTree();
+  const excludePatterns = [
+    "node_modules/",
+    ".git/",
+    ".next/",
+    "dist/",
+    "build/",
+    ".env",
+  ];
+  const filteredTree = tree.filter(item => 
+    !excludePatterns.some(pattern => item.path.startsWith(pattern)) &&
+    item.type === "blob"
+  );
+  
+  context += `## Project Files (${filteredTree.length} total):\n`;
+  filteredTree.forEach(item => {
+    context += `- ${item.path}\n`;
+  });
+  context += "\n";
+  
+  // Load source code
+  console.log("Loading source code...");
+  context += await loadSourceCode() + "\n";
+  
+  // Load database schema
+  console.log("Loading Supabase schema...");
+  context += await loadSupabaseSchema() + "\n";
+  
+  // Load git history
+  console.log("Loading git history...");
+  context += await loadGitHistory() + "\n";
+  
   projectContext = context;
-  console.log("Project context loaded:", projectContext.length, "characters");
-  console.log("Total files in project:", filteredTree.length);
+  console.log("Project knowledge base loaded:", projectContext.length, "characters");
 }
 
 async function sendTelegramMessage(chatId, text) {
@@ -127,14 +213,22 @@ async function callClaude(userMessage, chatId) {
   conversations.set(chatId, conv);
 
   try {
-    console.log("Calling Claude API with project context...");
-    const systemPrompt = `You are Claude on Telegram, an expert helping with a JavaScript/TypeScript/React project. 
+    console.log("Calling Claude API with full project context...");
+    const systemPrompt = `You are Claude AI in Telegram - an expert codebase assistant with full project knowledge.
 
-IMPORTANT: You have access to the complete project file structure. When suggesting fixes:
-1. Reference the exact file paths from the project
-2. Only suggest fixes to files that actually exist in the project
-3. Be specific about which files to modify
-4. Wrap code fixes in markdown code blocks with language specified (e.g., \`\`\`typescript)
+CAPABILITIES:
+- Understand the entire codebase structure and dependencies
+- Suggest specific fixes to actual files
+- Know the database schema and relationships
+- Recommend changes based on recent project history
+
+INSTRUCTIONS:
+1. When fixing code, reference exact file paths that exist in the project
+2. Provide complete code blocks for files being modified
+3. Understand the database structure when suggesting queries
+4. Be aware of recent changes to avoid conflicting updates
+5. Wrap all code fixes in markdown blocks with language (e.g., \`\`\`typescript)
+6. Be concise but thorough
 
 ${projectContext}`;
 
@@ -147,7 +241,7 @@ ${projectContext}`;
       },
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",
-        max_tokens: 1500,
+        max_tokens: 2000,
         system: systemPrompt,
         messages: conv.messages,
       }),
@@ -343,7 +437,7 @@ async function deployToVercel() {
   }
 }
 
-console.log("Loading initial project context...");
+console.log("Loading project knowledge base on startup...");
 await loadProjectContext();
 
 Deno.serve(async (req) => {
@@ -358,7 +452,7 @@ Deno.serve(async (req) => {
       if (text === "/help") {
         reply = ` Claude Bot Commands:
 /help - Show this help
-<question> - Ask Claude anything (Claude knows your project!)
+<question> - Ask Claude anything (Full codebase knowledge!)
 /read <file> - Read from repo
 /edit <file> <content> - Edit file
 /apply <file> - Apply Claude's last code fix
