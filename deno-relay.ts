@@ -7,39 +7,31 @@ const GITHUB_REPO = "joemagnusbizdev/generator3.0";
 const GITHUB_BRANCH = "main";
 
 const conversations = new Map();
-let projectContext = "";
-let contextLoaded = false;
+let cachedContext = "";
 
-async function buildProjectContext() {
+async function getProjectContext() {
+  if (cachedContext) return cachedContext;
+  
   try {
-    console.log("Building project context...");
-    let context = "# PROJECT KNOWLEDGE BASE\n\n";
+    console.log("Loading project context...");
+    let context = "PROJECT KNOWLEDGE:\n\n";
     
-    // Quick file tree
-    console.log("Fetching GitHub files...");
+    // Get file tree
     const treeRes = await fetch(
       `https://api.github.com/repos/${GITHUB_REPO}/git/trees/${GITHUB_BRANCH}?recursive=1`,
       { headers: { "Authorization": `token ${GITHUB_TOKEN}` } }
-    );
+    ).then(r => r.json()).catch(() => ({}));
     
-    if (treeRes.ok) {
-      const tree = (await treeRes.json()).tree || [];
-      const exclude = ["node_modules/", ".git/", ".next/", "dist/"];
-      const files = tree.filter(f => !exclude.some(e => f.path.startsWith(e)) && f.type === "blob");
-      context += `## All Project Files (${files.length} files):\n`;
-      files.forEach(f => context += `- ${f.path}\n`);
-      context += "\n";
-    }
+    const tree = treeRes.tree || [];
+    const files = tree.filter(f => !["node_modules/", ".git/", ".next/", "dist/"].some(e => f.path.startsWith(e)) && f.type === "blob");
+    context += `Project has ${files.length} source files:\n`;
+    context += files.map(f => `- ${f.path}`).join("\n") + "\n\n";
     
-    // Load 3 key files
-    const sourceFiles = [
-      "src1/components/ScourManagementInline.tsx",
-      "src1/lib/supabase/index.ts",
-      "package.json",
-    ];
-
-    context += "## Key Source Files:\n\n";
-    for (const file of sourceFiles) {
+    // Get key source files
+    const sources = ["src1/components/ScourManagementInline.tsx", "src1/lib/supabase/index.ts", "package.json"];
+    context += "Key files:\n\n";
+    
+    for (const file of sources) {
       try {
         const res = await fetch(
           `https://api.github.com/repos/${GITHUB_REPO}/contents/${file}?ref=${GITHUB_BRANCH}`,
@@ -47,21 +39,18 @@ async function buildProjectContext() {
         );
         if (res.ok) {
           const content = await res.text();
-          const preview = content.length > 400 ? content.substring(0, 400) + "\n..." : content;
-          context += `### ${file}\n\`\`\`\n${preview}\n\`\`\`\n\n`;
+          const preview = content.length > 300 ? content.substring(0, 300) + "..." : content;
+          context += `FILE: ${file}\n${preview}\n\n`;
         }
-      } catch (e) {
-        console.error(`Failed to load ${file}:`, e.message);
-      }
+      } catch (e) {}
     }
     
-    projectContext = context;
-    contextLoaded = true;
-    console.log(`Context ready (${context.length} chars)`);
+    cachedContext = context;
+    console.log("Context loaded: " + context.length + " chars");
+    return context;
   } catch (e) {
-    console.error("Context build error:", e.message);
-    projectContext = "# Project context (reduced mode)\nYou have access to the codebase via /read command";
-    contextLoaded = true;
+    console.error("Context error:", e.message);
+    return "PROJECT KNOWLEDGE: Unable to load - use /read <file> command";
   }
 }
 
@@ -77,35 +66,34 @@ async function sendTelegramMessage(chatId, text) {
 }
 
 function extractCodeBlock(text) {
-  const match = text.match(/```(?:\w+)?\n([\s\S]*?)\n```/);
+  const match = text.match(/\x60\x60\x60(?:\w+)?\n([\s\S]*?)\n\x60\x60\x60/);
   return match ? match[1] : null;
 }
 
 async function callClaude(userMessage, chatId) {
-  // Ensure context is loaded
-  if (!contextLoaded) {
-    await buildProjectContext();
-  }
-
-  let conv = conversations.get(chatId) || { messages: [], lastClaudeResponse: "" };
+  let conv = conversations.get(chatId) || { messages: [], lastResponse: "" };
   conv.messages.push({ role: "user", content: userMessage });
   conversations.set(chatId, conv);
 
   try {
-    const systemPrompt = `You are Claude AI on Telegram - expert codebase assistant.
+    const projectKnowledge = await getProjectContext();
+    const systemPrompt = `You are Claude AI on Telegram. You are an expert code assistant with full project knowledge.
 
-You have full access to:
-- Complete project file structure
-- Source code files
+You can see:
+- All project files and structure
+- Complete source code
 - Supabase database
+- Git history
 
-When helping:
-1. Reference real files from the project
-2. Suggest specific fixes with code blocks
-3. Use exact file paths
-4. Wrap code in markdown blocks
+When a user asks about the project, reference specific files. When they ask for fixes, provide complete code blocks.
 
-${projectContext}`;
+${projectKnowledge}
+
+You can also use these commands:
+/read <file> - to read any file from GitHub
+/edit <file> <code> - to edit a file
+/apply <file> - to apply your last suggested code fix
+/db <table> - to query Supabase`;
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -123,17 +111,25 @@ ${projectContext}`;
     });
 
     if (!res.ok) {
+      const error = await res.text();
+      console.error("Claude error:", res.status, error);
       return "Claude API error: " + res.status;
     }
 
     const data = await res.json();
-    const reply = data.content?.[0]?.text || "No response";
+    if (!data.content?.[0]) {
+      console.error("Invalid response:", data);
+      return "Invalid response from Claude";
+    }
+    
+    const reply = data.content[0].text;
     conv.messages.push({ role: "assistant", content: reply });
-    conv.lastClaudeResponse = reply;
+    conv.lastResponse = reply;
     conversations.set(chatId, conv);
     return reply;
   } catch (err) {
-    return "Error: " + err.message;
+    console.error("Error:", err.message);
+    return "Error calling Claude: " + err.message;
   }
 }
 
@@ -143,9 +139,10 @@ async function readFileFromGitHub(filePath) {
       `https://api.github.com/repos/${GITHUB_REPO}/contents/${filePath}?ref=${GITHUB_BRANCH}`,
       { headers: { "Authorization": `token ${GITHUB_TOKEN}`, "Accept": "application/vnd.github.v3.raw" } }
     );
-    return res.ok ? await res.text() : `Error: ${res.status}`;
+    if (!res.ok) return `Error reading file: ${res.status}`;
+    return await res.text();
   } catch (err) {
-    return `Error: ${err.message}`;
+    return "Error: " + err.message;
   }
 }
 
@@ -155,13 +152,13 @@ async function writeFileToGitHub(filePath, content, message) {
     const getRes = await fetch(url + `?ref=${GITHUB_BRANCH}`, {
       headers: { "Authorization": `token ${GITHUB_TOKEN}` },
     });
-
+    
     let sha = undefined;
     if (getRes.ok) {
       const data = await getRes.json();
       sha = data.sha;
     }
-
+    
     const res = await fetch(url, {
       method: "PUT",
       headers: {
@@ -175,17 +172,20 @@ async function writeFileToGitHub(filePath, content, message) {
         sha: sha,
       }),
     });
-
-    return res.ok ? ` Committed` : `Error: ${res.status}`;
+    
+    if (!res.ok) {
+      return `Error: ${res.status}`;
+    }
+    return " File committed to GitHub";
   } catch (err) {
-    return `Error: ${err.message}`;
+    return "Error: " + err.message;
   }
 }
 
-async function querySupabase(table, limit = 5) {
+async function querySupabase(table) {
   try {
     const res = await fetch(
-      `https://${SUPABASE_PROJECT_ID}.supabase.co/rest/v1/${table}?limit=${limit}`,
+      `https://${SUPABASE_PROJECT_ID}.supabase.co/rest/v1/${table}?limit=5`,
       {
         headers: {
           "apikey": SUPABASE_SERVICE_ROLE_SECRET,
@@ -195,10 +195,9 @@ async function querySupabase(table, limit = 5) {
     );
     if (!res.ok) return `Error: ${res.status}`;
     const data = await res.json();
-    const preview = JSON.stringify(data, null, 2).substring(0, 1500);
-    return ` ${table}:\n\n${preview}`;
+    return `Table "${table}":\n\n${JSON.stringify(data, null, 2).substring(0, 1000)}`;
   } catch (err) {
-    return `Error: ${err.message}`;
+    return "Error: " + err.message;
   }
 }
 
@@ -210,21 +209,22 @@ Deno.serve(async (req) => {
       if (msg?.text) {
         const chatId = msg.chat.id;
         const text = msg.text.trim();
-        let reply = "Hello!";
+        let reply = "Unknown command";
 
         if (text === "/help") {
-          reply = ` Commands:
-/help - Show this
-<question> - Ask Claude (knows your code!)
-/read <file> - Read file
-/edit <file> <content> - Edit file
-/apply <file> - Apply last fix
-/db <table> - Query Supabase`;
+          reply = " Claude Bot - Commands:\n/help - This help\n<anything> - Ask Claude\n/read FILE - Read file\n/edit FILE CODE - Edit file\n/apply FILE - Apply last fix\n/db TABLE - Query Supabase\n/test - Test bot connection";
+        } else if (text === "/test") {
+          const ctx = await getProjectContext();
+          reply = "Bot is working! Project context loaded:\n" + ctx.substring(0, 300) + "...";
         } else if (text.startsWith("/apply ")) {
           const filePath = text.substring(7).trim();
           const conv = conversations.get(chatId);
-          const code = conv?.lastClaudeResponse ? extractCodeBlock(conv.lastClaudeResponse) : null;
-          reply = code ? await writeFileToGitHub(filePath, code, `Apply fix`) : "No fix found";
+          const code = conv?.lastResponse ? extractCodeBlock(conv.lastResponse) : null;
+          if (code) {
+            reply = await writeFileToGitHub(filePath, code, `Apply fix to ${filePath}`);
+          } else {
+            reply = "No code fix found. Ask Claude for a code fix first.";
+          }
         } else if (text.startsWith("/db ")) {
           const table = text.substring(4).trim();
           reply = await querySupabase(table);
@@ -235,18 +235,19 @@ Deno.serve(async (req) => {
           const parts = text.substring(6).split(" ");
           const filePath = parts[0];
           const content = text.substring(6 + filePath.length).trim();
-          reply = content ? await writeFileToGitHub(filePath, content, `Update`) : "Usage: /edit <file> <content>";
+          reply = content ? await writeFileToGitHub(filePath, content, `Manual edit: ${filePath}`) : "Usage: /edit <file> <content>";
         } else {
           reply = await callClaude(text, chatId);
         }
+        
         await sendTelegramMessage(chatId, reply);
       }
     } catch (err) {
-      console.error("Error:", err.message);
+      console.error("Webhook error:", err.message);
     }
     return new Response(JSON.stringify({ ok: true }));
   }
   return new Response("ok");
 });
 
-console.log("Bot started");
+console.log("Bot server started");
