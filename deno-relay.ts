@@ -12,12 +12,45 @@ console.log("=== BOT STARTUP ===");
 console.log("Telegram token present:", !!TELEGRAM_TOKEN);
 console.log("Anthropic API key present:", !!ANTHROPIC_API_KEY);
 console.log("GitHub token present:", !!GITHUB_TOKEN);
-console.log("Supabase service role present:", !!SUPABASE_SERVICE_ROLE_SECRET);
-console.log("Vercel token present:", !!VERCEL_TOKEN);
-console.log("API key length:", ANTHROPIC_API_KEY.length);
-console.log("API key starts with:", ANTHROPIC_API_KEY.substring(0, 10));
+console.log("Loading project context...");
 
 const conversations = new Map();
+let projectContext = "";
+
+async function loadProjectContext() {
+  const filesToLoad = [
+    "package.json",
+    "README.md",
+    "deno.json",
+    "index.ts",
+    "src1/lib/supabase/index.ts",
+  ];
+
+  let context = "# PROJECT CONTEXT\n\n";
+  
+  for (const filePath of filesToLoad) {
+    try {
+      const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${filePath}?ref=${GITHUB_BRANCH}`;
+      const res = await fetch(url, {
+        headers: {
+          "Authorization": `token ${GITHUB_TOKEN}`,
+          "Accept": "application/vnd.github.v3.raw",
+        },
+      });
+      
+      if (res.ok) {
+        const content = await res.text();
+        const preview = content.length > 500 ? content.substring(0, 500) + "\n..." : content;
+        context += `## ${filePath}\n\`\`\`\n${preview}\n\`\`\`\n\n`;
+      }
+    } catch (err) {
+      console.error(`Failed to load ${filePath}:`, err.message);
+    }
+  }
+  
+  projectContext = context;
+  console.log("Project context loaded:", projectContext.length, "characters");
+}
 
 async function sendTelegramMessage(chatId, text) {
   const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
@@ -47,6 +80,12 @@ async function callClaude(userMessage, chatId) {
 
   try {
     console.log("Calling Claude API...");
+    const systemPrompt = `You are Claude on Telegram, helping with a JavaScript/TypeScript project. 
+Be helpful, concise, and provide code fixes when requested.
+When providing code fixes, wrap them in markdown code blocks with the language specified (e.g., \`\`\`typescript).
+
+${projectContext}`;
+
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -57,7 +96,7 @@ async function callClaude(userMessage, chatId) {
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",
         max_tokens: 1500,
-        system: "You are Claude on Telegram. Be helpful and concise. When providing code fixes, wrap them in markdown code blocks with the language specified (e.g., ```typescript).",
+        system: systemPrompt,
         messages: conv.messages,
       }),
     });
@@ -71,7 +110,6 @@ async function callClaude(userMessage, chatId) {
     }
 
     const data = await res.json();
-    console.log("Claude data:", JSON.stringify(data).substring(0, 200));
 
     if (!data.content || !data.content[0]) {
       console.error("Invalid Claude response:", data);
@@ -253,6 +291,9 @@ async function deployToVercel() {
   }
 }
 
+console.log("Loading initial project context...");
+await loadProjectContext();
+
 Deno.serve(async (req) => {
   if (req.method === "POST") {
     const body = await req.json();
@@ -265,7 +306,7 @@ Deno.serve(async (req) => {
       if (text === "/help") {
         reply = ` Claude Bot Commands:
 /help - Show this help
-<question> - Ask Claude anything
+<question> - Ask Claude anything (Claude knows your project!)
 /read <file> - Read from repo
 /edit <file> <content> - Edit file
 /apply <file> - Apply Claude's last code fix
