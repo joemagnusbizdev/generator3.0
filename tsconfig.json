@@ -1,35 +1,15 @@
 ﻿{
   "compilerOptions": {
     "target": "ES2020",
-    "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2020"],
     "module": "ESNext",
     "skipLibCheck": true,
-
-    /* Bundler mode */
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
+    "moduleResolution": "node",
     "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "jsx": "react-jsx",
-
-    /* Paths */
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src1/*"],
-      "@styles/*": ["./src1/styles/*"],
-      "@lib/*": ["./src1/lib/*"],
-      "@components/*": ["./src1/components/*"]
-    },
-
-    /* Linting - Relaxed for build success */
+    "esModuleInterop": true,
     "strict": false,
     "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "noFallthroughCasesInSwitch": true
+    "noUnusedParameters": false
   },
-  "include": ["src1/**/*.ts", "src1/**/*.tsx", "src1/vite-env.d.ts"],
-  "references": [{ "path": "./tsconfig.node.json" }],
-  "exclude": ["src1/clever-function", "src1/lib/supabase/index.ts", "supabase"]
+  "include": ["deno-relay.ts"]
 }
