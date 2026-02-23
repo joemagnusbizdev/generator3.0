@@ -1,9 +1,13 @@
 const TELEGRAM_TOKEN = "8707153044:AAFQEQvq_3QmABdrQSQUHC7osDawsOVtUJc";
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") || "";
+const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN") || "";
+const GITHUB_REPO = "joemagnusbizdev/generator3.0";
+const GITHUB_BRANCH = "main";
 
 console.log("=== BOT STARTUP ===");
 console.log("Telegram token present:", !!TELEGRAM_TOKEN);
 console.log("Anthropic API key present:", !!ANTHROPIC_API_KEY);
+console.log("GitHub token present:", !!GITHUB_TOKEN);
 console.log("API key length:", ANTHROPIC_API_KEY.length);
 console.log("API key starts with:", ANTHROPIC_API_KEY.substring(0, 10));
 
@@ -69,17 +73,90 @@ async function callClaude(userMessage, chatId) {
   }
 }
 
+async function readFileFromGitHub(filePath) {
+  try {
+    const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${filePath}?ref=${GITHUB_BRANCH}`;
+    const res = await fetch(url, {
+      headers: {
+        "Authorization": `token ${GITHUB_TOKEN}`,
+        "Accept": "application/vnd.github.v3.raw",
+      },
+    });
+    if (!res.ok) return `Error reading ${filePath}: ${res.status}`;
+    return await res.text();
+  } catch (err) {
+    return `Error: ${err.message}`;
+  }
+}
+
+async function writeFileToGitHub(filePath, content, message) {
+  try {
+    const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${filePath}`;
+    
+    // Get current file SHA for update
+    const getRes = await fetch(url + `?ref=${GITHUB_BRANCH}`, {
+      headers: { "Authorization": `token ${GITHUB_TOKEN}` },
+    });
+    
+    let sha = undefined;
+    if (getRes.ok) {
+      const data = await getRes.json();
+      sha = data.sha;
+    }
+    
+    const res = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "Authorization": `token ${GITHUB_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message: message || `Update ${filePath} via Telegram bot`,
+        content: btoa(content),
+        branch: GITHUB_BRANCH,
+        sha: sha,
+      }),
+    });
+    
+    if (!res.ok) {
+      const error = await res.json();
+      return `Error: ${error.message || res.status}`;
+    }
+    return `✅ Committed: ${message || filePath}`;
+  } catch (err) {
+    return `Error: ${err.message}`;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "POST") {
     const body = await req.json();
     const msg = body.message;
     if (msg?.text) {
       const chatId = msg.chat.id;
+      const text = msg.text.trim();
       let reply = "Hello!";
-      if (msg.text === "/help") {
-        reply = "📚 Claude Bot - Ask me anything!";
+      
+      if (text === "/help") {
+        reply = `📚 Claude Bot Commands:
+/help - Show this help
+<question> - Ask Claude anything
+/read <file> - Read a file from repo
+/edit <file> <content> - Write to file`;
+      } else if (text.startsWith("/read ")) {
+        const filePath = text.substring(6).trim();
+        reply = await readFileFromGitHub(filePath);
+      } else if (text.startsWith("/edit ")) {
+        const parts = text.substring(6).split(" ");
+        const filePath = parts[0];
+        const content = text.substring(6 + filePath.length).trim();
+        if (content) {
+          reply = await writeFileToGitHub(filePath, content, `Updated ${filePath}`);
+        } else {
+          reply = "Error: /edit <file> <content>";
+        }
       } else {
-        reply = await callClaude(msg.text, chatId);
+        reply = await callClaude(text, chatId);
       }
       await sendTelegramMessage(chatId, reply);
     }
