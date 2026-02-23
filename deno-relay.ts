@@ -17,16 +17,64 @@ console.log("Loading project context...");
 const conversations = new Map();
 let projectContext = "";
 
+async function getGitHubTree(path = "", recursive = true) {
+  try {
+    const url = `https://api.github.com/repos/${GITHUB_REPO}/git/trees/${GITHUB_BRANCH}?recursive=${recursive ? 1 : 0}`;
+    const res = await fetch(url, {
+      headers: {
+        "Authorization": `token ${GITHUB_TOKEN}`,
+        "Accept": "application/vnd.github.v3+json",
+      },
+    });
+    
+    if (!res.ok) {
+      console.error("Failed to fetch tree:", res.status);
+      return [];
+    }
+    
+    const data = await res.json();
+    return data.tree || [];
+  } catch (err) {
+    console.error("Error fetching tree:", err.message);
+    return [];
+  }
+}
+
 async function loadProjectContext() {
+  let context = "# PROJECT STRUCTURE\n\n";
+  
+  // Load file tree (excluding node_modules, .git, etc)
+  const tree = await getGitHubTree();
+  
+  const excludePatterns = [
+    "node_modules/",
+    ".git/",
+    ".next/",
+    "dist/",
+    "build/",
+    ".env",
+  ];
+  
+  const filteredTree = tree.filter(item => 
+    !excludePatterns.some(pattern => item.path.startsWith(pattern)) &&
+    item.type === "blob"
+  );
+  
+  context += "## Project Files:\n";
+  filteredTree.slice(0, 100).forEach(item => {
+    context += `- ${item.path}\n`;
+  });
+  context += `\n(Total: ${filteredTree.length} files)\n\n`;
+  
+  // Load key config files
   const filesToLoad = [
     "package.json",
     "README.md",
     "deno.json",
-    "index.ts",
-    "src1/lib/supabase/index.ts",
+    ".env.example",
   ];
 
-  let context = "# PROJECT CONTEXT\n\n";
+  context += "## Key Files:\n\n";
   
   for (const filePath of filesToLoad) {
     try {
@@ -40,8 +88,8 @@ async function loadProjectContext() {
       
       if (res.ok) {
         const content = await res.text();
-        const preview = content.length > 500 ? content.substring(0, 500) + "\n..." : content;
-        context += `## ${filePath}\n\`\`\`\n${preview}\n\`\`\`\n\n`;
+        const preview = content.length > 400 ? content.substring(0, 400) + "\n..." : content;
+        context += `### ${filePath}\n\`\`\`\n${preview}\n\`\`\`\n\n`;
       }
     } catch (err) {
       console.error(`Failed to load ${filePath}:`, err.message);
@@ -50,6 +98,7 @@ async function loadProjectContext() {
   
   projectContext = context;
   console.log("Project context loaded:", projectContext.length, "characters");
+  console.log("Total files in project:", filteredTree.length);
 }
 
 async function sendTelegramMessage(chatId, text) {
@@ -70,8 +119,7 @@ function extractCodeBlock(text) {
 }
 
 async function callClaude(userMessage, chatId) {
-  console.log("callClaude called with:", userMessage);
-  console.log("API Key present:", !!ANTHROPIC_API_KEY);
+  console.log("callClaude called");
 
   let conv = conversations.get(chatId) || { messages: [], lastTime: Date.now(), lastClaudeResponse: "" };
   conv.lastTime = Date.now();
@@ -79,10 +127,14 @@ async function callClaude(userMessage, chatId) {
   conversations.set(chatId, conv);
 
   try {
-    console.log("Calling Claude API...");
-    const systemPrompt = `You are Claude on Telegram, helping with a JavaScript/TypeScript project. 
-Be helpful, concise, and provide code fixes when requested.
-When providing code fixes, wrap them in markdown code blocks with the language specified (e.g., \`\`\`typescript).
+    console.log("Calling Claude API with project context...");
+    const systemPrompt = `You are Claude on Telegram, an expert helping with a JavaScript/TypeScript/React project. 
+
+IMPORTANT: You have access to the complete project file structure. When suggesting fixes:
+1. Reference the exact file paths from the project
+2. Only suggest fixes to files that actually exist in the project
+3. Be specific about which files to modify
+4. Wrap code fixes in markdown code blocks with language specified (e.g., \`\`\`typescript)
 
 ${projectContext}`;
 
@@ -106,7 +158,7 @@ ${projectContext}`;
     if (!res.ok) {
       const error = await res.text();
       console.error("Claude API error:", res.status, error);
-      return "API Error " + res.status + ": " + error.substring(0, 100);
+      return "API Error " + res.status;
     }
 
     const data = await res.json();
@@ -282,7 +334,7 @@ async function deployToVercel() {
 
     if (!res.ok) {
       const error = await res.text();
-      return ` Vercel deploy failed (${res.status}): ${error.substring(0, 100)}`;
+      return ` Vercel deploy failed (${res.status})`;
     }
     const data = await res.json();
     return ` Vercel deployment triggered (${data.uid})`;
