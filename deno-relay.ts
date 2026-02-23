@@ -2,7 +2,7 @@ const TELEGRAM_TOKEN = "8707153044:AAFQEQvq_3QmABdrQSQUHC7osDawsOVtUJc";
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") || "";
 const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN") || "";
 const SUPABASE_PROJECT_ID = Deno.env.get("SUPABASE_PROJECT_ID") || "";
-const SUPABASE_API_KEY = Deno.env.get("SUPABASE_API_KEY") || "";
+const SUPABASE_SERVICE_ROLE_SECRET = Deno.env.get("SUPABASE_SERVICE_ROLE_SECRET") || "";
 const VERCEL_TOKEN = Deno.env.get("VERCEL_TOKEN") || "";
 const VERCEL_PROJECT_ID = Deno.env.get("VERCEL_PROJECT_ID") || "";
 const GITHUB_REPO = "joemagnusbizdev/generator3.0";
@@ -12,7 +12,7 @@ console.log("=== BOT STARTUP ===");
 console.log("Telegram token present:", !!TELEGRAM_TOKEN);
 console.log("Anthropic API key present:", !!ANTHROPIC_API_KEY);
 console.log("GitHub token present:", !!GITHUB_TOKEN);
-console.log("Supabase API key present:", !!SUPABASE_API_KEY);
+console.log("Supabase service role present:", !!SUPABASE_SERVICE_ROLE_SECRET);
 console.log("Vercel token present:", !!VERCEL_TOKEN);
 console.log("API key length:", ANTHROPIC_API_KEY.length);
 console.log("API key starts with:", ANTHROPIC_API_KEY.substring(0, 10));
@@ -21,17 +21,20 @@ const conversations = new Map();
 
 async function sendTelegramMessage(chatId, text) {
   const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
-  await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text }),
-  });
+  const chunks = text.length > 4096 ? [text.substring(0, 4096), text.substring(4096)] : [text];
+  for (const chunk of chunks) {
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: chunk }),
+    });
+  }
 }
 
 async function callClaude(userMessage, chatId) {
   console.log("callClaude called with:", userMessage);
   console.log("API Key present:", !!ANTHROPIC_API_KEY);
-  
+
   let conv = conversations.get(chatId) || { messages: [], lastTime: Date.now() };
   conv.lastTime = Date.now();
   conv.messages.push({ role: "user", content: userMessage });
@@ -55,7 +58,7 @@ async function callClaude(userMessage, chatId) {
     });
 
     console.log("Claude response status:", res.status);
-    
+
     if (!res.ok) {
       const error = await res.text();
       console.error("Claude API error:", res.status, error);
@@ -64,7 +67,7 @@ async function callClaude(userMessage, chatId) {
 
     const data = await res.json();
     console.log("Claude data:", JSON.stringify(data).substring(0, 200));
-    
+
     if (!data.content || !data.content[0]) {
       console.error("Invalid Claude response:", data);
       return "Invalid response format";
@@ -98,18 +101,17 @@ async function readFileFromGitHub(filePath) {
 async function writeFileToGitHub(filePath, content, message) {
   try {
     const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${filePath}`;
-    
     // Get current file SHA for update
     const getRes = await fetch(url + `?ref=${GITHUB_BRANCH}`, {
       headers: { "Authorization": `token ${GITHUB_TOKEN}` },
     });
-    
+
     let sha = undefined;
     if (getRes.ok) {
       const data = await getRes.json();
       sha = data.sha;
     }
-    
+
     const res = await fetch(url, {
       method: "PUT",
       headers: {
@@ -123,12 +125,64 @@ async function writeFileToGitHub(filePath, content, message) {
         sha: sha,
       }),
     });
-    
+
     if (!res.ok) {
       const error = await res.json();
       return `Error: ${error.message || res.status}`;
     }
-    return `✅ Committed: ${message || filePath}`;
+    return ` Committed: ${message || filePath}`;
+  } catch (err) {
+    return `Error: ${err.message}`;
+  }
+}
+
+async function querySupabase(table, limit = 5) {
+  try {
+    if (!SUPABASE_PROJECT_ID || !SUPABASE_SERVICE_ROLE_SECRET) {
+      return " Supabase not configured";
+    }
+
+    const url = `https://${SUPABASE_PROJECT_ID}.supabase.co/rest/v1/${table}?limit=${limit}`;
+    const res = await fetch(url, {
+      headers: {
+        "apikey": SUPABASE_SERVICE_ROLE_SECRET,
+        "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_SECRET}`,
+      },
+    });
+
+    if (!res.ok) {
+      return ` Error querying ${table}: ${res.status}`;
+    }
+
+    const data = await res.json();
+    const jsonStr = JSON.stringify(data, null, 2);
+    const preview = jsonStr.length > 1500 ? jsonStr.substring(0, 1500) + "\n..." : jsonStr;
+    return ` Table "${table}" (first ${limit} rows):\n\n${preview}`;
+  } catch (err) {
+    return `Error: ${err.message}`;
+  }
+}
+
+async function getSupabaseTableCount(table) {
+  try {
+    if (!SUPABASE_PROJECT_ID || !SUPABASE_SERVICE_ROLE_SECRET) {
+      return " Supabase not configured";
+    }
+
+    const url = `https://${SUPABASE_PROJECT_ID}.supabase.co/rest/v1/${table}?count=exact&select=id`;
+    const res = await fetch(url, {
+      headers: {
+        "apikey": SUPABASE_SERVICE_ROLE_SECRET,
+        "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_SECRET}`,
+      },
+    });
+
+    if (!res.ok) {
+      return ` Error querying ${table}: ${res.status}`;
+    }
+
+    const count = res.headers.get("content-range")?.split("/")[1] || "?";
+    return ` Table "${table}": ${count} rows`;
   } catch (err) {
     return `Error: ${err.message}`;
   }
@@ -136,24 +190,24 @@ async function writeFileToGitHub(filePath, content, message) {
 
 async function deployToSupabase() {
   try {
-    if (!SUPABASE_PROJECT_ID || !SUPABASE_API_KEY) {
-      return "❌ Supabase not configured (missing SUPABASE_PROJECT_ID or SUPABASE_API_KEY)";
+    if (!SUPABASE_PROJECT_ID || !SUPABASE_SERVICE_ROLE_SECRET) {
+      return " Supabase not configured";
     }
-    
+
     const url = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/clever-function`;
     const res = await fetch(url, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${SUPABASE_API_KEY}`,
+        "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_SECRET}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ action: "deploy" }),
     });
-    
+
     if (!res.ok) {
-      return `❌ Supabase deploy failed (${res.status})`;
+      return ` Supabase deploy failed (${res.status})`;
     }
-    return `✅ Supabase deployed successfully`;
+    return ` Supabase deployed successfully`;
   } catch (err) {
     return `Error: ${err.message}`;
   }
@@ -162,9 +216,9 @@ async function deployToSupabase() {
 async function deployToVercel() {
   try {
     if (!VERCEL_TOKEN || !VERCEL_PROJECT_ID) {
-      return "❌ Vercel not configured (missing VERCEL_TOKEN or VERCEL_PROJECT_ID)";
+      return " Vercel not configured";
     }
-    
+
     const res = await fetch(
       `https://api.vercel.com/v13/projects/${VERCEL_PROJECT_ID}/deployments`,
       {
@@ -182,13 +236,13 @@ async function deployToVercel() {
         }),
       }
     );
-    
+
     if (!res.ok) {
       const error = await res.text();
-      return `❌ Vercel deploy failed (${res.status}): ${error.substring(0, 100)}`;
+      return ` Vercel deploy failed (${res.status}): ${error.substring(0, 100)}`;
     }
     const data = await res.json();
-    return `✅ Vercel deployment triggered (${data.uid})`;
+    return ` Vercel deployment triggered (${data.uid})`;
   } catch (err) {
     return `Error: ${err.message}`;
   }
@@ -202,15 +256,23 @@ Deno.serve(async (req) => {
       const chatId = msg.chat.id;
       const text = msg.text.trim();
       let reply = "Hello!";
-      
+
       if (text === "/help") {
-        reply = `📚 Claude Bot Commands:
+        reply = ` Claude Bot Commands:
 /help - Show this help
 <question> - Ask Claude anything
-/read <file> - Read a file from repo
-/edit <file> <content> - Write to file
+/read <file> - Read from repo
+/edit <file> <content> - Edit file
+/db <table> - Query Supabase table
+/db-count <table> - Count table rows
 /deploy supabase - Deploy to Supabase
 /deploy vercel - Deploy to Vercel`;
+      } else if (text.startsWith("/db-count ")) {
+        const table = text.substring(10).trim();
+        reply = await getSupabaseTableCount(table);
+      } else if (text.startsWith("/db ")) {
+        const table = text.substring(4).trim();
+        reply = await querySupabase(table);
       } else if (text.startsWith("/read ")) {
         const filePath = text.substring(6).trim();
         reply = await readFileFromGitHub(filePath);
