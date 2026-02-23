@@ -1,4 +1,4 @@
-const TELEGRAM_TOKEN = "8707153044:AAFQEQvq_3QmABdrQSQUHC7osDawsOVtUJc";
+﻿const TELEGRAM_TOKEN = "8707153044:AAFQEQvq_3QmABdrQSQUHC7osDawsOVtUJc";
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") || "";
 const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN") || "";
 const SUPABASE_PROJECT_ID = Deno.env.get("SUPABASE_PROJECT_ID") || "";
@@ -101,7 +101,6 @@ async function readFileFromGitHub(filePath) {
 async function writeFileToGitHub(filePath, content, message) {
   try {
     const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${filePath}`;
-    // Get current file SHA for update
     const getRes = await fetch(url + `?ref=${GITHUB_BRANCH}`, {
       headers: { "Authorization": `token ${GITHUB_TOKEN}` },
     });
