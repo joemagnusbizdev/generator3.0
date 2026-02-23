@@ -31,11 +31,16 @@ async function sendTelegramMessage(chatId, text) {
   }
 }
 
+function extractCodeBlock(text) {
+  const match = text.match(/```(?:\w+)?\n([\s\S]*?)\n```/);
+  return match ? match[1] : null;
+}
+
 async function callClaude(userMessage, chatId) {
   console.log("callClaude called with:", userMessage);
   console.log("API Key present:", !!ANTHROPIC_API_KEY);
 
-  let conv = conversations.get(chatId) || { messages: [], lastTime: Date.now() };
+  let conv = conversations.get(chatId) || { messages: [], lastTime: Date.now(), lastClaudeResponse: "" };
   conv.lastTime = Date.now();
   conv.messages.push({ role: "user", content: userMessage });
   conversations.set(chatId, conv);
@@ -52,7 +57,7 @@ async function callClaude(userMessage, chatId) {
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",
         max_tokens: 1500,
-        system: "You are Claude on Telegram. Be helpful and concise.",
+        system: "You are Claude on Telegram. Be helpful and concise. When providing code fixes, wrap them in markdown code blocks with the language specified (e.g., ```typescript).",
         messages: conv.messages,
       }),
     });
@@ -74,6 +79,7 @@ async function callClaude(userMessage, chatId) {
     }
     const reply = data.content[0].text;
     conv.messages.push({ role: "assistant", content: reply });
+    conv.lastClaudeResponse = reply;
     conversations.set(chatId, conv);
     return reply;
   } catch (err) {
@@ -262,10 +268,25 @@ Deno.serve(async (req) => {
 <question> - Ask Claude anything
 /read <file> - Read from repo
 /edit <file> <content> - Edit file
+/apply <file> - Apply Claude's last code fix
 /db <table> - Query Supabase table
 /db-count <table> - Count table rows
 /deploy supabase - Deploy to Supabase
 /deploy vercel - Deploy to Vercel`;
+      } else if (text.startsWith("/apply ")) {
+        const filePath = text.substring(7).trim();
+        const conv = conversations.get(chatId);
+        
+        if (!conv || !conv.lastClaudeResponse) {
+          reply = " No Claude response to apply. Ask Claude a question first.";
+        } else {
+          const code = extractCodeBlock(conv.lastClaudeResponse);
+          if (!code) {
+            reply = " No code block found in Claude's response. Ask for code changes.";
+          } else {
+            reply = await writeFileToGitHub(filePath, code, `Apply Claude fix to ${filePath}`);
+          }
+        }
       } else if (text.startsWith("/db-count ")) {
         const table = text.substring(10).trim();
         reply = await getSupabaseTableCount(table);
