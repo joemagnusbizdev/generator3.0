@@ -60,7 +60,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
     const pollActivityLogs = async () => {
       try {
         const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/status/${encodeURIComponent(runningGroupId)}`,
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/status?jobId=${encodeURIComponent(runningGroupId)}`,
           {
             headers: {
               Authorization: `Bearer ${accessToken}`,
@@ -239,7 +239,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         // Poll for job completion
         let jobComplete = false;
         let pollCount = 0;
-        const maxPolls = 600; // 5 minutes with 500ms interval
+        const maxPolls = 1800; // 15 minutes with 500ms interval
         
         while (!jobComplete && pollCount < maxPolls) {
           await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms between polls
@@ -247,7 +247,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
           
           try {
             const statusResponse = await fetch(
-              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/status/${encodeURIComponent(groupId)}`,
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/status?jobId=${encodeURIComponent(groupId)}`,
               {
                 headers: {
                   Authorization: `Bearer ${accessToken}`,
@@ -259,7 +259,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
               const statusData = await statusResponse.json();
               const job = statusData.job;
               
-              if (job && (job.status === 'completed' || job.status === 'error' || job.status === 'done')) {
+              if (job && (job.status === 'done' || job.status === 'error')) {
                 jobComplete = true;
                 
                 // Extract results from job data
@@ -309,7 +309,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         }
         
         if (!jobComplete) {
-          throw new Error('Scour job polling timeout (5 minutes elapsed)');
+          throw new Error('Scour job polling timeout (15 minutes elapsed)');
         }
         
         const allDone = sourceGroups.every(g => g.id === groupId || g.status === 'completed');

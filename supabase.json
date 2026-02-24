@@ -3,6 +3,10 @@
     {
       "slug": "telegram-claude",
       "verify_jwt": false
+    },
+    {
+      "slug": "telegram-webhook-relay",
+      "verify_jwt": false
     }
   ]
 }

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Telegram Claude Bot Relay - Deno Deploy
  * Routes messages to Supabase Edge Function (claude-code)
  */
@@ -226,4 +226,4 @@ Deno.serve(async (request: Request) => {
   }
 
   return new Response("Method not allowed", { status: 405 });
-});
+});

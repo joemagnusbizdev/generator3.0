@@ -1,5 +1,7 @@
 /// <reference lib="deno.unstable" />
 
+import { generateMAGNUSHTMLWrapper, formatPlainTextAsHTML } from "./html-utils.ts";
+
 console.log("=== Clever Function (Minimal Router) ===");
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
@@ -369,6 +371,15 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
     // GET /scour/status - Get current scour job status
     if ((path === "/scour/status" || path === "/clever-function/scour/status") && method === "GET") {
       try {
+        // Check if a specific jobId was provided
+        const jobId = url.searchParams.get("jobId");
+        
+        if (jobId) {
+          // Return specific job by ID (regardless of status)
+          const jobData = await getKV(`scour_job:${jobId}`);
+          return json({ ok: true, job: jobData });
+        }
+        
         // Return all active scour jobs
         const allJobs = await querySupabaseRest(`/app_kv?key=like.scour-job-*&select=key,value`);
         
@@ -1360,6 +1371,19 @@ Keep the report professional and focused on intelligence analysis.`;
         const claudeData = await claudeResponse.json();
         const reportContent = claudeData.content?.[0]?.text || "Failed to generate report";
         
+        // Convert plain text content to HTML format
+        const formattedHTML = formatPlainTextAsHTML(reportContent);
+        const htmlReport = generateMAGNUSHTMLWrapper(
+          `Intelligence Report: ${trend.category}`,
+          formattedHTML,
+          undefined,
+          {
+            "Country": trend.country,
+            "Category": trend.category,
+            "Alerts Analyzed": String(alerts.length),
+          }
+        );
+        
         const report = {
           id: crypto.randomUUID(),
           trend_id: trendId,
@@ -1367,6 +1391,7 @@ Keep the report professional and focused on intelligence analysis.`;
           country: trend.country,
           alert_count: alerts.length,
           content: reportContent,
+          html: htmlReport,
           generated_at: nowIso(),
           alerts_analyzed: alerts.map(a => ({ id: a.id, title: a.title, severity: a.severity }))
         };

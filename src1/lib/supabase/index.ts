@@ -193,13 +193,22 @@ Deno.serve(async (req) => {
     const normalizedTopics = normalizeEventType(alert.event_type);
     const normalizedSeverity = normalizeSeverityForACF(alert.severity);
     
-    // Format recommendations
+    // Format recommendations as ACF repeater items
     let formattedRecommendations = alert.generation_metadata?.recommendations || alert.recommendations || '';
     if (typeof formattedRecommendations === 'string' && formattedRecommendations) {
-      formattedRecommendations = [{ recommendation: formattedRecommendations }];
+      const items = formattedRecommendations
+        .split(/\d+\.\s+/)
+        .filter((item: string) => item.trim())
+        .slice(0, 5);
+      formattedRecommendations = items.map((item: string) => ({
+        recommendation_text: item.trim(),
+        acf_fc_layout: "recommendation_item"
+      }));
     } else if (Array.isArray(formattedRecommendations)) {
-      formattedRecommendations = formattedRecommendations.map(r => 
-        typeof r === 'string' ? { recommendation: r } : r
+      formattedRecommendations = formattedRecommendations.map((r: any) => 
+        typeof r === 'string' 
+          ? { recommendation_text: r.trim(), acf_fc_layout: "recommendation_item" }
+          : { ...r, acf_fc_layout: "recommendation_item" }
       );
     } else {
       formattedRecommendations = [];

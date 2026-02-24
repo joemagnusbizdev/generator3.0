@@ -87,17 +87,46 @@ export async function approveAndPublishToWP(alertId: string) {
   const alert = (await querySupabaseRest(`/alerts?id=eq.${encodeURIComponent(alertId)}`))?.[0];
   if (!alert) return { ok: false, status: 404, body: { error: "Alert not found" } };
 
+  // Build ACF fields with all required fields for complete WordPress export
   const auth = `Basic ${btoa(`${WP_USER}:${WP_APP_PASSWORD}`)}`;
+  
+  // Convert recommendations string/array to ACF repeater format
+  let recommendationsRepeater = [];
+  if (alert.recommendations) {
+    if (typeof alert.recommendations === 'string') {
+      const items = alert.recommendations
+        .split(/\d+\.\s+/)
+        .filter((item: string) => item.trim())
+        .slice(0, 5);
+      recommendationsRepeater = items.map((item: string) => ({
+        recommendation_text: item.trim(),
+        acf_fc_layout: "recommendation_item"
+      }));
+    } else if (Array.isArray(alert.recommendations)) {
+      recommendationsRepeater = alert.recommendations.map((item: any) => 
+        typeof item === 'string' 
+          ? { recommendation_text: item.trim(), acf_fc_layout: "recommendation_item" }
+          : { ...item, acf_fc_layout: "recommendation_item" }
+      );
+    }
+  }
+
   const wpPayload = {
     title: alert.title,
     status: "publish",
     fields: {
+      mainland: alert.mainland ?? null,
+      intelligence_topics: alert.intelligence_topics ?? alert.event_type ?? null,
       the_location: `${alert.location}, ${alert.country}`,
-      severity: alert.severity,
-      recommendations: alert.recommendations || "",
-      sources: alert.source_url || "",
       latitude: String(alert.latitude || ""),
       longitude: String(alert.longitude || ""),
+      radius: alert.radius_km ?? alert.radius ?? null,
+      polygon: alert.geo_json ? JSON.stringify(alert.geo_json) : (alert.geojson || ""),
+      start: alert.event_start_date ?? null,
+      end: alert.event_end_date ?? null,
+      severity: alert.severity,
+      recommendations: recommendationsRepeater.length > 0 ? recommendationsRepeater : "",
+      sources: alert.article_url || alert.source_url || "",
     }
   };
 

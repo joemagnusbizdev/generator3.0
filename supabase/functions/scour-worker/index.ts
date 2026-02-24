@@ -35,6 +35,7 @@ interface ScourConfig {
   serviceKey: string;
   openaiKey?: string;
   braveApiKey?: string;
+  abortSignal?: AbortSignal;
 }
 
 interface Source {
@@ -105,6 +106,9 @@ const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") || Deno.env.get("OPENAI_KEY");
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const BRAVE_API_KEY = Deno.env.get("BRAVRE_SEARCH_API_KEY");
+
+// Global abort controllers per job to allow force-stop to cancel in-flight requests
+const jobAbortControllers = new Map<string, AbortController>();
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -471,7 +475,8 @@ async function extractAlertsWithAI(
   content: string,
   sourceUrl: string,
   sourceName: string,
-  sourceQuery?: string
+  sourceQuery?: string,
+  config?: ScourConfig
 ): Promise<Alert[]> {
   if (!ANTHROPIC_API_KEY && !OPENAI_API_KEY || content.length < 500) return [];
   
@@ -558,13 +563,14 @@ ${content.slice(0, 15000)}`;
         const searchQuery = `${sourceName} travel alerts incidents`;
         console.log(`  🌐 Brave Search for: "${searchQuery}"`);
         
-        // Add parameters to prioritize news/recent results over archived content
-        const braveUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(searchQuery)}&count=10&spellcheck=1&result_filter=news`;
+        // Add parameters: spellcheck=1 to fix typos, count=20 for more results
+        const braveUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(searchQuery)}&count=20&spellcheck=1`;
         const braveResponse = await fetch(braveUrl, {
           headers: {
             'Accept': 'application/json',
             'X-Subscription-Token': BRAVE_API_KEY,
           },
+          signal: config?.abortSignal,
         });
         
         if (braveResponse.ok) {
@@ -598,6 +604,7 @@ ${content.slice(0, 15000)}`;
                       content: extractPrompt
                     }]
                   }),
+                  signal: config?.abortSignal,
                 });
                 
                 if (claudeResponse.ok) {
@@ -624,7 +631,7 @@ ${content.slice(0, 15000)}`;
                           const alerts = JSON.parse(jsonToparse);
                           if (Array.isArray(alerts) && alerts.length > 0) {
                             console.log(`  ✅ Extracted ${alerts.length} alerts from web search`);
-                            const processed = await postProcessAlerts(alerts);
+                            const processed = await postProcessAlerts(alerts, config);
                             return processed;
                           }
                         } catch (e) {
@@ -649,8 +656,6 @@ ${content.slice(0, 15000)}`;
     if (ANTHROPIC_API_KEY) {
       try {
         console.log(`  🤖 Using Claude 3.5 Haiku for extraction...`);
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 40000);
         
         const response = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
@@ -668,10 +673,8 @@ ${content.slice(0, 15000)}`;
               content: userPrompt
             }]
           }),
-          signal: controller.signal,
+          signal: config?.abortSignal,
         });
-        
-        clearTimeout(timeout);
         
         if (!response.ok) {
           const error = await response.text();
@@ -750,7 +753,7 @@ ${content.slice(0, 15000)}`;
                     }
                   }
                   // Post-process to ensure geocoding and language
-                  const processed = await postProcessAlerts(alerts);
+                  const processed = await postProcessAlerts(alerts, config);
                   return processed;
                 } else if (Array.isArray(alerts)) {
                   console.log(`  ℹ️ Claude returned empty array (no alerts found)`);
@@ -774,8 +777,6 @@ ${content.slice(0, 15000)}`;
     // Fallback to OpenAI if Claude unavailable or failed
     if (OPENAI_API_KEY) {
       console.log(`  🤖 Using OpenAI GPT-4o-mini for extraction (Claude unavailable)...`);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
       
       try {
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -793,10 +794,8 @@ ${content.slice(0, 15000)}`;
             temperature: 0.3,
             max_tokens: 2500,
           }),
-          signal: controller.signal,
+          signal: config?.abortSignal,
         });
-        
-        clearTimeout(timeout);
         
         if (!response.ok) {
           console.warn(`  OpenAI extraction failed: ${response.status}`);
@@ -850,7 +849,7 @@ ${content.slice(0, 15000)}`;
                   }
                 }
                 // Post-process to ensure geocoding and language
-                const processed = await postProcessAlerts(alerts);
+                const processed = await postProcessAlerts(alerts, config);
                 return processed;
               } else if (Array.isArray(alerts)) {
                 console.log(`  ℹ️ OpenAI returned empty array (no alerts found)`);
@@ -1000,7 +999,7 @@ function checkAlertQuality(alert: any): string[] {
   return issues;
 }
 
-async function enhanceAlertWithClaude(alert: any, apiKey?: string): Promise<any | null> {
+async function enhanceAlertWithClaude(alert: any, apiKey?: string, config?: ScourConfig): Promise<any | null> {
   if (!apiKey) return null;
   
   try {
@@ -1037,9 +1036,6 @@ Return ONLY valid JSON with these fields (or empty object {} if cannot enhance):
 }
 
 Return {} if this cannot be transformed into a quality alert.`;
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
     
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -1053,10 +1049,8 @@ Return {} if this cannot be transformed into a quality alert.`;
         max_tokens: 800,
         messages: [{ role: 'user', content: enhancePrompt }]
       }),
-      signal: controller.signal,
+      signal: config?.abortSignal,
     });
-    
-    clearTimeout(timeout);
     
     if (!response.ok) {
       console.warn(`  Claude enhancement API error: ${response.status}`);
@@ -1096,7 +1090,7 @@ Return {} if this cannot be transformed into a quality alert.`;
   }
 }
 
-async function postProcessAlerts(alerts: any[]): Promise<Alert[]> {
+async function postProcessAlerts(alerts: any[], config?: ScourConfig): Promise<Alert[]> {
   const OPENCAGE_API_KEY = Deno.env.get("OPENCAGE_API_KEY");
   const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
   
@@ -1142,7 +1136,7 @@ async function postProcessAlerts(alerts: any[]): Promise<Alert[]> {
         console.log(`  🤖 Attempting Claude enhancement...`);
         
         // Try Claude to enhance/fix other issues (not dates)
-        const enhanced = await enhanceAlertWithClaude(alert, ANTHROPIC_API_KEY);
+        const enhanced = await enhanceAlertWithClaude(alert, ANTHROPIC_API_KEY, config);
         if (enhanced) {
           finalAlert = enhanced;
           const remainingIssues = checkAlertQuality(finalAlert);
@@ -1465,6 +1459,30 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
   };
   
   const logger = new ActivityLogger(config.jobId);
+  
+  // Create and register abort controller for this job to enable force-stop
+  const abortController = new AbortController();
+  jobAbortControllers.set(config.jobId, abortController);
+  
+  // Add abort signal to config so all functions can use it
+  config.abortSignal = abortController.signal;
+  
+  // Clean up controller when job finishes
+  const cleanup = () => jobAbortControllers.delete(config.jobId);
+  
+  // Set up monitor to abort controller if stop flag is set
+  const stopMonitorInterval = setInterval(async () => {
+    try {
+      const stopFlag = await querySupabaseRest(`/app_kv?key=eq.scour-stop-${config.jobId}&select=value`);
+      if (stopFlag && Array.isArray(stopFlag) && stopFlag.length > 0) {
+        console.log(`🛑 [runScourWorker] Stop flag detected for job ${config.jobId}, aborting...`);
+        abortController.abort();
+        clearInterval(stopMonitorInterval);
+      }
+    } catch (e) {
+      // Silently ignore monitoring errors
+    }
+  }, 500); // Check every 500ms for stop signal
   const extractedBeforeValidation: number[] = [];
   const validatedAfter: number[] = [];
   
@@ -1697,7 +1715,7 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
             logger.log(`  🤖 AI extraction with Claude web search...`);
             addJobLog(config.jobId, `  🤖 AI extraction with Claude web search...`);
             stats.aiActive = true;
-            extractedAlerts = await extractAlertsWithAI(content, sourceUrl, source.name, sourceQuery);
+            extractedAlerts = await extractAlertsWithAI(content, sourceUrl, source.name, sourceQuery, config);
             stats.aiActive = false;
             
             // MANDATORY: Set source_url for all extracted alerts
@@ -1955,6 +1973,10 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
     
     // Return partial results even on fatal error - don't throw
     return stats;
+  } finally {
+    // Always clean up: stop monitoring and remove abort controller
+    clearInterval(stopMonitorInterval);
+    cleanup();
   }
 }
 
@@ -2341,6 +2363,46 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
           const stopFlag = await querySupabaseRest(`/app_kv?key=eq.scour-stop-${jobId}&select=value`);
           if (stopFlag && Array.isArray(stopFlag) && stopFlag.length > 0) {
             console.log(`⚡ Early Signals stopped by user at ${processedQueries} queries`);
+            
+            // Finalize job even on early stop
+            const completedAt = new Date().toISOString();
+            try {
+              await updateJobStatus(jobId, {
+                id: jobId,
+                status: "done",
+                phase: "done",
+                processed: processedQueries,
+                created: alertsCreated,
+                total: totalQueries,
+                completed_at: completedAt,
+              });
+              // Update timestamp
+              const kvRes = await querySupabaseRest(
+                `/app_kv?key=eq.last_scoured_timestamp`,
+                "GET"
+              ).catch(() => null);
+              if (kvRes && Array.isArray(kvRes) && kvRes.length > 0) {
+                await querySupabaseRest(
+                  `/app_kv?key=eq.last_scoured_timestamp`,
+                  "PATCH",
+                  { value: completedAt, updated_at: completedAt }
+                ).catch(() => {});
+              } else {
+                await querySupabaseRest(
+                  `/app_kv`,
+                  "POST",
+                  { 
+                    key: "last_scoured_timestamp", 
+                    value: completedAt,
+                    created_at: completedAt,
+                    updated_at: completedAt
+                  }
+                ).catch(() => {});
+              }
+            } catch (finalErr) {
+              console.warn(`⚠️  Job finalization on stop failed: ${finalErr}`);
+            }
+            
             return {
               processed: processedQueries,
               created: alertsCreated,
@@ -2350,7 +2412,7 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
               errors: [],
               disabled_source_ids: [],
               jobId: jobId,
-              phase: 'early_signals'
+              phase: 'done'
             };
           }
         } catch (e) {
@@ -2432,6 +2494,59 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
     console.log(`   ${tourismResults}`);
     console.log(`${'═'.repeat(80)}\n`);
     
+    // ✅ FINALIZE THE JOB - Update status to done
+    const completedAt = new Date().toISOString();
+    console.log(`📍 Finalizing job ${jobId}...`);
+    
+    try {
+      // Update job status to done
+      await updateJobStatus(jobId, {
+        id: jobId,
+        status: "done",
+        phase: "done",
+        processed: processedQueries,
+        created: alertsCreated,
+        total: totalQueries,
+        completed_at: completedAt,
+        updated_at: completedAt,
+      });
+      console.log(`✅ Job status marked as done`);
+      
+      // Update global timestamp for the scour group
+      try {
+        const kvRes = await querySupabaseRest(
+          `/app_kv?key=eq.last_scoured_timestamp`,
+          "GET"
+        );
+        
+        if (kvRes && Array.isArray(kvRes) && kvRes.length > 0) {
+          // Update existing
+          await querySupabaseRest(
+            `/app_kv?key=eq.last_scoured_timestamp`,
+            "PATCH",
+            { value: completedAt, updated_at: completedAt }
+          );
+        } else {
+          // Insert new
+          await querySupabaseRest(
+            `/app_kv`,
+            "POST",
+            { 
+              key: "last_scoured_timestamp", 
+              value: completedAt,
+              created_at: completedAt,
+              updated_at: completedAt
+            }
+          );
+        }
+        console.log(`✅ Timestamp updated: ${completedAt}`);
+      } catch (tsErr) {
+        console.warn(`⚠️  Timestamp update failed: ${tsErr}`);
+      }
+    } catch (finalizeErr) {
+      console.error(`⚠️  Job finalization error: ${finalizeErr}`);
+    }
+    
     return {
       processed: processedQueries,
       created: alertsCreated,
@@ -2441,10 +2556,25 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
       errors: [],
       disabled_source_ids: [],
       jobId: jobId,
-      phase: 'early_signals'
+      phase: 'done'
     };
   } catch (e: any) {
     console.error(`⚡ Early signals error: ${e.message}`);
+    
+    // Even on error, try to mark job as done to prevent hanging
+    try {
+      const completedAt = new Date().toISOString();
+      await updateJobStatus(jobId, {
+        id: jobId,
+        status: "error",
+        phase: "done",
+        completed_at: completedAt,
+        error: e.message,
+      }).catch(() => {});
+    } catch (finalErr) {
+      console.warn(`⚠️  Could not mark job as error: ${finalErr}`);
+    }
+    
     return {
       processed: 0,
       created: 0,
@@ -2454,7 +2584,7 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
       errors: [e.message],
       disabled_source_ids: [],
       jobId: jobId,
-      phase: 'early_signals'
+      phase: 'done'
     };
   }
 }
@@ -2493,18 +2623,28 @@ async function executeEarlySignalQuery(query: string, config: ScourConfig): Prom
     if (config.braveApiKey) {
       console.log(`[CLAUDE_DASHBOARD_LOG] Brave Search API call for: "${query}"`);
       try {
-        // Add search parameters to prioritize recent/news results
+        // Add search parameters
         // spellcheck=1: fix typos
-        // count=10: get more results to filter from
-        // search_lang=en: English results only
-        const braveUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10&spellcheck=1&result_filter=news`;
+        // count=20: get more results to filter from
+        // Removed result_filter=news to get broader results (news filter was too restrictive)
+        const braveUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=20&spellcheck=1`;
+        const controller = new AbortController();
+        const timeoutHandle = setTimeout(() => controller.abort(), 10000);
+        
+        // Use AbortSignal.any() to combine config.abortSignal (force-stop) with timeout
+        const signals: AbortSignal[] = [controller.signal];
+        if (config?.abortSignal) signals.push(config.abortSignal);
+        const combinedSignal = AbortSignal.any ? AbortSignal.any(signals) : controller.signal;
+        
         const braveResponse = await fetch(braveUrl, {
           headers: {
             'Accept': 'application/json',
             'X-Subscription-Token': config.braveApiKey,
           },
-          signal: AbortSignal.timeout(10000),
+          signal: combinedSignal,
         });
+        
+        clearTimeout(timeoutHandle);
         
         if (braveResponse.ok) {
           const braveData = await braveResponse.json();
@@ -2537,6 +2677,13 @@ async function executeEarlySignalQuery(query: string, config: ScourConfig): Prom
     const searchContent = searchResults.map((r: any) => `- ${r.title}\n  ${r.description}\n  ${r.url}`).join('\n\n');
     
     console.log(`[CLAUDE_DASHBOARD_LOG] About to fetch from Claude API with timeout 15s`);
+    // Combine config abort signal with timeout
+    const extractController = new AbortController();
+    const extractTimeout = setTimeout(() => extractController.abort(), 15000);
+    const extractSignals: AbortSignal[] = [extractController.signal];
+    if (config?.abortSignal) extractSignals.push(config.abortSignal);
+    const extractCombinedSignal = AbortSignal.any ? AbortSignal.any(extractSignals) : extractController.signal;
+    
     const extractResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -2557,10 +2704,12 @@ Format as JSON array. If no valid incidents found, return [].`,
 CRITICAL: Only include incidents from last 7 days. MUST include actual news article URL from search results. Reject vague locations, outdated events, or irrelevant content.`
         }]
       }),
-      signal: AbortSignal.timeout(15000),
+      signal: extractCombinedSignal,
     });
     
     console.log(`[CLAUDE_DASHBOARD_LOG] Claude API response received, status: ${extractResponse.status}`);
+    
+    clearTimeout(extractTimeout);
     
     if (!extractResponse.ok) {
       const errorText = await extractResponse.text().catch(() => 'unknown');
@@ -2684,7 +2833,7 @@ CRITICAL: Only include incidents from last 7 days. MUST include actual news arti
       console.log(`[EARLY_SIGNAL_FOUND] "${query}": ${alerts.length} alerts`);
       
       // Process alerts through post-processing pipeline for geocoding, validation, etc.
-      const processedAlerts = await postProcessAlerts(alerts);
+      const processedAlerts = await postProcessAlerts(alerts, config);
       console.log(`[EARLY_SIGNAL_PROCESSED] After post-processing: ${processedAlerts.length} alerts (from ${alerts.length})`);
       
       for (const alert of processedAlerts) {
