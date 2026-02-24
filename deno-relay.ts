@@ -1,7 +1,7 @@
 /**
- * Telegram Claude Agent Bot
- * Full code editing, file management, and GitHub integration
- * Acts like VS Code Copilot - can read, edit, commit, and troubleshoot
+ * Telegram Claude Agent Bot - v2.1
+ * FULL autonomous code agent with direct GitHub commit access
+ * Can read, write, analyze, fix, and commit code changes
  */
 
 const TELEGRAM_TOKEN = "8707153044:AAFQEQvq_3QmABdrQSQUHC7osDawsOVtUJc";
@@ -13,17 +13,17 @@ const GITHUB_REPO = "generator3.0";
 
 let projectContext = "";
 let contextLastLoaded = 0;
-const CONTEXT_CACHE_TIME = 3600000; // 1 hour
+const CONTEXT_CACHE_TIME = 3600000;
 
 async function loadProjectContext(): Promise<void> {
   const now = Date.now();
   if (contextLastLoaded && now - contextLastLoaded < CONTEXT_CACHE_TIME) {
-    console.log("[📚] Using cached project context");
+    console.log("[] Using cached project context");
     return;
   }
 
   try {
-    console.log("[🔍] Loading project context from GitHub...");
+    console.log("[] Loading project context from GitHub...");
     const response = await fetch(
       `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/CLAUDE.md`,
       {
@@ -35,17 +35,17 @@ async function loadProjectContext(): Promise<void> {
     );
 
     if (!response.ok) {
-      console.error(`[❌] Failed to load CLAUDE.md: ${response.status}`);
+      console.error(`[] Failed to load CLAUDE.md: ${response.status}`);
       return;
     }
 
     projectContext = await response.text();
     contextLastLoaded = now;
     console.log(
-      `[✅] Loaded project context (${projectContext.length} chars)`
+      `[] Loaded project context (${projectContext.length} chars)`
     );
   } catch (error) {
-    console.error("[❌] Error loading context:", error);
+    console.error("[] Error loading context:", error);
   }
 }
 
@@ -62,12 +62,12 @@ async function readFileFromGithub(filePath: string): Promise<string> {
     );
 
     if (!response.ok) {
-      return `❌ Failed to read ${filePath}: ${response.status}`;
+      return ` Failed to read ${filePath}: ${response.status}`;
     }
 
     return await response.text();
   } catch (error) {
-    return `❌ Error reading file: ${error}`;
+    return ` Error reading file: ${error}`;
   }
 }
 
@@ -91,7 +91,7 @@ async function getFileBlob(filePath: string): Promise<{ content: string; sha: st
     const content = atob(data.content);
     return { content, sha: data.sha };
   } catch (error) {
-    console.error("[❌] Error getting file blob:", error);
+    console.error("[] Error getting file blob:", error);
     return null;
   }
 }
@@ -100,11 +100,11 @@ async function updateFileOnGithub(
   filePath: string,
   newContent: string,
   commitMessage: string
-): Promise<string> {
+): Promise<{ success: boolean; sha?: string; message: string }> {
   try {
     const fileData = await getFileBlob(filePath);
     if (!fileData) {
-      return `❌ Cannot find or read ${filePath}`;
+      return { success: false, message: ` Cannot find ${filePath}` };
     }
 
     const response = await fetch(
@@ -126,58 +126,114 @@ async function updateFileOnGithub(
 
     if (!response.ok) {
       const error = await response.text();
-      return `❌ Failed to update ${filePath}: ${response.status} - ${error.substring(0, 100)}`;
+      return {
+        success: false,
+        message: ` Failed to update ${filePath}: ${response.status}`,
+      };
     }
 
     const result: any = await response.json();
-    return `✅ Updated ${filePath}\nCommit: ${result.commit.sha.substring(0, 7)}`;
+    return {
+      success: true,
+      sha: result.commit.sha.substring(0, 7),
+      message: ` Updated ${filePath}`,
+    };
   } catch (error) {
-    return `❌ Error updating file: ${error}`;
+    return {
+      success: false,
+      message: ` Error updating file: ${error}`,
+    };
   }
+}
+
+interface FileUpdate {
+  filePath: string;
+  commitMessage: string;
+  content: string;
+}
+
+function parseFileUpdates(text: string): FileUpdate[] {
+  const updates: FileUpdate[] = [];
+  const blockRegex = /===FILE_UPDATE_START===([\s\S]*?)===FILE_UPDATE_END===/g;
+
+  let match;
+  while ((match = blockRegex.exec(text)) !== null) {
+    const block = match[1];
+    const filePathMatch = block.match(/FILE_PATH:\s*([^\n]+)/);
+    const commitMatch = block.match(/COMMIT_MESSAGE:\s*([^\n]+)/);
+    const contentMatch = block.match(/FILE_CONTENT:\s*```[\w]*\n([\s\S]*?)\n```/);
+
+    if (filePathMatch && commitMatch && contentMatch) {
+      updates.push({
+        filePath: filePathMatch[1].trim(),
+        commitMessage: commitMatch[1].trim(),
+        content: contentMatch[1],
+      });
+    }
+  }
+
+  return updates;
+}
+
+async function executeFileUpdates(updates: FileUpdate[]): Promise<string[]> {
+  const results: string[] = [];
+
+  for (const update of updates) {
+    console.log(`[] Applying update to ${update.filePath}`);
+    const result = await updateFileOnGithub(update.filePath, update.content, update.commitMessage);
+
+    if (result.success) {
+      results.push(` ${update.filePath}\nCommit: ${result.sha}`);
+    } else {
+      results.push(` ${update.filePath}\n${result.message}`);
+    }
+  }
+
+  return results;
 }
 
 async function callClaudeAsAgent(
   userRequest: string,
   fileContext?: string
-): Promise<string> {
+): Promise<{ response: string; updates: FileUpdate[] }> {
   if (!CLAUDE_API_KEY) {
-    return "❌ Claude API key not configured";
+    return { response: " Claude API key not configured", updates: [] };
   }
 
   await loadProjectContext();
 
   try {
-    console.log(`[🤖] Calling Claude Agent API...`);
+    console.log(`[] Calling Claude as Autonomous Agent...`);
 
-    const systemPrompt = `You are an autonomous code agent with full access to the generator3.0 project via GitHub.
+    const systemPrompt = `You are an AUTONOMOUS CODE AGENT with DIRECT GITHUB WRITE ACCESS.
+
+When you need to make code changes, format them like this:
+
+===FILE_UPDATE_START===
+FILE_PATH: src/path/to/file.ts
+COMMIT_MESSAGE: Brief description of what you changed
+FILE_CONTENT:
+\`\`\`typescript
+[COMPLETE file content with your changes applied]
+\`\`\`
+===FILE_UPDATE_END===
+
+Important:
+- Include COMPLETE file content (not just changes)
+- You can include multiple FILE_UPDATE blocks
+- Bot automatically commits these changes to GitHub
+- Include your explanation OUTSIDE the blocks
 
 Your capabilities:
-✅ Read files from the repo
-✅ Understand the full codebase architecture
-✅ Write code and fix issues
-✅ Suggest improvements
-✅ Debug errors
-✅ Analyze git history
-✅ Understand deployment and infrastructure
-
-You can be asked to:
-- Explain code sections
-- Write new features
-- Fix bugs and errors
-- Refactor code
-- Create new files
-- Analyze issues
-- Review code quality
-
-When the user asks you to modify code, provide:
-1. Clear explanation of what you're changing and why
-2. The exact code to modify
-3. Line numbers and context
-4. Expected outcome
+ Read ANY file
+ Understand architecture
+ DIRECTLY WRITE and COMMIT code
+ Fix bugs automatically
+ Create new files
+ Refactor code
 
 ${fileContext ? `\nFile Context:\n${fileContext}` : ""}
-
-${projectContext ? `\nProject Context:\n${projectContext}` : ""}`;
+${projectContext ? `\nProject Context:\n${projectContext.substring(0, 5000)}` : ""}`;
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -188,247 +244,135 @@ ${projectContext ? `\nProject Context:\n${projectContext}` : ""}`;
       },
       body: JSON.stringify({
         model: "claude-opus-4-1-20250805",
-        max_tokens: 2000,
+        max_tokens: 4000,
         system: systemPrompt,
-        messages: [
-          {
-            role: "user",
-            content: userRequest,
-          },
-        ],
+        messages: [{ role: "user", content: userRequest }],
       }),
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      console.error(`[❌] Claude API error (${response.status}): ${error.substring(0, 100)}`);
-      return `❌ Claude API error: ${response.status}`;
+      console.error(`[] Claude API error (${response.status})`);
+      return { response: ` Claude API error: ${response.status}`, updates: [] };
     }
 
     const result: any = await response.json();
     const text = result.content[0]?.text || "No response from Claude";
-    console.log(`[✅] Got response from Claude (${text.length} chars)`);
-    return text;
-
+    const updates = parseFileUpdates(text);
+    
+    console.log(`[] Claude response (${text.length} chars, ${updates.length} updates)`);
+    return { response: text, updates };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error("[❌] Claude call failed:", errorMsg);
-    return `❌ Failed to call Claude: ${errorMsg}`;
+    return { response: ` Error: ${errorMsg}`, updates: [] };
   }
 }
 
-async function sendTelegramMessage(
-  chatId: number,
-  text: string
-): Promise<void> {
-  console.log(
-    `[📤] Sending to Telegram ${chatId}: ${text.substring(0, 50)}...`
-  );
+async function sendTelegramMessage(chatId: number, text: string): Promise<void> {
+  const chunks = text.length > 4096 ? [text.substring(0, 4096), text.substring(4096)] : [text];
 
-  const chunks = text.length > 4096
-    ? [text.substring(0, 4096), text.substring(4096)]
-    : [text];
-
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
+  for (const chunk of chunks) {
     try {
-      const response = await fetch(
-        `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: chunk,
-            parse_mode: "Markdown",
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        console.error(
-          `[❌] Telegram error (${response.status}):`,
-          await response.text()
-        );
-      } else {
-        console.log(`[✅] Message sent to ${chatId}`);
-      }
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text: chunk, parse_mode: "Markdown" }),
+      });
+      console.log(`[] Message sent to ${chatId}`);
     } catch (error) {
-      console.error("[❌] Failed to send Telegram message:", error);
+      console.error("[] Failed to send message:", error);
     }
   }
 }
 
-async function processAgentRequest(
-  chatId: number,
-  userRequest: string
-): Promise<void> {
-  console.log(`[🤖] Processing agent request from ${chatId}`);
-
+async function processAgentRequest(chatId: number, userRequest: string): Promise<void> {
   try {
-    // Extract file path if mentioned
     let fileContext = "";
-    const fileMatch = userRequest.match(/(?:file|read|edit|fix|update):\s*`?([^\s`]+)`?/i);
+    const fileMatch = userRequest.match(/(?:file|read|edit|fix):\s*`?([^\s`]+)`?/i);
     if (fileMatch) {
       const filePath = fileMatch[1];
-      console.log(`[📖] Loading file context: ${filePath}`);
       fileContext = await readFileFromGithub(filePath);
-      if (!fileContext.startsWith("❌")) {
-        fileContext = `File: ${filePath}\n\`\`\`\n${fileContext}\n\`\`\``;
+      if (!fileContext.startsWith("")) {
+        fileContext = `File: ${filePath}\n\`\`\`\n${fileContext.substring(0, 2000)}\n\`\`\``;
       }
     }
 
-    // Get Claude's response
-    const response = await callClaudeAsAgent(userRequest, fileContext);
+    const { response, updates } = await callClaudeAsAgent(userRequest, fileContext);
+    const textBefore = response.split("===FILE_UPDATE_START===")[0].trim();
 
-    // Send response to Telegram
-    await sendTelegramMessage(chatId, response);
+    if (textBefore) {
+      await sendTelegramMessage(chatId, textBefore);
+    }
+
+    if (updates.length > 0) {
+      console.log(`[] Executing ${updates.length} update(s)`);
+      await sendTelegramMessage(chatId, ` Applying ${updates.length} change(s) to GitHub...`);
+      const results = await executeFileUpdates(updates);
+      await sendTelegramMessage(chatId, ` Changes Applied:\n\n${results.join("\n\n")}`);
+    } else if (!textBefore) {
+      await sendTelegramMessage(chatId, response);
+    }
   } catch (error) {
-    console.error("[❌] Error in agent request:", error);
     const errorMsg = error instanceof Error ? error.message : String(error);
-    await sendTelegramMessage(
-      chatId,
-      `❌ Error processing request: ${errorMsg}`
-    );
+    await sendTelegramMessage(chatId, ` Error: ${errorMsg}`);
   }
 }
 
-async function handleMessage(
-  chatId: number,
-  text: string
-): Promise<void> {
-  console.log(`[📨] Message from ${chatId}: "${text.substring(0, 100)}"`);
+async function handleMessage(chatId: number, text: string): Promise<void> {
+  console.log(`[] Message: "${text.substring(0, 100)}"`);
 
-  // Check for special commands
   if (text.toLowerCase().startsWith("/read:")) {
     const filePath = text.substring(6).trim();
-    console.log(`[📖] Reading file: ${filePath}`);
     const content = await readFileFromGithub(filePath);
-    await sendTelegramMessage(
-      chatId,
-      `📄 File: ${filePath}\n\`\`\`\n${content.substring(0, 3500)}\n\`\`\`` +
-        (content.length > 3500 ? "\n... (truncated)" : "")
-    );
+    await sendTelegramMessage(chatId, ` ${filePath}\n\`\`\`\n${content.substring(0, 3000)}\n\`\`\``);
   } else if (text.toLowerCase().startsWith("/status")) {
-    const status = await fetch(
-      "https://generator30.joemagnusbizdev.deno.net/status",
-      { headers: {} }
-    ).then((r) => r.json())
-      .catch(() => ({ error: "Cannot reach status" }));
-    await sendTelegramMessage(chatId, `🤖 Bot Status:\n\`\`\`json\n${JSON.stringify(status, null, 2)}\n\`\`\``);
+    await sendTelegramMessage(chatId, ` **Agent v2.1 - Active & Ready**\n\n Can directly commit code to GitHub\n Full project access\n Autonomous code fixes`);
   } else if (text.toLowerCase().startsWith("/help")) {
-    const help = `🤖 **Telegram Claude Agent**
+    const help = ` **Autonomous Code Agent v2.1**
 
 Commands:
-• \`/read: path/to/file\` - Read a file from GitHub
-• \`/status\` - Check bot status
-• \`/help\` - Show this message
+\`/read: path/to/file\` - Read file
+\`/status\` - Agent status
+\`/help\` - Help
 
-Or just ask me anything:
-• "What does the scour-worker do?"
-• "Fix the bug in file: src/component.ts"
-• "Write a new function that..."
-• "Explain the architecture of..."
-• "What's wrong with this error?"
+I can DIRECTLY FIX AND COMMIT CODE!
 
-I can read, analyze, and help modify code!`;
+Ask me anything:
+ "Fix the bug in file: src/handler.ts"
+ "Refactor the authentication code"
+ "What's wrong with this error?"
+ "Add error handling to..."
+
+I return solutions AND commit them!`;
     await sendTelegramMessage(chatId, help);
   } else {
-    // Treat as agent request
     await processAgentRequest(chatId, text);
   }
 }
 
 async function handleWebhook(request: Request): Promise<Response> {
-  console.log("[📡] Webhook received");
   try {
     const update: any = await request.json();
-
-    if (update.message) {
-      const { chat, text } = update.message;
-      if (text && chat) {
-        console.log(`[→] Processing message from chat ${chat.id}`);
-        handleMessage(chat.id, text).catch((err) => {
-          console.error("[❌] Error handling message:", err);
-        });
-      }
+    if (update.message?.chat && update.message?.text) {
+      handleMessage(update.message.chat.id, update.message.text).catch(e => console.error("[]", e));
     }
-
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error("[❌] Webhook error:", errorMsg);
-    return new Response(
-      JSON.stringify({
-        error: "Internal server error",
-        details: errorMsg,
-      }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: "Internal server error" }), { status: 500 });
   }
 }
 
 Deno.serve(async (request: Request) => {
-  try {
-    if (request.method === "POST") {
-      return await handleWebhook(request);
+  if (request.method === "POST") return await handleWebhook(request);
+
+  if (request.method === "GET") {
+    const url = new URL(request.url);
+    if (url.pathname === "/status") {
+      return new Response(JSON.stringify({
+        status: " Active",
+        version: "2.1 (Direct GitHub Commits)",
+        capabilities: ["Read files", "Write code", "Commit changes", "Execute fixes"],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
-
-    if (request.method === "GET") {
-      const url = new URL(request.url);
-
-      if (url.pathname === "/status" || url.pathname === "/diagnose") {
-        return new Response(
-          JSON.stringify({
-            status: "✅ Telegram Claude Agent Active",
-            version: "2.0 (Full Agent with Code Editing)",
-            timestamp: new Date().toISOString(),
-            config: {
-              claudeKeyConfigured: !!CLAUDE_API_KEY,
-              githubTokenConfigured: !!GITHUB_TOKEN,
-              projectContextLoaded: projectContext.length > 0,
-              projectContextSize: projectContext.length,
-            },
-            capabilities: [
-              "Read files from GitHub",
-              "Analyze code",
-              "Explain architecture",
-              "Write new code",
-              "Fix bugs and errors",
-              "Suggest improvements",
-              "Understand project goals",
-            ],
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-      }
-
-      return new Response(
-        JSON.stringify({
-          status: "✅ Telegram Claude Agent Active",
-          version: "2.0",
-          endpoints: {
-            "POST /": "Telegram webhook",
-            "GET /": "Status",
-            "GET /status": "Full diagnostics",
-          },
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    return new Response("Method not allowed", { status: 405 });
-  } catch (error) {
-    console.error("[❌] Server error:", error);
-    return new Response(
-      JSON.stringify({
-        error: "Internal server error",
-        message: error instanceof Error ? error.message : String(error),
-      }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
   }
+  return new Response("OK", { status: 200 });
 });
