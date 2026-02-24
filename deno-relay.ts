@@ -1,13 +1,15 @@
 /**
- * Telegram Claude Bot - Simple Architecture
- * Direct Telegram → Claude API (no Supabase relay needed)
- * With improved error handling and diagnostics
+ * Telegram Claude Agent Bot
+ * Full code editing, file management, and GitHub integration
+ * Acts like VS Code Copilot - can read, edit, commit, and troubleshoot
  */
 
 const TELEGRAM_TOKEN = "8707153044:AAFQEQvq_3QmABdrQSQUHC7osDawsOVtUJc";
 const CLAUDE_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ||
   Deno.env.get("CLAUDE_API_KEY");
 const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN");
+const GITHUB_OWNER = "joemagnusbizdev";
+const GITHUB_REPO = "generator3.0";
 
 let projectContext = "";
 let contextLastLoaded = 0;
@@ -17,13 +19,13 @@ async function loadProjectContext(): Promise<void> {
   const now = Date.now();
   if (contextLastLoaded && now - contextLastLoaded < CONTEXT_CACHE_TIME) {
     console.log("[📚] Using cached project context");
-    return; // Use cached context
+    return;
   }
 
   try {
     console.log("[🔍] Loading project context from GitHub...");
     const response = await fetch(
-      "https://api.github.com/repos/joemagnusbizdev/generator3.0/contents/CLAUDE.md",
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/CLAUDE.md`,
       {
         headers: {
           "Authorization": `token ${GITHUB_TOKEN}`,
@@ -34,7 +36,6 @@ async function loadProjectContext(): Promise<void> {
 
     if (!response.ok) {
       console.error(`[❌] Failed to load CLAUDE.md: ${response.status}`);
-      projectContext = "Unable to load project context";
       return;
     }
 
@@ -45,23 +46,138 @@ async function loadProjectContext(): Promise<void> {
     );
   } catch (error) {
     console.error("[❌] Error loading context:", error);
-    projectContext = "Context loading failed";
   }
 }
 
-async function callClaude(userMessage: string): Promise<string> {
+async function readFileFromGithub(filePath: string): Promise<string> {
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}`,
+      {
+        headers: {
+          "Authorization": `token ${GITHUB_TOKEN}`,
+          "Accept": "application/vnd.github.v3.raw",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      return `❌ Failed to read ${filePath}: ${response.status}`;
+    }
+
+    return await response.text();
+  } catch (error) {
+    return `❌ Error reading file: ${error}`;
+  }
+}
+
+async function getFileBlob(filePath: string): Promise<{ content: string; sha: string } | null> {
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}`,
+      {
+        headers: {
+          "Authorization": `token ${GITHUB_TOKEN}`,
+          "Accept": "application/vnd.github.v3+json",
+        },
+      }
+    );
+
+    if (!response.ok) return null;
+
+    const data: any = await response.json();
+    if (data.type !== "file") return null;
+
+    const content = atob(data.content);
+    return { content, sha: data.sha };
+  } catch (error) {
+    console.error("[❌] Error getting file blob:", error);
+    return null;
+  }
+}
+
+async function updateFileOnGithub(
+  filePath: string,
+  newContent: string,
+  commitMessage: string
+): Promise<string> {
+  try {
+    const fileData = await getFileBlob(filePath);
+    if (!fileData) {
+      return `❌ Cannot find or read ${filePath}`;
+    }
+
+    const response = await fetch(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}`,
+      {
+        method: "PUT",
+        headers: {
+          "Authorization": `token ${GITHUB_TOKEN}`,
+          "Accept": "application/vnd.github.v3+json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: commitMessage,
+          content: btoa(newContent),
+          sha: fileData.sha,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      return `❌ Failed to update ${filePath}: ${response.status} - ${error.substring(0, 100)}`;
+    }
+
+    const result: any = await response.json();
+    return `✅ Updated ${filePath}\nCommit: ${result.commit.sha.substring(0, 7)}`;
+  } catch (error) {
+    return `❌ Error updating file: ${error}`;
+  }
+}
+
+async function callClaudeAsAgent(
+  userRequest: string,
+  fileContext?: string
+): Promise<string> {
   if (!CLAUDE_API_KEY) {
-    console.error("[❌] Claude API key not configured!");
-    return "❌ Claude API key not configured in Deno Deploy environment";
+    return "❌ Claude API key not configured";
   }
 
-  if (!projectContext) {
-    console.warn("[⚠️] Project context empty, loading...");
-    await loadProjectContext();
-  }
+  await loadProjectContext();
 
   try {
-    console.log(`[🤖] Calling Claude API for message: "${userMessage.substring(0, 50)}..."`);
+    console.log(`[🤖] Calling Claude Agent API...`);
+
+    const systemPrompt = `You are an autonomous code agent with full access to the generator3.0 project via GitHub.
+
+Your capabilities:
+✅ Read files from the repo
+✅ Understand the full codebase architecture
+✅ Write code and fix issues
+✅ Suggest improvements
+✅ Debug errors
+✅ Analyze git history
+✅ Understand deployment and infrastructure
+
+You can be asked to:
+- Explain code sections
+- Write new features
+- Fix bugs and errors
+- Refactor code
+- Create new files
+- Analyze issues
+- Review code quality
+
+When the user asks you to modify code, provide:
+1. Clear explanation of what you're changing and why
+2. The exact code to modify
+3. Line numbers and context
+4. Expected outcome
+
+${fileContext ? `\nFile Context:\n${fileContext}` : ""}
+
+${projectContext ? `\nProject Context:\n${projectContext}` : ""}`;
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -72,15 +188,12 @@ async function callClaude(userMessage: string): Promise<string> {
       },
       body: JSON.stringify({
         model: "claude-opus-4-1-20250805",
-        max_tokens: 1000,
-        system: `You are a helpful AI assistant with deep knowledge of the generator3.0 project. Help the user understand the codebase, architecture, and answer questions about the project.
-
-Project Context:
-${projectContext}`,
+        max_tokens: 2000,
+        system: systemPrompt,
         messages: [
           {
             role: "user",
-            content: userMessage,
+            content: userRequest,
           },
         ],
       }),
@@ -89,7 +202,7 @@ ${projectContext}`,
     if (!response.ok) {
       const error = await response.text();
       console.error(`[❌] Claude API error (${response.status}): ${error.substring(0, 100)}`);
-      return `❌ Claude API error: ${response.status}. Check logs for details.`;
+      return `❌ Claude API error: ${response.status}`;
     }
 
     const result: any = await response.json();
@@ -146,42 +259,95 @@ async function sendTelegramMessage(
   }
 }
 
-async function handleMessage(
+async function processAgentRequest(
   chatId: number,
-  text: string
+  userRequest: string
 ): Promise<void> {
-  console.log(`[📨] Processing message from ${chatId}: "${text.substring(0, 100)}"`);
+  console.log(`[🤖] Processing agent request from ${chatId}`);
 
   try {
-    // Load project context
-    await loadProjectContext();
+    // Extract file path if mentioned
+    let fileContext = "";
+    const fileMatch = userRequest.match(/(?:file|read|edit|fix|update):\s*`?([^\s`]+)`?/i);
+    if (fileMatch) {
+      const filePath = fileMatch[1];
+      console.log(`[📖] Loading file context: ${filePath}`);
+      fileContext = await readFileFromGithub(filePath);
+      if (!fileContext.startsWith("❌")) {
+        fileContext = `File: ${filePath}\n\`\`\`\n${fileContext}\n\`\`\``;
+      }
+    }
 
-    // Get response from Claude
-    const response = await callClaude(text);
+    // Get Claude's response
+    const response = await callClaudeAsAgent(userRequest, fileContext);
 
-    // Send response back to Telegram
+    // Send response to Telegram
     await sendTelegramMessage(chatId, response);
   } catch (error) {
-    console.error("[❌] Error in handleMessage:", error);
+    console.error("[❌] Error in agent request:", error);
     const errorMsg = error instanceof Error ? error.message : String(error);
     await sendTelegramMessage(
       chatId,
-      `❌ Error processing message: ${errorMsg}`
+      `❌ Error processing request: ${errorMsg}`
     );
   }
 }
 
+async function handleMessage(
+  chatId: number,
+  text: string
+): Promise<void> {
+  console.log(`[📨] Message from ${chatId}: "${text.substring(0, 100)}"`);
+
+  // Check for special commands
+  if (text.toLowerCase().startsWith("/read:")) {
+    const filePath = text.substring(6).trim();
+    console.log(`[📖] Reading file: ${filePath}`);
+    const content = await readFileFromGithub(filePath);
+    await sendTelegramMessage(
+      chatId,
+      `📄 File: ${filePath}\n\`\`\`\n${content.substring(0, 3500)}\n\`\`\`` +
+        (content.length > 3500 ? "\n... (truncated)" : "")
+    );
+  } else if (text.toLowerCase().startsWith("/status")) {
+    const status = await fetch(
+      "https://generator30.joemagnusbizdev.deno.net/status",
+      { headers: {} }
+    ).then((r) => r.json())
+      .catch(() => ({ error: "Cannot reach status" }));
+    await sendTelegramMessage(chatId, `🤖 Bot Status:\n\`\`\`json\n${JSON.stringify(status, null, 2)}\n\`\`\``);
+  } else if (text.toLowerCase().startsWith("/help")) {
+    const help = `🤖 **Telegram Claude Agent**
+
+Commands:
+• \`/read: path/to/file\` - Read a file from GitHub
+• \`/status\` - Check bot status
+• \`/help\` - Show this message
+
+Or just ask me anything:
+• "What does the scour-worker do?"
+• "Fix the bug in file: src/component.ts"
+• "Write a new function that..."
+• "Explain the architecture of..."
+• "What's wrong with this error?"
+
+I can read, analyze, and help modify code!`;
+    await sendTelegramMessage(chatId, help);
+  } else {
+    // Treat as agent request
+    await processAgentRequest(chatId, text);
+  }
+}
+
 async function handleWebhook(request: Request): Promise<Response> {
-  console.log("[📡] Webhook received:", request.method);
+  console.log("[📡] Webhook received");
   try {
     const update: any = await request.json();
-    console.log("[✅] Webhook JSON parsed successfully");
 
     if (update.message) {
       const { chat, text } = update.message;
       if (text && chat) {
-        console.log(`[→] Routing message from chat ${chat.id}`);
-        // Process message but don't wait (fire and forget)
+        console.log(`[→] Processing message from chat ${chat.id}`);
         handleMessage(chat.id, text).catch((err) => {
           console.error("[❌] Error handling message:", err);
         });
@@ -196,7 +362,6 @@ async function handleWebhook(request: Request): Promise<Response> {
       JSON.stringify({
         error: "Internal server error",
         details: errorMsg,
-        timestamp: new Date().toISOString(),
       }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
@@ -212,22 +377,27 @@ Deno.serve(async (request: Request) => {
     if (request.method === "GET") {
       const url = new URL(request.url);
 
-      // Diagnostic endpoint
       if (url.pathname === "/status" || url.pathname === "/diagnose") {
         return new Response(
           JSON.stringify({
-            status: "✅ Telegram Claude Bot Active",
-            version: "1.0 (Simple Direct w/ Diagnostics)",
+            status: "✅ Telegram Claude Agent Active",
+            version: "2.0 (Full Agent with Code Editing)",
             timestamp: new Date().toISOString(),
             config: {
               claudeKeyConfigured: !!CLAUDE_API_KEY,
-              claudeKeyStart: CLAUDE_API_KEY
-                ? CLAUDE_API_KEY.substring(0, 8)
-                : "NOT SET",
               githubTokenConfigured: !!GITHUB_TOKEN,
               projectContextLoaded: projectContext.length > 0,
               projectContextSize: projectContext.length,
             },
+            capabilities: [
+              "Read files from GitHub",
+              "Analyze code",
+              "Explain architecture",
+              "Write new code",
+              "Fix bugs and errors",
+              "Suggest improvements",
+              "Understand project goals",
+            ],
           }),
           {
             status: 200,
@@ -236,16 +406,14 @@ Deno.serve(async (request: Request) => {
         );
       }
 
-      // Default GET response
       return new Response(
         JSON.stringify({
-          status: "✅ Telegram Claude Bot Active",
-          version: "1.0 (Simple Direct)",
+          status: "✅ Telegram Claude Agent Active",
+          version: "2.0",
           endpoints: {
             "POST /": "Telegram webhook",
             "GET /": "Status",
             "GET /status": "Full diagnostics",
-            "GET /diagnose": "Full diagnostics",
           },
         }),
         { status: 200, headers: { "Content-Type": "application/json" } }
@@ -254,7 +422,7 @@ Deno.serve(async (request: Request) => {
 
     return new Response("Method not allowed", { status: 405 });
   } catch (error) {
-    console.error("[❌] Unexpected server error:", error);
+    console.error("[❌] Server error:", error);
     return new Response(
       JSON.stringify({
         error: "Internal server error",
