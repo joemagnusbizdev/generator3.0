@@ -146,6 +146,7 @@ async function handleMessage(
 }
 
 async function handleWebhook(request: Request): Promise<Response> {
+  console.log("[] Webhook received", request.method);
   try {
     const update: any = await request.json();
 
@@ -186,4 +187,6 @@ Deno.serve(async (request: Request) => {
 
   return new Response("Method not allowed", { status: 405 });
 });
+
+
 
