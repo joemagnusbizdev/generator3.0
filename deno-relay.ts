@@ -6,9 +6,7 @@
 const TELEGRAM_TOKEN = "8707153044:AAFQEQvq_3QmABdrQSQUHC7osDawsOVtUJc";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ||
   "https://gnobnyzezkuyptuakztf.supabase.co";
-const SUPABASE_SERVICE_ROLE_SECRET = Deno.env.get(
-  "SUPABASE_SERVICE_ROLE_SECRET"
-);
+const SUPABASE_SERVICE_ROLE_SECRET = Deno.env.get("SUPABASE_SERVICE_ROLE_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
 const conversations = new Map<number, any[]>();
 const CONTEXT_TIMEOUT = 3600000; // 1 hour
