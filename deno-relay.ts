@@ -105,7 +105,7 @@ async function loadProjectContext(): Promise<string> {
     }
   } catch (error) {
     console.error("Failed to load project context:", error);
-    context += "\n[‚ö†Ô∏è Project context loading failed, using fallback]\n";
+    context += "\n[G‹·n+≈ Project context loading failed, using fallback]\n";
   }
 
   projectContextCache = context;
@@ -145,7 +145,7 @@ async function sendTelegramMessage(
 
 async function callClaude(userMessage: string, chatId: number): Promise<string> {
   if (!ANTHROPIC_API_KEY) {
-    return "‚ùå Claude API key not configured in Deno Deploy environment variables";
+    return "G•Ó Claude API key not configured in Deno Deploy environment variables";
   }
 
   // Get or create conversation
@@ -193,7 +193,7 @@ When users ask questions about the project, reference the context above. When th
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
+        model: "claude-3-sonnet-20240229",
         max_tokens: 1500,
         system: systemPrompt,
         messages: conv.messages,
@@ -203,7 +203,7 @@ When users ask questions about the project, reference the context above. When th
     if (!response.ok) {
       const error = await response.text();
       console.error("Claude API error:", error);
-      return `‚ùå Claude error: ${error.substring(0, 100)}`;
+      return `G•Ó Claude error: ${error.substring(0, 100)}`;
     }
 
     const data: any = await response.json();
@@ -218,7 +218,7 @@ When users ask questions about the project, reference the context above. When th
     return assistantMessage;
   } catch (error) {
     console.error("Error calling Claude:", error);
-    return `‚ö†Ô∏è Error: ${error instanceof Error ? error.message : "Unknown error"}`;
+    return `G‹·n+≈ Error: ${error instanceof Error ? error.message : "Unknown error"}`;
   }
 }
 
@@ -227,14 +227,14 @@ async function handleMessage(chatId: number, text: string): Promise<string> {
 
   // Quick commands
   if (lower === "/help") {
-    return `ü§ñ *Claude Project Bot*
+    return `=ÉÒ˚ *Claude Project Bot*
 
-üìù **Commands:**
-‚Ä¢ \`/read [path]\` - Read file from GitHub
-‚Ä¢ \`/status\` - Check project status
-‚Ä¢ \`/help\` - Show this message
+=ÉÙ• **Commands:**
+G«Û \`/read [path]\` - Read file from GitHub
+G«Û \`/status\` - Check project status
+G«Û \`/help\` - Show this message
 
-üí¨ **Natural language:**
+=É∆º **Natural language:**
 - Ask anything about the codebase
 - Request code changes
 - Get explanations of features
@@ -246,79 +246,5 @@ _All requests processed by Claude AI_`;
   if (lower.startsWith("/read ")) {
     const filePath = text.slice(6).trim();
     if (!GITHUB_TOKEN) {
-      return "‚ùå GitHub token not configured";
+      return "G•Ó GitHub token not configured";
     }
-
-    try {
-      const res = await fetch(
-        `https://api.github.com/repos/${GITHUB_REPO}/contents/${filePath}`,
-        {
-          headers: { "Authorization": `token ${GITHUB_TOKEN}` },
-          signal: AbortSignal.timeout(5000),
-        }
-      );
-
-      if (!res.ok) {
-        return `‚ùå File not found: ${filePath}`;
-      }
-
-      const data: any = await res.json();
-      const content = atob(data.content);
-      const lines = content.split("\n").slice(0, 50);
-      const truncated =
-        content.split("\n").length > 50
-          ? "\n\n... (truncated, showing first 50 lines)"
-          : "";
-
-      return `\`\`\`\n${lines.join("\n")}\n\`\`\`${truncated}`;
-    } catch (error) {
-      return `‚ùå Error reading file: ${error instanceof Error ? error.message : "Unknown"}`;
-    }
-  }
-
-  // Pass to Claude for everything else
-  return await callClaude(text, chatId);
-}
-
-Deno.serve(async (req: Request) => {
-  // CORS
-  if (req.method === "OPTIONS") {
-    return new Response("OK", {
-      status: 200,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST",
-        "Access-Control-Allow-Headers": "Content-Type",
-      },
-    });
-  }
-
-  if (req.method !== "POST") {
-    return new Response("Telegram bot webhook ready", { status: 200 });
-  }
-
-  try {
-    const update: any = await req.json();
-
-    if (!update.message) {
-      return new Response("OK", { status: 200 });
-    }
-
-    const message = update.message;
-    const chatId = message.chat.id;
-    const text = message.text || "(no text)";
-
-    console.log(`[üì®] Message from ${chatId}: ${text}`);
-
-    // Handle message
-    const response = await handleMessage(chatId, text);
-
-    // Send response
-    await sendTelegramMessage(chatId, response, message.message_id);
-
-    return new Response("OK", { status: 200 });
-  } catch (error) {
-    console.error("Webhook error:", error);
-    return new Response("OK", { status: 200 });
-  }
-});
