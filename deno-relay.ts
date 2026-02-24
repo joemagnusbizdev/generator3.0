@@ -1,3 +1,4 @@
+// Cache bust: 20260224103853
 /**
  * Generator3.0 Telegram Agent - User Friendly Version
  * For operators with no technical experience
@@ -298,3 +299,4 @@ Deno.serve(async (request: Request) => {
   }
   return new Response("OK", { status: 200 });
 });
+
