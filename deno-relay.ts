@@ -188,7 +188,10 @@ async function handleWebhook(request: Request): Promise<Response> {
     if (update.message) {
       const { chat, text, message_id } = update.message;
       if (text && chat) {
-        await handleMessage(chat.id, text, message_id);
+        // Don't wait for message handling - process in background`r`n
+        handleMessage(chat.id, text, message_id).catch((err) => {`r`n
+          console.error("[] Error in handleMessage:", err);`r`n
+        });
       }
     }
 
