@@ -67,6 +67,8 @@ export interface ScourContextType extends ScourState {
   // Multi-job support for concurrent scours
   activeJobs: Map<string, ScourJob>; // Track multiple concurrent jobs by ID
   isJobRunning: (jobId: string) => boolean; // Check if specific job is running
+  // Emergency reset
+  hardReset: () => void; // Clear all UI state
 }
 
 // ============================================================================
@@ -368,6 +370,22 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
     }, 400); // Fast polling for real-time updates
   }, [pollStatus, defaultAccessToken]);
 
+  // Emergency hard reset - clears all UI state
+  const hardReset = useCallback(() => {
+    console.log('🔄 [HARD RESET] Clearing all state...');
+    setIsScouring(false);
+    setScourJob(null);
+    setJobId(null);
+    setLastResult(null);
+    setLastError(null);
+    setLastStartedAt(null);
+    setLastFinishedAt(null);
+    setActiveJobs(new Map());
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+    }
+  }, []);
+
   const value: ScourContextType = {
     isScouring,
     scourJob,
@@ -385,6 +403,7 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
     startJobPolling,
     activeJobs,
     isJobRunning: (jobId: string) => activeJobs.has(jobId) && activeJobs.get(jobId)?.status === 'running',
+    hardReset,
   };
 
   return <ScourContext.Provider value={value}>{children}</ScourContext.Provider>;

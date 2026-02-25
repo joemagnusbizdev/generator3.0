@@ -20,7 +20,7 @@ const spinnerStyle = `
 `;
 
 export default function ScourStatusBarInline({ accessToken }: Props) {
-  const { isScouring, scourJob, stopScour, startScour } = useScour();
+  const { isScouring, scourJob, stopScour, startScour, hardReset } = useScour();
   const [runningEarlySignals, setRunningEarlySignals] = useState(false);
   const [earlySignalsProgress, setEarlySignalsProgress] = useState<{ current: number; total: number } | null>(null);
   const [showErrors, setShowErrors] = useState(false);
@@ -311,6 +311,21 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
                 }}
               >
                 ⏹ KILL SEARCH
+              </button>
+              <button
+                onClick={hardReset}
+                style={{
+                  padding: '0.35rem 1rem',
+                  backgroundColor: MAGNUS_COLORS.deepGreen,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  fontWeight: 'bold',
+                }}
+              >
+                🔄 RESET
               </button>
             </div>
           </div>
