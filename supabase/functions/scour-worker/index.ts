@@ -2754,14 +2754,20 @@ async function executeEarlySignalQuery(query: string, config: ScourConfig): Prom
         if (braveResponse.ok) {
           const braveData = await braveResponse.json();
           console.log(`[CLAUDE_DASHBOARD_LOG] Brave response received, status: ${braveResponse.status}`);
+          console.log(`[BRAVE_DEBUG] Response keys: ${Object.keys(braveData).join(', ')}`);
+          console.log(`[BRAVE_DEBUG] Web property: ${braveData.web ? `array(${braveData.web.length})` : 'undefined'}`);
+          
           if (braveData.web && braveData.web.length > 0) {
             console.log(`[CLAUDE_DASHBOARD_LOG] Brave returned ${braveData.web.length} results`);
             searchResults = braveData.web;
           } else {
             console.log(`[CLAUDE_DASHBOARD_LOG] Brave returned empty results or no .web property`);
+            console.log(`[BRAVE_DEBUG] Full response: ${JSON.stringify(braveData).substring(0, 500)}`);
           }
         } else {
+          const errorText = await braveResponse.text().catch(() => 'unknown');
           console.warn(`[CLAUDE_DASHBOARD_LOG] Brave API returned status ${braveResponse.status}`);
+          console.warn(`[BRAVE_DEBUG] Error: ${errorText.substring(0, 300)}`);
         }
       } catch (braveErr: any) {
         console.warn(`[CLAUDE_DASHBOARD_LOG] Brave error: ${braveErr.message}`);

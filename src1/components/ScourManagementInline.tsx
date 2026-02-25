@@ -320,11 +320,12 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
             }
           } catch (pollError) {
             // Polling error, continue trying
-            console.log(`[Scour polling] Error polling status:`, pollError);
+            console.error(`[Scour polling] Poll ${pollCount} ERROR:`, pollError);
           }
         }
         
         if (!jobComplete) {
+          console.error(`[Scour polling] TIMEOUT after ${maxPolls} polls (${maxPolls * 0.5}s)`);
           throw new Error('Scour job polling timeout (15 minutes elapsed)');
         }
         
