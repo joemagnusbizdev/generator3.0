@@ -1742,7 +1742,7 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
           logger.log(`  ❌ No content meeting quality threshold (${content.length} < 500 chars)`);
           stats.errorCount++;
           clearTimeout(timeoutId);
-          continue;
+          return; // Exit async task instead of continue
         }
         
         // Extract alerts
