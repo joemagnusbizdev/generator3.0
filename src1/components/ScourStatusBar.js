@@ -1,0 +1,33 @@
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
+export function ScourStatusBar({ job, isRunning }) {
+    if (!job && !isRunning)
+        return null;
+    const progress = job ? (job.processed / job.total) * 100 : 0;
+    const isComplete = job?.status === 'done';
+    return (_jsxs("div", { style: {
+            padding: '1rem',
+            backgroundColor: isComplete ? '#d4edda' : '#fff3cd',
+            border: `1px solid ${isComplete ? '#c3e6cb' : '#ffc107'}`,
+            borderRadius: '8px',
+            marginBottom: '1rem'
+        }, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }, children: [_jsx("h4", { style: { margin: 0, fontSize: '1rem' }, children: isComplete ? ' Scour Complete' : ' Scour in Progress' }), job?.ai_engaged && (_jsx("span", { style: {
+                            padding: '0.25rem 0.5rem',
+                            backgroundColor: '#007bff',
+                            color: 'white',
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold'
+                        }, children: "AI ENGAGED" }))] }), job && (_jsxs(_Fragment, { children: [_jsx("div", { style: {
+                            width: '100%',
+                            height: '20px',
+                            backgroundColor: '#e9ecef',
+                            borderRadius: '10px',
+                            overflow: 'hidden',
+                            marginBottom: '0.5rem'
+                        }, children: _jsx("div", { style: {
+                                width: `${progress}%`,
+                                height: '100%',
+                                backgroundColor: isComplete ? '#28a745' : '#ffc107',
+                                transition: 'width 0.3s ease'
+                            } }) }), _jsxs("div", { style: { fontSize: '0.875rem', color: '#666' }, children: [_jsx("strong", { children: job.processed }), " / ", job.total, " sources processed", job.created > 0 && `  ${job.created} alerts created`] })] }))] }));
+}

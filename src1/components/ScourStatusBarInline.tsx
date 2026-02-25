@@ -26,6 +26,8 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
   const [showErrors, setShowErrors] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
   const [liveLogs, setLiveLogs] = useState<Array<{ time: string; message: string }>>([]);
+  const [forceStopLoading, setForceStopLoading] = useState(false);
+  const [forceStopSuccess, setForceStopSuccess] = useState(false);
 
   // DEBUG: Log scourJob changes
   useEffect(() => {
@@ -198,10 +200,13 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
 
   async function forceStopScour() {
     // ⚡ INSTANT HARD STOP - No confirmation needed
+    setForceStopLoading(true);
+    setForceStopSuccess(false);
     console.log('[ForceStop] Sending hard stop signal to server...');
 
     if (!accessToken) {
       alert("Not authenticated");
+      setForceStopLoading(false);
       return;
     }
 
@@ -222,14 +227,25 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
         // Clear the early signals state immediately
         setRunningEarlySignals(false);
         setEarlySignalsProgress(null);
+        
+        // Show success feedback
+        setForceStopSuccess(true);
         console.log(`✓ Force stopped: ${data.message || 'all jobs cleared'}`);
+        
+        // Keep success state visible for 2 seconds
+        setTimeout(() => {
+          setForceStopSuccess(false);
+          setForceStopLoading(false);
+        }, 2000);
       } else {
         console.error('[ForceStop] Backend error:', data);
         alert(`⚠️ Error: ${data.error || 'Unknown error'}`);
+        setForceStopLoading(false);
       }
     } catch (e: any) {
       console.error('[ForceStop] Request failed:', e);
       alert(`❌ Error: ${e.message}`);
+      setForceStopLoading(false);
     }
   }
 
@@ -264,20 +280,22 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button
                 onClick={forceStopScour}
+                disabled={forceStopLoading}
                 style={{
                   padding: '0.35rem 1rem',
-                  backgroundColor: MAGNUS_COLORS.orange,
+                  backgroundColor: forceStopSuccess ? '#00aa00' : MAGNUS_COLORS.orange,
                   color: 'white',
                   border: 'none',
                   borderRadius: '4px',
-                  cursor: 'pointer',
+                  cursor: forceStopLoading ? 'not-allowed' : 'pointer',
                   fontSize: '0.85rem',
                   fontWeight: 'bold',
                   opacity: 1,
                   pointerEvents: 'auto',
+                  transition: 'background-color 0.3s ease',
                 }}
               >
-                ⊗ Force Stop
+                {forceStopLoading ? '⏳ Stopping...' : forceStopSuccess ? '✅ Stopped!' : '⊗ Force Stop'}
               </button>
               <button
                 onClick={() => stopScour()}
@@ -492,20 +510,22 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
           </button>
           <button
             onClick={forceStopScour}
+            disabled={forceStopLoading}
             style={{
               padding: '0.25rem 0.75rem',
-              backgroundColor: MAGNUS_COLORS.orange,
+              backgroundColor: forceStopSuccess ? '#00aa00' : MAGNUS_COLORS.orange,
               color: 'white',
               border: 'none',
               borderRadius: '4px',
-              cursor: 'pointer',
+              cursor: forceStopLoading ? 'not-allowed' : 'pointer',
               fontSize: '0.85rem',
               fontWeight: 'bold',
               opacity: 1,
               pointerEvents: 'auto',
+              transition: 'background-color 0.3s ease',
             }}
           >
-            ⊗ Force Stop
+            {forceStopLoading ? '⏳ Stopping...' : forceStopSuccess ? '✅ Stopped!' : '⊗ Force Stop'}
           </button>
           <button
             onClick={() => stopScour()}
