@@ -2085,7 +2085,7 @@ function addJobLog(jobId: string, message: string): void {
 
 async function updateJobStatus(jobId: string, jobData: any): Promise<void> {
   try {
-    const key = `scour-job-${jobId}`;
+    const key = `scour-job-${jobId}`; // Match the clever-function getKV format
     
     // Use the activityLog that's passed in the jobData
     // If not provided, fall back to jobActivityLogs map (for backwards compatibility)
