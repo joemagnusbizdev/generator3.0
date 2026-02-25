@@ -800,6 +800,37 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
           // Continue anyway - the job will still be created
         }
 
+        // Call scour-worker to start early signals in background
+        console.log('[Early Signals] Calling scour-worker with earlySignalsOnly=true');
+        fetch(`${supabaseUrl}/functions/v1/scour-worker`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${serviceKey}`,
+            'apikey': serviceKey,
+          },
+          body: JSON.stringify({
+            jobId,
+            earlySignalsOnly: true,
+          }),
+        }).catch(e => {
+          console.error(`[Early Signals] Background job ${jobId} failed:`, e);
+        });
+
+        // Return immediately with queued status
+        return json({
+          ok: true,
+          jobId,
+          status: 'queued',
+          phase: 'early_signals',
+          message: 'Early Signals job queued. Check status via polling.'
+        });
+      } catch (error: any) {
+        console.error('[Early Signals] Error:', error);
+        return json({ ok: false, error: error?.message }, 500);
+      }
+    }
+
     // POST /scour-group - Scour a group of sources
     if (path.endsWith("/scour-group") && method === "POST") {
       try {
