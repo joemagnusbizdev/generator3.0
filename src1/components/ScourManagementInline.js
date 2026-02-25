@@ -154,7 +154,11 @@ export default function ScourManagementInline({ accessToken }) {
                 ? 'Running web search scour...'
                 : `Scouring ${group.sources.length} sources...`;
             addStatusMessage(groupId, statusMsg);
-            const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/run?t=${Date.now()}`, {
+            // Use different endpoint for early signals vs regular scours
+            const endpoint = groupId === 'early-signals'
+                ? `/clever-function/scour-early-signals`
+                : `/clever-function/scour/run`;
+            const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1${endpoint}?t=${Date.now()}`, {
                 method: 'POST',
                 headers: {
                     Authorization: `Bearer ${accessToken}`,
@@ -162,11 +166,13 @@ export default function ScourManagementInline({ accessToken }) {
                     'Cache-Control': 'no-cache, no-store, must-revalidate',
                     'Pragma': 'no-cache',
                 },
-                body: JSON.stringify({
-                    jobId: groupId,
-                    sourceIds: groupId === 'early-signals' ? [] : group.sources.map(s => s.id),
-                    earlySignalsOnly: groupId === 'early-signals',
-                }),
+                body: JSON.stringify(groupId === 'early-signals'
+                    ? {} // Early signals endpoint doesn't need a body
+                    : {
+                        jobId: groupId,
+                        sourceIds: group.sources.map(s => s.id),
+                        earlySignalsOnly: false,
+                    }),
             });
             if (!response.ok) {
                 const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));

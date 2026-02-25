@@ -211,8 +211,13 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         : `Scouring ${group.sources.length} sources...`;
       addStatusMessage(groupId, statusMsg);
 
+      // Use different endpoint for early signals vs regular scours
+      const endpoint = groupId === 'early-signals'
+        ? `/clever-function/scour-early-signals`
+        : `/clever-function/scour/run`;
+
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/run?t=${Date.now()}`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1${endpoint}?t=${Date.now()}`,
         {
           method: 'POST',
           headers: {
@@ -221,11 +226,15 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
             'Cache-Control': 'no-cache, no-store, must-revalidate',
             'Pragma': 'no-cache',
           },
-          body: JSON.stringify({
-            jobId: groupId,
-            sourceIds: groupId === 'early-signals' ? [] : group.sources.map(s => s.id),
-            earlySignalsOnly: groupId === 'early-signals',
-          }),
+          body: JSON.stringify(
+            groupId === 'early-signals'
+              ? {} // Early signals endpoint doesn't need a body
+              : {
+                  jobId: groupId,
+                  sourceIds: group.sources.map(s => s.id),
+                  earlySignalsOnly: false,
+                }
+          ),
         }
       );
 
