@@ -3036,10 +3036,28 @@ Deno.serve({ skipJwtVerification: true }, async (req: Request) => {
       const batchOffset = body.batchOffset || 0;
       const batchSize = body.batchSize || 10;
       
-      console.log(`🔵 [SCOUR-WORKER] Starting batch: offset=${batchOffset}, size=${batchSize}`);
-      const stats = await runScourWorker(config, batchOffset, batchSize);
-      console.log(`🔵 [SCOUR-WORKER] Batch complete: created=${stats.created}, hasMore=${stats.hasMoreBatches}`);
-      return json(stats);
+      console.log(`🔵 [SCOUR-WORKER] Starting main scour in background (async, non-blocking)`);
+      const jobId = body.jobId;
+      
+      // Start scour in background WITHOUT WAITING
+      // This returns immediately so the function doesn't timeout and other groups can submit jobs
+      // The frontend will poll /scour/status/{jobId} to get progress
+      runScourWorker(config, batchOffset, batchSize).then(stats => {
+        console.log(`🟢 [SCOUR-WORKER] Background job ${jobId} complete: created=${stats.created}, hasMore=${stats.hasMoreBatches}`);
+      }).catch(e => {
+        console.error(`🔴 [SCOUR-WORKER] Background job ${jobId} failed:`, e);
+      });
+      
+      // Return immediately with queued status
+      return json({
+        ok: true,
+        jobId: jobId,
+        status: "queued",
+        phase: "main_scour",
+        processed: 0,
+        created: 0,
+        message: "Scour job queued. Check status via polling."
+      });
     }
     
     console.log(`🔵 [SCOUR-WORKER] 404: Invalid path ${url.pathname}`);
