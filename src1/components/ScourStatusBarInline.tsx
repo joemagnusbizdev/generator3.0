@@ -481,14 +481,14 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button
             onClick={runEarlySignals}
-            disabled={runningEarlySignals || isScouring}
+            disabled={runningEarlySignals}
             style={{
               padding: '0.25rem 0.75rem',
               backgroundColor: runningEarlySignals ? MAGNUS_COLORS.border : MAGNUS_COLORS.deepGreen,
               color: 'white',
               border: runningEarlySignals ? `2px solid ${MAGNUS_COLORS.deepGreen}` : 'none',
               borderRadius: '4px',
-              cursor: runningEarlySignals || isScouring ? 'not-allowed' : 'pointer',
+              cursor: runningEarlySignals ? 'not-allowed' : 'pointer',
               fontSize: '0.85rem',
               fontWeight: 'bold',
               minWidth: '140px',

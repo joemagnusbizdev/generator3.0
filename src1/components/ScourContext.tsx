@@ -64,6 +64,9 @@ export interface ScourContextType extends ScourState {
   setScourJob: (job: ScourJob) => void;
   setJobId: (jobId: string) => void;
   startJobPolling: (jobId: string, accessToken?: string) => void;
+  // Multi-job support for concurrent scours
+  activeJobs: Map<string, ScourJob>; // Track multiple concurrent jobs by ID
+  isJobRunning: (jobId: string) => boolean; // Check if specific job is running
 }
 
 // ============================================================================
@@ -93,8 +96,10 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastStartedAt, setLastStartedAt] = useState<string | null>(null);
   const [lastFinishedAt, setLastFinishedAt] = useState<string | null>(null);
+  const [activeJobs, setActiveJobs] = useState<Map<string, ScourJob>>(new Map());
 
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activeJobsRef = useRef<Map<string, { intervalId: ReturnType<typeof setInterval> | null }>>(new Map());
 
   const stopPolling = useCallback(() => {
     if (pollIntervalRef.current) {
@@ -116,26 +121,28 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
       }
 
       const job = res.job;
-      console.log(`[ScourContext.pollStatus] Got job for ${currentJobId}:`, {
-        phase: job.phase,
-        processed: job.processed,
-        created: job.created,
-        hasActivityLog: !!job.activityLog,
-        activityLogLength: job.activityLog?.length || 0,
-        activityLogType: typeof job.activityLog,
-        jobKeys: Object.keys(job),
-      });
+      console.log(`[ScourContext.pollStatus] Got job for ${currentJobId}: status=${job.status}`);
       
-      // Debug: Check what's in activityLog
-      if (job.activityLog) {
-        console.log(`[ScourContext.pollStatus] First activityLog entry:`, job.activityLog[0]);
-        console.log(`[ScourContext.pollStatus] Last activityLog entry:`, job.activityLog[job.activityLog.length - 1]);
-      }
-      
+      // Update both the primary scourJob (for main UI) and activeJobs map (for tracking multiple jobs)
       setScourJob(job);
+      setActiveJobs(prev => {
+        const updated = new Map(prev);
+        updated.set(currentJobId, job);
+        return updated;
+      });
 
       if (job.status === "done" || job.status === "error") {
-        setIsScouring(false);
+        // Job finished - remove from active jobs
+        setActiveJobs(prev => {
+          const updated = new Map(prev);
+          updated.delete(currentJobId);
+          // Only set isScouring false if no other jobs are running
+          if (updated.size === 0) {
+            setIsScouring(false);
+          }
+          return updated;
+        });
+        
         setLastFinishedAt(new Date().toISOString());
 
         if (job.status === "done") {
@@ -153,14 +160,6 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
         }
 
         stopPolling();
-      } else if (job.phase === 'early_signals' && pollIntervalRef.current) {
-        // During early signals, poll faster to catch query updates
-        if (pollIntervalRef.current) {
-          clearInterval(pollIntervalRef.current);
-          pollIntervalRef.current = setInterval(() => {
-            pollStatus(currentJobId, token);
-          }, 400); // Very fast polling for early signals
-        }
       }
     },
     [stopPolling]
@@ -384,6 +383,8 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
     setScourJob: setScourJobHelper,
     setJobId: setJobIdHelper,
     startJobPolling,
+    activeJobs,
+    isJobRunning: (jobId: string) => activeJobs.has(jobId) && activeJobs.get(jobId)?.status === 'running',
   };
 
   return <ScourContext.Provider value={value}>{children}</ScourContext.Provider>;

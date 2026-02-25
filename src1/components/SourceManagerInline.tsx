@@ -342,7 +342,7 @@ const SourceManagerInline: React.FC<Props> = ({
       <div className="flex flex-wrap gap-3 items-center">
         <button
           onClick={runScour}
-          disabled={isScouring || !canScour}
+          disabled={!canScour}
           className="px-3 py-1 rounded text-white disabled:opacity-50 font-semibold transition hover:opacity-90"
           style={{ backgroundColor: MAGNUS_COLORS.darkGreen }}
         >
@@ -351,7 +351,7 @@ const SourceManagerInline: React.FC<Props> = ({
 
         <button
           onClick={runEarlySignals}
-          disabled={runningEarlySignals || isScouring}
+          disabled={runningEarlySignals}
           className="px-3 py-1 rounded text-white disabled:opacity-50 font-semibold transition hover:opacity-90"
           style={{ backgroundColor: MAGNUS_COLORS.deepGreen }}
         >
