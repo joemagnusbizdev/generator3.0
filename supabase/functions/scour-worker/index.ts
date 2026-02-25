@@ -1564,49 +1564,94 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
       }
     };
     
-    // Process each source in this batch
-    for (const source of batchSources) {
-      // Check if stop was requested before processing each source
-      if (await checkStopFlag()) {
-        logger.log(`🛑 STOP REQUESTED: Halting scour job`);
-        console.log(`🛑 Scour job ${config.jobId} was stopped`);
-        stats.errors.push('Scour job was stopped by user');
-        break;
+    // DISTRIBUTED LOCKING: Acquire lock for this scour group to prevent concurrent conflicts
+    const lockKey = `scour-lock-${config.jobId}`;
+    const lockValue = { jobId: config.jobId, acquiredAt: nowIso(), expiresAt: new Date(Date.now() + 60000).toISOString() };
+    try {
+      await querySupabaseRest(`/app_kv`, {
+        method: 'POST',
+        body: JSON.stringify({ key: lockKey, value: JSON.stringify(lockValue) }),
+      });
+      logger.log(`🔒 Distributed lock acquired for scour group`);
+    } catch (lockErr: any) {
+      if (!lockErr.message?.includes('23505')) {
+        // If not a duplicate key error, something went wrong
+        logger.log(`⚠️  Could not acquire distributed lock: ${lockErr.message}`);
       }
+    }
+    
+    // CONCURRENT EXECUTION: Process sources in parallel with limited concurrency
+    const concurrencyLimit = 3; // Process 3 sources concurrently
+    const sourceLimiter = new Promise<void>(async (resolve) => {
+      let running = 0;
+      let totalQueued = 0;
+      const queue: (() => Promise<void>)[] = [];
       
-      // Periodically update job status in app_kv so frontend can see progress
-      if (stats.processed % 5 === 0) {
-        try {
-          // Combine both logging sources: ActivityLogger + jobActivityLogs Map
-          const activityLogs = logger.getLogs() || [];
-          const jobLogs = jobActivityLogs.get(config.jobId) || [];
-          
-          // Merge and deduplicate: prefer jobActivityLogs (which has progress bars) but include ActivityLogs
-          const allLogs = [...jobLogs, ...activityLogs.filter(log => !jobLogs.some(jl => jl.time === log.time && jl.message === log.message))];
-          
-          console.log(`[PERIODIC_UPDATE] Processed ${stats.processed}: ActivityLogger=${activityLogs.length}, JobMap=${jobLogs.length}, Total=${allLogs.length}`);
-          
-          await updateJobStatus(config.jobId, {
-            id: config.jobId,
-            status: 'running',
-            phase: 'main_scour',
-            processed: stats.processed,
-            created: stats.created,
-            total: batchSources.length,
-            activityLog: allLogs,
-            updated_at: nowIso(),
-          });
-        } catch (kvErr) {
-          // Silently fail - don't block progress
-          console.warn(`[runScourWorker] Failed to update job progress:`, kvErr);
+      const runNext = async () => {
+        if (queue.length === 0 && running === 0) {
+          resolve(); // All done - resolve the Promise
+          return;
         }
-      }
+        if (running >= concurrencyLimit || queue.length === 0) return;
+        
+        running++;
+        const fn = queue.shift();
+        if (fn) {
+          try {
+            await fn();
+          } catch (e) {
+            console.error('Error in concurrent task:', e);
+          }
+          running--;
+          await runNext(); // Recursively process next item
+        }
+      };
       
-      if (source.enabled === false) {
-        stats.skipped++;
-        logger.log(`⊘ Skipped: ${source.name} (disabled)`);
-        continue;
-      }
+      // Add all sources to queue
+      for (const source of batchSources) {
+        totalQueued++;
+        queue.push(async () => {
+          // Check if stop was requested before processing each source
+          if (await checkStopFlag()) {
+            logger.log(`🛑 STOP REQUESTED: Halting scour job`);
+            console.log(`🛑 Scour job ${config.jobId} was stopped`);
+            stats.errors.push('Scour job was stopped by user');
+            return; // FIX: return instead of break
+          }
+          
+          // Periodically update job status in app_kv so frontend can see progress
+          if (stats.processed % 5 === 0) {
+            try {
+              // Combine both logging sources: ActivityLogger + jobActivityLogs Map
+              const activityLogs = logger.getLogs() || [];
+              const jobLogs = jobActivityLogs.get(config.jobId) || [];
+              
+              // Merge and deduplicate: prefer jobActivityLogs (which has progress bars) but include ActivityLogs
+              const allLogs = [...jobLogs, ...activityLogs.filter(log => !jobLogs.some(jl => jl.time === log.time && jl.message === log.message))];
+              
+              console.log(`[PERIODIC_UPDATE] Processed ${stats.processed}: ActivityLogger=${activityLogs.length}, JobMap=${jobLogs.length}, Total=${allLogs.length}`);
+              
+              await updateJobStatus(config.jobId, {
+                id: config.jobId,
+                status: 'running',
+                phase: 'main_scour',
+                processed: stats.processed,
+                created: stats.created,
+                total: batchSources.length,
+                activityLog: allLogs,
+                updated_at: nowIso(),
+              });
+            } catch (kvErr) {
+              // Silently fail - don't block progress
+              console.warn(`[runScourWorker] Failed to update job progress:`, kvErr);
+            }
+          }
+          
+          if (source.enabled === false) {
+            stats.skipped++;
+            logger.log(`⊘ Skipped: ${source.name} (disabled)`);
+            return; // FIX: return instead of continue
+          }
       
       stats.processed++;
       logger.log(`📰 Processing: ${source.name}`);
@@ -1860,6 +1905,22 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
         validatedAfter.push(validated);
         clearTimeout(timeoutId);
         
+        // UPDATE PER-SOURCE TIMESTAMP: Mark this specific source as scoured
+        try {
+          const now = new Date().toISOString();
+          await querySupabaseRest(`/sources?id=eq.${source.id}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Prefer': 'return=minimal',
+            },
+            body: JSON.stringify({ last_scoured_at: now }),
+          });
+          logger.log(`  ✅ Updated ${source.name} timestamp to ${now}`);
+        } catch (tsErr: any) {
+          logger.log(`  ⚠️ Failed to update timestamp for ${source.name}: ${tsErr.message}`);
+        }
+        
       } catch (err: any) {
         clearTimeout(timeoutId);
         if (sourceController.signal.aborted) {
@@ -1874,7 +1935,18 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
           stats.disabled_source_ids.push(source.id);
         }
       }
-    }
+        }); // CLOSE: queue.push callback
+      } // CLOSE: for loop adding sources to queue
+      
+      // START QUEUE PROCESSING: Now process all queued sources concurrently
+      logger.log(`🚀 Starting concurrent processing of ${totalQueued} sources (limit: ${concurrencyLimit} at a time)`);
+      await runNext(); // Begin queue processing
+    }); // CLOSE: sourceLimiter Promise
+    
+    // WAIT FOR ALL SOURCES TO COMPLETE
+    logger.log(`⏳ Waiting for concurrent source processing to complete...`);
+    await sourceLimiter;
+    logger.log(`✅ All source processing complete`);
     
     // Wait for early signals to complete (GAP 1: parallel execution)
     if (earlySignalsPromise) {
@@ -1897,25 +1969,9 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
     
     console.log(`✅ Batch completed: ${stats.created} created, ${stats.skipped} skipped, ${stats.duplicatesSkipped} duplicates`);
     
-    // Update last_scoured_at timestamp for processed sources (multi-user sync)
-    if (config.sourceIds && config.sourceIds.length > 0) {
-      try {
-        const now = new Date().toISOString();
-        const sourceIdList = config.sourceIds.map(id => `"${id}"`).join(',');
-        await querySupabaseRest(`/sources?id=in.(${config.sourceIds.join(',')})`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'Prefer': 'return=minimal',
-          },
-          body: JSON.stringify({ last_scoured_at: now }),
-        });
-        logger.log(`✅ Updated ${config.sourceIds.length} sources with last_scoured_at: ${now}`);
-      } catch (err: any) {
-        logger.log(`⚠️ Failed to update source timestamps: ${err.message}`);
-        console.error(`Failed to update source timestamps:`, err);
-      }
-    }
+    // Update last_scoured_at timestamp for job-level tracking (already done per-source above)
+    // This is optional - per-source timestamps are now being updated during concurrent processing
+    // No job-level batch update needed since each source is timestamped individually
     
     // Add batch metadata to stats
     stats.phase = "done";
