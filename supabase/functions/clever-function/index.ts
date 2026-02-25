@@ -438,11 +438,18 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
       }
     }
 
-    // GET /scour/status/:jobId - Get specific job status
-    if ((path.startsWith("/scour/status/") || path.startsWith("/clever-function/scour/status/")) && method === "GET") {
-      // Extract jobId from path, handling both /scour/status/{jobId} and /clever-function/scour/status/{jobId}
-      const jobId = path.split('/').pop();
+    // GET /scour/status - Get specific job status (supports both query param and path param)
+    if ((path.startsWith("/scour/status") || path.startsWith("/clever-function/scour/status")) && method === "GET") {
+      // Extract jobId from query string first, then path
+      const url = new URL(req.url);
+      let jobId = url.searchParams.get('jobId');
+      
+      // If no query param, try to extract from path
       if (!jobId) {
+        jobId = path.split('/').pop();
+      }
+      
+      if (!jobId || jobId === 'status' || jobId === 'scour') {
         return json({ ok: false, error: "Missing jobId parameter" }, 400);
       }
 
