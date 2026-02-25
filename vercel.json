@@ -3,7 +3,6 @@
   "outputDirectory": "dist",
   "installCommand": "npm ci",
   "framework": "vite",
-  "nodejs": "18.x",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ]
