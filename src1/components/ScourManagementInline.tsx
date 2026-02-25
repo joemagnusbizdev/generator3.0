@@ -34,7 +34,7 @@ interface ScourManagementProps {
 export default function ScourManagementInline({ accessToken }: ScourManagementProps) {
   const [sourceGroups, setSourceGroups] = useState<SourceGroup[]>([]);
   const [loading, setLoading] = useState(true);
-  const [runningGroupId, setRunningGroupId] = useState<string | null>(null);
+  const [runningGroupIds, setRunningGroupIds] = useState<Set<string>>(new Set());
   const [allComplete, setAllComplete] = useState(false);
   const [statusMessages, setStatusMessages] = useState<Record<string, string>>({});
   const [lastSourceCount, setLastSourceCount] = useState<number>(0);
@@ -55,12 +55,16 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
 
   // Poll for activity logs while any scour is running
   useEffect(() => {
-    if (!runningGroupId) return;
+    if (runningGroupIds.size === 0) return;
 
     const pollActivityLogs = async () => {
       try {
+        // Poll first running group for activity logs display
+        const firstRunning = Array.from(runningGroupIds)[0];
+        if (!firstRunning) return;
+        
         const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/status?jobId=${encodeURIComponent(runningGroupId)}`,
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/status?jobId=${encodeURIComponent(firstRunning)}`,
           {
             headers: {
               Authorization: `Bearer ${accessToken}`,
@@ -71,10 +75,10 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         if (response.ok) {
           const data = await response.json();
           if (data.job?.activityLog && Array.isArray(data.job.activityLog)) {
-            setActivityLogs(prev => ({ ...prev, [runningGroupId]: data.job.activityLog }));
+            setActivityLogs(prev => ({ ...prev, [firstRunning]: data.job.activityLog }));
             // Auto-expand logs section when logs appear
-            if (data.job.activityLog.length > 0 && !expandedActivityLogs.has(runningGroupId)) {
-              setExpandedActivityLogs(prev => new Set([...prev, runningGroupId]));
+            if (data.job.activityLog.length > 0 && !expandedActivityLogs.has(firstRunning)) {
+              setExpandedActivityLogs(prev => new Set([...prev, firstRunning]));
             }
           }
         }
@@ -86,7 +90,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
     // Poll every 500ms for live updates
     const interval = setInterval(pollActivityLogs, 500);
     return () => clearInterval(interval);
-  }, [runningGroupId, accessToken]);
+  }, [runningGroupIds, accessToken]);
 
   const addStatusMessage = (groupId: string, message: string) => {
     setStatusMessages(prev => ({ ...prev, [groupId]: message }));
@@ -193,9 +197,9 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
 
   const runGroup = async (groupId: string) => {
     const group = sourceGroups.find(g => g.id === groupId);
-    if (!group || runningGroupId !== null) return;
+    if (!group || runningGroupIds.has(groupId)) return; // Only block if THIS group is already running
 
-    setRunningGroupId(groupId);
+    setRunningGroupIds(prev => new Set([...prev, groupId]));
     setSourceGroups(prev => prev.map(g => g.id === groupId ? { ...g, status: 'running' } : g));
     addStatusMessage(groupId, 'Starting...');
 
@@ -311,6 +315,13 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         if (!jobComplete) {
           throw new Error('Scour job polling timeout (15 minutes elapsed)');
         }
+        
+        // Clear this group from running set
+        setRunningGroupIds(prev => {
+          const updated = new Set(prev);
+          updated.delete(groupId);
+          return updated;
+        });
         
         const allDone = sourceGroups.every(g => g.id === groupId || g.status === 'completed');
         if (allDone) setAllComplete(true);
@@ -470,12 +481,16 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         ));
       }
     } finally {
-      setRunningGroupId(null);
+      setRunningGroupIds(prev => {
+        const updated = new Set(prev);
+        updated.delete(groupId);
+        return updated;
+      });
     }
   };
 
   const stopAllScours = () => {
-    setRunningGroupId(null);
+    setRunningGroupIds(new Set());
     setSourceGroups(prev =>
       prev.map(g => (g.status === 'running' ? { ...g, status: 'pending' } : g))
     );
@@ -538,7 +553,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
           <div className="space-y-2">
             <h4 className="text-xs font-semibold text-gray-600 uppercase">Scour Groups</h4>
             {sourceGroups.map(group => {
-              const isRunning = runningGroupId === group.id;
+              const isRunning = runningGroupIds.has(group.id);
               
               return (
                 <div
@@ -564,7 +579,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
                       {group.status === 'pending' && (
                         <button
                           onClick={() => runGroup(group.id)}
-                          disabled={runningGroupId !== null}
+                          disabled={runningGroupIds.has(group.id)}
                           className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                         >
                           Run
@@ -604,7 +619,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
                   
                   {/* Activity Log for running scours */}
                   {(() => {
-                    const isRunning = runningGroupId === group.id;
+                    const isRunning = runningGroupIds.has(group.id);
                     const hasLogs = activityLogs[group.id];
                     const logCount = hasLogs?.length || 0;
                     
