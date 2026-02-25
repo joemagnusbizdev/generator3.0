@@ -2422,6 +2422,17 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
     // Log start of early signals to activity log
     addJobLog(jobId, `🚀 Early Signals starting: ${totalQueries} queries across ${countries.length} countries`);
     
+    // Clear any stuck stop flag from previous runs before starting
+    try {
+      await querySupabaseRest(
+        `/app_kv?key=eq.scour-stop-${jobId}`,
+        { method: 'DELETE' }
+      ).catch(() => {}); // Ignore errors if KV entry doesn't exist
+      console.log(`✅ Cleared any stuck stop flag for job ${jobId}`);
+    } catch (e) {
+      // Continue regardless
+    }
+    
     // Smart batching: prioritize Israeli tourism destinations first
     const priorityBatch = countries.slice(0, ISRAELI_TOURISM_PRIORITY.length);
     const standardBatch = countries.slice(ISRAELI_TOURISM_PRIORITY.length);
@@ -2443,59 +2454,64 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
         // CHECK FOR STOP SIGNAL
         try {
           const stopFlag = await querySupabaseRest(`/app_kv?key=eq.scour-stop-${jobId}&select=value`);
+          // Only stop if: entry exists AND has value AND value indicates stopped=true
           if (stopFlag && Array.isArray(stopFlag) && stopFlag.length > 0) {
-            console.log(`⚡ Early Signals stopped by user at ${processedQueries} queries`);
-            
-            // Finalize job even on early stop
-            const completedAt = new Date().toISOString();
-            try {
-              await updateJobStatus(jobId, {
-                id: jobId,
-                status: "done",
-                phase: "done",
+            const value = stopFlag[0]?.value;
+            const isStopped = (typeof value === 'string' ? JSON.parse(value) : value)?.stopped === true;
+            if (isStopped) {
+              console.log(`⚡ Early Signals stopped by user at ${processedQueries} queries`);
+              
+              // Finalize job even on early stop
+              const completedAt = new Date().toISOString();
+              try {
+                await updateJobStatus(jobId, {
+                  id: jobId,
+                  status: "done",
+                  phase: "done",
+                  processed: processedQueries,
+                  created: alertsCreated,
+                  total: totalQueries,
+                  completed_at: completedAt,
+                });
+                // Update timestamp
+                const kvRes = await querySupabaseRest(
+                  `/app_kv?key=eq.last_scoured_timestamp`,
+                  "GET"
+                ).catch(() => null);
+                if (kvRes && Array.isArray(kvRes) && kvRes.length > 0) {
+                  await querySupabaseRest(
+                    `/app_kv?key=eq.last_scoured_timestamp`,
+                    "PATCH",
+                    { value: completedAt, updated_at: completedAt }
+                  ).catch(() => {});
+                } else {
+                  await querySupabaseRest(
+                    `/app_kv`,
+                    "POST",
+                    { 
+                      key: "last_scoured_timestamp", 
+                      value: completedAt,
+                      created_at: completedAt,
+                      updated_at: completedAt
+                    }
+                  ).catch(() => {});
+                }
+              } catch (finalErr) {
+                console.warn(`⚠️  Job finalization on stop failed: ${finalErr}`);
+              }
+              
+              return {
                 processed: processedQueries,
                 created: alertsCreated,
-                total: totalQueries,
-                completed_at: completedAt,
-              });
-              // Update timestamp
-              const kvRes = await querySupabaseRest(
-                `/app_kv?key=eq.last_scoured_timestamp`,
-                "GET"
-              ).catch(() => null);
-              if (kvRes && Array.isArray(kvRes) && kvRes.length > 0) {
-                await querySupabaseRest(
-                  `/app_kv?key=eq.last_scoured_timestamp`,
-                  "PATCH",
-                  { value: completedAt, updated_at: completedAt }
-                ).catch(() => {});
-              } else {
-                await querySupabaseRest(
-                  `/app_kv`,
-                  "POST",
-                  { 
-                    key: "last_scoured_timestamp", 
-                    value: completedAt,
-                    created_at: completedAt,
-                    updated_at: completedAt
-                  }
-                ).catch(() => {});
-              }
-            } catch (finalErr) {
-              console.warn(`⚠️  Job finalization on stop failed: ${finalErr}`);
+                skipped: alertsFiltered,
+                duplicatesSkipped: 0,
+                errorCount: errorsOccurred,
+                errors: [],
+                disabled_source_ids: [],
+                jobId: jobId,
+                phase: 'done'
+              };
             }
-            
-            return {
-              processed: processedQueries,
-              created: alertsCreated,
-              skipped: alertsFiltered,
-              duplicatesSkipped: 0,
-              errorCount: errorsOccurred,
-              errors: [],
-              disabled_source_ids: [],
-              jobId: jobId,
-              phase: 'done'
-            };
           }
         } catch (e) {
           // Continue if check fails
