@@ -258,6 +258,12 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         const maxPolls = 1800; // 15 minutes with 500ms interval
         
         while (!jobComplete && pollCount < maxPolls) {
+          // Check if job was stopped (removed from running set)
+          if (!runningGroupIds.has(groupId)) {
+            console.log(`[Scour polling] Job ${groupId} was stopped by user`);
+            break;
+          }
+          
           await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms between polls
           pollCount++;
           
