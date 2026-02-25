@@ -2419,6 +2419,9 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
       created_at: new Date().toISOString(),
     });
     
+    // Log start of early signals to activity log
+    addJobLog(jobId, `🚀 Early Signals starting: ${totalQueries} queries across ${countries.length} countries`);
+    
     // Smart batching: prioritize Israeli tourism destinations first
     const priorityBatch = countries.slice(0, ISRAELI_TOURISM_PRIORITY.length);
     const standardBatch = countries.slice(ISRAELI_TOURISM_PRIORITY.length);
@@ -2520,8 +2523,8 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
           const status = validAlerts.length > 0 ? `✓ ${validAlerts.length} alerts` : '·';
           const logMsg = `[${progressBar}] ${globalQueryNum}/${totalQueries} (${progressPercent}%) - "${baseQuery}" in ${country} → ${status}`;
           console.log(`  ${logMsg}`);
-          // Don't log early signal queries - only main scour source processing
-          // addJobLog(jobId, logMsg);
+          // Log early signal query progress for frontend display
+          addJobLog(jobId, logMsg);
           
           processedQueries++;
         } catch (e) {
@@ -2534,8 +2537,8 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
           
           const errorMsg = `[${progressBar}] ${globalQueryNum}/${totalQueries} (${progressPercent}%) - "${baseQuery}" in ${country} → ✗ ${e.toString().slice(0, 40)}`;
           console.warn(`  ${errorMsg}`);
-          // Don't log early signal queries - only main scour source processing
-          // addJobLog(jobId, errorMsg);
+          // Log early signal query errors for frontend display
+          addJobLog(jobId, errorMsg);
         }
         
         // Update job status every query (fast updates for real-time UI)
@@ -2563,8 +2566,9 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
     console.log(`   ✗ Alerts Filtered:   ${alertsFiltered} (confidence < 0.5)`);
     console.log(`   ⚠️  Errors:           ${errorsOccurred}`);
     console.log(`   ✅ Queries Success:  ${processedQueries - errorsOccurred}/${processedQueries}`);
-    console.log(`\n📈 Coverage Summary:`);
-    console.log(`   Base Queries:        ${baseQueries.length} threat types`);
+    
+    // Log completion to activity log
+    addJobLog(jobId, `✅ Early Signals Complete: ${alertsCreated} alerts created, ${alertsFiltered} filtered`);
     console.log(`   Total Countries:     ${countries.length}`);
     console.log(`   Total API Calls:     ${baseQueries.length * countries.length}`);
     console.log(`   Success Rate:        ${Math.round(((processedQueries - errorsOccurred) / processedQueries) * 100)}%`);
