@@ -197,9 +197,8 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
   }
 
   async function forceStopScour() {
-    if (!confirm("Force stop all running scour jobs?")) {
-      return;
-    }
+    // ⚡ INSTANT HARD STOP - No confirmation needed
+    console.log('[ForceStop] Sending hard stop signal to server...');
 
     if (!accessToken) {
       alert("Not authenticated");
@@ -218,12 +217,12 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
       const data = await response.json().catch(() => ({}));
       
       if (response.ok) {
-        console.log('[ForceStop] Backend cleared jobs:', data);
+        console.log('[ForceStop] ✅ Hard stop executed:', data);
         stopScour();
         // Clear the early signals state immediately
         setRunningEarlySignals(false);
         setEarlySignalsProgress(null);
-        alert(`✓ Force stopped: ${data.message || 'all jobs cleared'}`);
+        console.log(`✓ Force stopped: ${data.message || 'all jobs cleared'}`);
       } else {
         console.error('[ForceStop] Backend error:', data);
         alert(`⚠️ Error: ${data.error || 'Unknown error'}`);

@@ -148,9 +148,8 @@ const SourceManagerInline: React.FC<Props> = ({
 
   // Force stop: Kill all scour jobs via backend endpoint
   async function forceStopScour() {
-    if (!confirm("Force stop all running scour jobs?")) {
-      return;
-    }
+    // ⚡ INSTANT HARD STOP - No confirmation needed
+    console.log('[ForceStop] Sending hard stop signal to server...');
 
     try {
       // Call backend endpoint to force clear all jobs
@@ -165,9 +164,9 @@ const SourceManagerInline: React.FC<Props> = ({
       const data = await response.json().catch(() => ({}));
       
       if (response.ok) {
-        console.log('[ForceStop] Backend cleared jobs:', data);
+        console.log('[ForceStop] ✅ Hard stop executed:', data);
         stopScour(); // Stop local polling
-        alert(`✓ Force stopped: ${data.deleted || 'all'} jobs cleared`);
+        console.log(`✓ Force stopped: ${data.deleted || 'all'} jobs cleared`);
       } else {
         console.error('[ForceStop] Backend error:', data);
         alert(`⚠️ Error: ${data.error || 'Unknown error'}`);
