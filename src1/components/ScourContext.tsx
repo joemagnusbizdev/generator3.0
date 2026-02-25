@@ -119,7 +119,7 @@ export const ScourProvider: React.FC<{ children: React.ReactNode; accessToken?: 
   const pollStatus = useCallback(
     async (currentJobId: string, token?: string) => {
       const res = await apiFetchJson<{ ok: boolean; job?: ScourJob; error?: string }>(
-        `/scour/status/${encodeURIComponent(currentJobId)}`,
+        `/scour/status?jobId=${encodeURIComponent(currentJobId)}`,
         token
       );
 
