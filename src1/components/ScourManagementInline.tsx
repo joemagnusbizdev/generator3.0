@@ -523,14 +523,10 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
         <div className="flex gap-2">
           <button
             onClick={stopAllScours}
-            disabled={!runningGroupId}
-            className={`text-xs px-3 py-1 rounded ${
-              runningGroupId
-                ? 'bg-red-600 text-white hover:bg-red-700 cursor-pointer'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            }`}
+            className="text-xs px-3 py-1 rounded bg-orange-600 text-white hover:bg-orange-700 cursor-pointer font-semibold"
+            style={{ opacity: 1, pointerEvents: 'auto' }}
           >
-            Force Stop
+            ⊗ Force Stop
           </button>
           {allComplete && <span className="text-xs bg-green-200 text-green-800 px-2 py-1 rounded">✅ Complete</span>}
         </div>

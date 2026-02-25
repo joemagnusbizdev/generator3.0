@@ -361,7 +361,7 @@ const SourceManagerInline: React.FC<Props> = ({
         <button
           onClick={forceStopScour}
           className="px-3 py-1 rounded text-white font-semibold transition hover:opacity-90"
-          style={{ backgroundColor: MAGNUS_COLORS.orange }}
+          style={{ backgroundColor: MAGNUS_COLORS.orange, opacity: 1, pointerEvents: 'auto' }}
         >
           ⊗ Force Stop
         </button>

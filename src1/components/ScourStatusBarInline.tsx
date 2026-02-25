@@ -273,6 +273,8 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
                   cursor: 'pointer',
                   fontSize: '0.85rem',
                   fontWeight: 'bold',
+                  opacity: 1,
+                  pointerEvents: 'auto',
                 }}
               >
                 ⊗ Force Stop
@@ -499,6 +501,8 @@ export default function ScourStatusBarInline({ accessToken }: Props) {
               cursor: 'pointer',
               fontSize: '0.85rem',
               fontWeight: 'bold',
+              opacity: 1,
+              pointerEvents: 'auto',
             }}
           >
             ⊗ Force Stop
