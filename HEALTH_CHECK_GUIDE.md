@@ -21,9 +21,13 @@ Set these in your Supabase Edge Functions settings:
 ```
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-key
-SENDGRID_API_KEY=your-sendgrid-key (optional, for email alerts)
-ALERT_EMAIL=joe@magnus.ai (where to send failure alerts)
+TELEGRAM_BOT_TOKEN=your-bot-token (from @BotFather)
+TELEGRAM_ALERT_CHAT_ID=your-chat-id (your Telegram chat or group ID)
 ```
+
+**Getting these values:**
+- `TELEGRAM_BOT_TOKEN`: Create a bot with @BotFather on Telegram, copy the token
+- `TELEGRAM_ALERT_CHAT_ID`: Send `/start` to @userinfobot to get your chat ID, or add bot to a group and get the group ID
 
 ### 3. Set Up Daily Triggers
 
@@ -90,40 +94,18 @@ POST https://generator30.vercel.app/functions/v1/health-check
 
 ### ✅ Healthy Status
 - All checks pass
-- No email sent
 - Results logged for historical tracking
+- No action needed
 
 ### ⚠️ Degraded Status
 - 1-2 checks fail
-- **Email alert sent** to `ALERT_EMAIL`
-- Includes recommendations for remediation
+- Status logged with recommendations
+- Check database for details
 
 ### 🚨 Critical Status
 - 3+ checks fail
-- **Email alert sent** immediately
-- Includes urgent recommendations
-
-## Email Alert Example
-
-```
-🚨 SCOUR SYSTEM HEALTH ALERT 🚨
-
-Status: CRITICAL
-Time: 2026-02-25T14:30:00Z
-
-FAILED CHECKS:
-• test_scour: Test scour failed: Job did not complete within timeout
-• job_monitoring: Found 2 jobs stuck for >30 minutes
-
-RECOMMENDATIONS:
-• Verify at least 2 sources are enabled for testing
-• Check source scraping URLs are accessible
-• Investigate stuck jobs in app_jobs table
-• Consider implementing job timeout recovery
-
-ERRORS:
-None
-```
+- Status logged with urgent recommendations
+- Review `app_health_checks` table immediately
 
 ## Historical Tracking
 
@@ -193,10 +175,11 @@ curl -X POST https://generator30.vercel.app/functions/v1/health-check \
 - Check GitHub Actions is enabled on repo
 - Test manual trigger: `curl https://generator30.vercel.app/functions/v1/health-check`
 
-### Not receiving email alerts
-- Verify `SENDGRID_API_KEY` is set correctly
-- Check `ALERT_EMAIL` is a valid address
-- Verify SendGrid account is active and has email quota
+### Not receiving Telegram alerts
+- Verify `TELEGRAM_BOT_TOKEN` is correct (format: `123456:ABCDEFGHijklmnopqrstuvwxyz`)
+- Verify `TELEGRAM_ALERT_CHAT_ID` is numeric and correct
+- Test by manually running the health check and checking Telegram
+- Ensure bot has permission to send messages (added to chat/group if needed)
 
 ### Test scour always fails
 - Ensure at least 2 sources are enabled: `SELECT COUNT(*) FROM sources WHERE enabled=true;`
