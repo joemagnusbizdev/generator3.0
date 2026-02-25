@@ -56,6 +56,33 @@
 
 ---
 
+### 3.5. Improved Confidence Scoring for AI-Generated Alerts
+**File:** `supabase/functions/scour-worker/index.ts` (Lines 1367-1420) ✅ JUST DEPLOYED
+
+**What Changed:**
+Claude's confidence scores are now **trusted instead of recalculated**:
+- OLD: calculateConfidence() recalculates all scores, penalizes missing lat/long heavily
+- NEW: For AI-generated alerts, trust Claude's `ai_confidence: 0.8` as primary signal
+- Adds small bonuses for good metadata (+0.05 each) instead of heavy penalization
+- Does NOT penalize for missing lat/long in early signals (best-effort geolocation)
+
+**Example:**
+```
+Claude extracts alert with ai_confidence: 0.8
+Old calculateConfidence: 0.8 → 0.55 (penalty for missing coords) ✗
+New calculateConfidence: 0.8 + bonuses → 0.80-0.95 ✓
+Result: Alert passes 0.7 threshold and gets saved to database
+```
+
+**Impact:**
+- **Resolves 0 alerts issue** - alerts were being filtered out incorrectly
+- **Maintains quality** - still filters at 0.7, but now correctly scores AI extractions
+- **Proper confidence hierarchy** - Claude sets initial score (best knows quality), we add metadata validation
+
+**Status:** ✅ DEPLOYED 2026-02-25 09:47:22 UTC
+
+---
+
 ### 4. Integration Testing Checklist
 **File:** `INTEGRATION_TESTING_CHECKLIST.md` (NEW)
 
@@ -68,8 +95,6 @@
 **Status:** ✅ CREATED & COMMITTED
 
 ---
-
-## ⏳ PENDING - REQUIRES ADDITIONAL WORK
 
 ### 5. Environment Variables Configuration
 **Files:** Supabase Settings Dashboard (Backend) + .env.example (documented)

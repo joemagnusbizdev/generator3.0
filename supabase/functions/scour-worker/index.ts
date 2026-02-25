@@ -1365,6 +1365,24 @@ async function parseUSGSFeed(content: string): Promise<Alert[]> {
 // ============================================================================
 
 function calculateConfidence(alert: Alert): number {
+  // If Claude already assessed confidence (ai_generated), trust it more
+  if (alert.ai_generated && alert.ai_confidence) {
+    // Claude extracted this - use its confidence as primary signal
+    let confidence = alert.ai_confidence;
+    
+    // Boost for good metadata
+    if (alert.location && !alert.location.includes('Unknown') && alert.location.length > 3) confidence += 0.05;
+    if (alert.severity === 'critical' || alert.severity === 'warning') confidence += 0.05;
+    if (alert.country && alert.country.length > 2) confidence += 0.05;
+    
+    // Don't penalize for missing lat/long in early signals - geolocation is best-effort
+    // Only small penalty for very short summary
+    if (!alert.summary || alert.summary.length < 10) confidence -= 0.05;
+    
+    return Math.max(0.5, Math.min(1, confidence)); // Min 0.5 for AI generated
+  }
+  
+  // Fallback for non-AI-generated alerts
   let confidence = 0.5; // Base
   
   if (alert.latitude && alert.longitude) confidence += 0.15;
