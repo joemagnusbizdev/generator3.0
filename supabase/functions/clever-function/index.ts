@@ -912,56 +912,6 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
         return json({ ok: false, error: err.message }, 500);
       }
     }
-        
-        // Update last job ID
-        try {
-          await setKV("last_scour_job_id", jobId);
-        } catch (e) {
-          console.warn(`[Early Signals] Could not update last job ID: ${e}`);
-        }
-        
-        // Return success immediately - trigger worker in background if possible
-        try {
-          // Try to start the worker without waiting
-          const workerBody = { jobId, earlySignalsOnly: true };
-          console.log(`[Early Signals] Sending to worker: ${JSON.stringify(workerBody)}`);
-          
-          if ((globalThis as any).EdgeRuntime?.waitUntil) {
-            (globalThis as any).EdgeRuntime.waitUntil(
-              fetch(`${supabaseUrl}/functions/v1/scour-worker`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${serviceKey}`,
-                  'apikey': serviceKey,
-                },
-                body: JSON.stringify(workerBody),
-              }).catch(e => {
-                console.error(`[Early Signals] Worker call failed: ${e.message}`);
-              })
-            );
-          } else {
-            console.warn('[Early Signals] EdgeRuntime.waitUntil not available');
-          }
-        } catch (workerErr: any) {
-          console.warn(`[Early Signals] Could not queue worker: ${workerErr.message}`);
-          // Still return success - queuing is non-critical
-        }
-        
-        console.log(`[Early Signals] Returning success for jobId: ${jobId}`);
-        return json({ ok: true, jobId, status: "running", message: "Early signals started" }, 200);
-      } catch (err: any) {
-        console.error('[Early Signals] Unhandled error:', err);
-        console.error('[Early Signals] Error type:', typeof err);
-        console.error('[Early Signals] Error string:', String(err));
-        return json({ 
-          ok: false, 
-          error: err.message || 'Unknown error in early signals', 
-          stack: err.stack?.toString(),
-          errorType: typeof err,
-        }, 500);
-      }
-    }
 
     // POST /scour/stop/:jobId
     if (path.includes("/scour/stop") && method === "POST") {
