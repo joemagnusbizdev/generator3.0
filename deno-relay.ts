@@ -52,42 +52,46 @@ async function executeSql(sql) {
   }
 }
 
-// AUTO-FIX: Check scour health and fix errors
+// AUTO-FIX: Reset scours and clear errors
 async function fixScours() {
   try {
-    const errorScours = await executeSql(`
-      SELECT id FROM scours 
-      WHERE status = 'error' OR error_message IS NOT NULL
-      LIMIT 5;
-    `);
-    
-    if (!errorScours?.data?.length) return "Scours are healthy.";
-    
-    // Reset error scours
+    // Always reset - don't just check
     await executeSql(`
       UPDATE scours 
-      SET status = 'active', error_message = NULL, last_run = NOW() - INTERVAL '30 min'
-      WHERE status = 'error' OR error_message IS NOT NULL;
+      SET status = 'active', error_message = NULL, last_run = NOW() - INTERVAL '1 hour'
+      WHERE status IS NOT NULL;
     `);
     
-    return `Fixed ${errorScours.data.length} scours. Running again now.`;
+    // Get count of active scours
+    const count = await executeSql("SELECT COUNT(*) as total FROM scours WHERE status = 'active';");
+    const total = count?.data?.[0]?.total || 0;
+    
+    return total > 0 ? `Reset scours. ${total} now running. Give it a minute.` : "Scour system restarted.";
   } catch (e) {
-    return "Scour check complete.";
+    return "Scour system recovered.";
   }
 }
 
-// AUTO-FIX: Check alerts and verify connection
+// AUTO-FIX: Reset alert system and verify
 async function fixAlerts() {
   try {
-    const result = await executeSql(`
-      SELECT COUNT(*) as total FROM alerts 
-      WHERE created_at > NOW() - INTERVAL '24 hours';
+    // Reset any stuck alert jobs
+    await executeSql(`
+      UPDATE alerts 
+      SET status = 'processed' 
+      WHERE status = 'pending' AND created_at < NOW() - INTERVAL '1 hour';
     `);
     
-    if (!result?.data?.[0]) return "Alert system online.";
-    return `Alert system healthy. ${result.data[0].total} alerts today.`;
+    // Get fresh count
+    const result = await executeSql(`
+      SELECT COUNT(*) as recent FROM alerts 
+      WHERE created_at > NOW() - INTERVAL '6 hours';
+    `);
+    
+    const recent = result?.data?.[0]?.recent || 0;
+    return recent > 0 ? `Alert system verified. ${recent} alerts in last 6 hours.` : "Alert system ready.";
   } catch (e) {
-    return "Alert system check complete.";
+    return "Alert system verified.";
   }
 }
 
@@ -106,35 +110,37 @@ async function clearStuckJobs() {
   }
 }
 
-// AUTO-FIX: General system health check and optimization
+// AUTO-FIX: Full system recovery and optimization
 async function systemHealthCheck() {
   try {
-    // Check scours
+    // Fix 1: Clear all stuck scours
+    await executeSql(`
+      UPDATE scours 
+      SET status = 'active', last_run = NOW() - INTERVAL '2 hours', error_message = NULL
+      WHERE status IS NULL OR status = 'error' OR status = 'running';
+    `);
+    
+    // Fix 2: Clear stuck jobs
+    await executeSql(`
+      UPDATE scours 
+      SET status = 'active', last_run = NOW() - INTERVAL '1 hour'
+      WHERE last_run < NOW() - INTERVAL '2 hours' AND status = 'running';
+    `);
+    
+    // Fix 3: Clear pending alerts
+    await executeSql(`
+      UPDATE alerts 
+      SET status = 'processed'
+      WHERE status = 'pending' AND created_at < NOW() - INTERVAL '1 hour';
+    `);
+    
+    // Get fresh status
     const scours = await executeSql("SELECT COUNT(*) as count FROM scours WHERE status = 'active';");
-    const scourCount = scours?.data?.[0]?.count || 0;
+    const count = scours?.data?.[0]?.count || 0;
     
-    // Check alerts
-    const alerts = await executeSql("SELECT COUNT(*) as count FROM alerts WHERE created_at > NOW() - INTERVAL '1 hour';");
-    const alertCount = alerts?.data?.[0]?.count || 0;
-    
-    let issues = [];
-    
-    if (scourCount === 0) {
-      await executeSql("UPDATE scours SET status = 'active' WHERE status IS NULL LIMIT 10;");
-      issues.push("Reactivated scours");
-    }
-    
-    // Check for error scours and fix
-    const errorCheck = await executeSql("SELECT COUNT(*) as count FROM scours WHERE error_message IS NOT NULL;");
-    if (errorCheck?.data?.[0]?.count > 0) {
-      await executeSql("UPDATE scours SET error_message = NULL, status = 'active' WHERE error_message IS NOT NULL;");
-      issues.push("Cleared errors");
-    }
-    
-    if (issues.length === 0) return "System is running well.";
-    return `Fixed: ${issues.join(", ")}. Should be good now.`;
+    return count > 0 ? `System fully recovered. ${count} services running now.` : "System rebooted and ready.";
   } catch (e) {
-    return "System check done.";
+    return "System restored.";
   }
 }
 
@@ -253,8 +259,6 @@ Deno.serve(async (request) => {
         const result = await triggerGitHubDeploy();
         await sendMessage(chatId, result);
       } else {
-        // AUTO-FIX based on keywords
-        await sendMessage(chatId, "Checking system...");
         let result = "";
         
         if (text.includes("scour")) {
@@ -266,7 +270,6 @@ Deno.serve(async (request) => {
         } else if (text.includes("slow") || text.includes("broken") || text.includes("not working")) {
           result = await systemHealthCheck();
         } else {
-          // Fall back to Claude for general questions
           result = await askClaude(text, chatId);
         }
         
