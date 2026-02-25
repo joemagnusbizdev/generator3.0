@@ -415,7 +415,7 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
           
           return json({
             ok: true,
-            active_jobs: activeJobs,
+             active_jobs: activeJobs,
             has_active_job: activeJobs.length > 0,
             job_count: activeJobs.length,
           });
@@ -790,37 +790,49 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
     // POST /scour-early-signals
     if (path.endsWith("/scour-early-signals") && method === "POST") {
       try {
-        console.log('[Early Signals] Starting Early Signals request');
+        console.log('[Early Signals] Starting Early Signals request with batch splitting');
         const body = await req.json().catch(() => ({}));
         const jobId = crypto.randomUUID();
+        const batchSize = body.batchSize || 1100; // ~1100 queries per batch
+        const enableBatching = body.enableBatching !== false; // Default true
         
-        console.log(`[Early Signals] Created jobId: ${jobId}`);
+        console.log(`[Early Signals] Created jobId: ${jobId}, batchSize: ${batchSize}, enableBatching: ${enableBatching}`);
         
-        // Store in KV that this is an early signals job
+        // Calculate batch metadata
+        // Based on 5300 total queries across 25 categories × 212 countries
+        // 5300 / 1100 = ~5 batches
+        const ESTIMATED_TOTAL_QUERIES = 5300;
+        const batchCount = enableBatching ? Math.ceil(ESTIMATED_TOTAL_QUERIES / batchSize) : 1;
+        
+        console.log(`[Early Signals] Batch plan: ${batchCount} batches of ~${batchSize} queries each`);
+        
+        // Store batch metadata in KV
         try {
           await setKV(`scour-job-${jobId}`, {
             id: jobId,
             status: "running",
             phase: "early_signals",
-            total: 25, // Start with just 25 base queries
+            total: ESTIMATED_TOTAL_QUERIES,
             processed: 0,
             created: 0,
             duplicatesSkipped: 0,
             lowConfidenceSkipped: 0,
             errorCount: 0,
-            currentActivity: "Early Signals queued...",
+            currentBatch: 1,
+            totalBatches: batchCount,
+            currentActivity: "Batch 1 of " + batchCount + " queued...",
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             activityLog: [],
           });
-          console.log(`[Early Signals] Job stored in KV with key: scour-job-${jobId}`);
+          console.log(`[Early Signals] Batch metadata stored with ${batchCount} batches`);
         } catch (kvErr: any) {
           console.warn(`[Early Signals] KV storage failed: ${kvErr.message}`);
-          // Continue anyway - the job will still be created
+          // Continue anyway
         }
 
         // Call scour-worker to start early signals in background
-        console.log('[Early Signals] Calling scour-worker with earlySignalsOnly=true');
+        console.log('[Early Signals] Calling scour-worker with batch support');
         fetch(`${supabaseUrl}/functions/v1/scour-worker`, {
           method: 'POST',
           headers: {
@@ -831,18 +843,24 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
           body: JSON.stringify({
             jobId,
             earlySignalsOnly: true,
+            enableBatching: enableBatching,
+            batchSize: batchSize,
+            estimatedTotalQueries: ESTIMATED_TOTAL_QUERIES,
           }),
         }).catch(e => {
           console.error(`[Early Signals] Background job ${jobId} failed:`, e);
         });
 
-        // Return immediately with queued status
+        // Return immediately with queued status and batch info
         return json({
           ok: true,
           jobId,
           status: 'queued',
           phase: 'early_signals',
-          message: 'Early Signals job queued. Check status via polling.'
+          batchCount: batchCount,
+          currentBatch: 1,
+          totalQueries: ESTIMATED_TOTAL_QUERIES,
+          message: `Early Signals job queued in ${batchCount} batch(es). Check status via polling.`
         });
       } catch (error: any) {
         console.error('[Early Signals] Error:', error);

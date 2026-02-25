@@ -12,6 +12,7 @@ import AnalyticsDashboardInline from "./components/AnalyticsDashboardInline";
 import UserManagementInline from "./components/UserManagementInline";
 import { ScourProvider } from "./components/ScourContext";
 import TrendsView from "./components/TrendsView";
+import HealthReportModal from "./components/HealthReportModal";
 
 type Role = "operator" | "analyst" | "admin";
 type Tab = "review" | "create" | "sources" | "trends" | "analytics" | "admin";
@@ -60,6 +61,7 @@ export default function App(): JSX.Element {
   const [role, setRole] = useState<Role>("operator");
   const [tab, setTab] = useState<Tab>("review");
   const [loading, setLoading] = useState(true);
+  const [showHealthReport, setShowHealthReport] = useState(false);
 
   const permissions = useMemo(() => getPermissions(role), [role]);
 
@@ -103,6 +105,29 @@ export default function App(): JSX.Element {
     };
   }, []);
 
+  // Health Report - Show every 6 hours
+  useEffect(() => {
+    const lastHealthReportTime = localStorage.getItem('lastHealthReportTime');
+    const SIX_HOURS = 6 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    if (!lastHealthReportTime || now - parseInt(lastHealthReportTime, 10) >= SIX_HOURS) {
+      setShowHealthReport(true);
+      localStorage.setItem('lastHealthReportTime', now.toString());
+    }
+
+    // Also check periodically (every 30 seconds)
+    const interval = setInterval(() => {
+      const lastTime = localStorage.getItem('lastHealthReportTime');
+      if (!lastTime || Date.now() - parseInt(lastTime, 10) >= SIX_HOURS) {
+        setShowHealthReport(true);
+        localStorage.setItem('lastHealthReportTime', Date.now().toString());
+      }
+    }, 30000); // Check every 30 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
   // Loading gate
   if (loading) {
     return <div className="p-6">Loading...</div>;
@@ -129,6 +154,12 @@ export default function App(): JSX.Element {
 
   return (
     <ScourProvider accessToken={accessToken}>
+      {/* Health Report Modal - shows every 6 hours */}
+      <HealthReportModal 
+        isOpen={showHealthReport} 
+        onClose={() => setShowHealthReport(false)} 
+      />
+      
       {/* Global Scour Status Indicator - visible from anywhere */}
       <ScourStatusIndicator />
       

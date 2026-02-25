@@ -12,6 +12,7 @@ import AnalyticsDashboardInline from "./components/AnalyticsDashboardInline";
 import UserManagementInline from "./components/UserManagementInline";
 import { ScourProvider } from "./components/ScourContext";
 import TrendsView from "./components/TrendsView";
+import HealthReportModal from "./components/HealthReportModal";
 // -------------------------
 // Env
 // -------------------------
@@ -51,6 +52,7 @@ export default function App() {
     const [role, setRole] = useState("operator");
     const [tab, setTab] = useState("review");
     const [loading, setLoading] = useState(true);
+    const [showHealthReport, setShowHealthReport] = useState(false);
     const permissions = useMemo(() => getPermissions(role), [role]);
     useEffect(() => {
         let mounted = true;
@@ -92,6 +94,25 @@ export default function App() {
             sub.subscription.unsubscribe();
         };
     }, []);
+    // Health Report - Show every 6 hours
+    useEffect(() => {
+        const lastHealthReportTime = localStorage.getItem('lastHealthReportTime');
+        const SIX_HOURS = 6 * 60 * 60 * 1000;
+        const now = Date.now();
+        if (!lastHealthReportTime || now - parseInt(lastHealthReportTime, 10) >= SIX_HOURS) {
+            setShowHealthReport(true);
+            localStorage.setItem('lastHealthReportTime', now.toString());
+        }
+        // Also check periodically (every 30 seconds)
+        const interval = setInterval(() => {
+            const lastTime = localStorage.getItem('lastHealthReportTime');
+            if (!lastTime || Date.now() - parseInt(lastTime, 10) >= SIX_HOURS) {
+                setShowHealthReport(true);
+                localStorage.setItem('lastHealthReportTime', Date.now().toString());
+            }
+        }, 30000); // Check every 30 seconds
+        return () => clearInterval(interval);
+    }, []);
     // Loading gate
     if (loading) {
         return _jsx("div", { className: "p-6", children: "Loading..." });
@@ -100,7 +121,7 @@ export default function App() {
     if (!accessToken) {
         return (_jsx("div", { className: "min-h-screen flex items-center justify-center bg-gray-50 p-6", children: _jsxs("div", { className: "w-full max-w-md bg-white border rounded-lg p-6 shadow-sm", children: [_jsx("div", { className: "text-lg font-semibold mb-2", children: "MAGNUS Intelligence" }), _jsx("div", { className: "text-sm text-gray-600", children: "MAGNUS ATLAS" }), _jsx("div", { className: "text-xs text-gray-500 mb-4", children: "Analysis and Threat Location based Alert System" }), _jsx("div", { className: "text-sm text-gray-600 mb-4", children: "Sign in to continue." }), _jsx(Auth, { supabaseClient: supabase, appearance: { theme: ThemeSupa }, providers: [] })] }) }));
     }
-    return (_jsxs(ScourProvider, { accessToken: accessToken, children: [_jsx(ScourStatusIndicator, {}), _jsxs("main", { className: "p-4 space-y-4", children: [_jsxs("div", { className: "flex flex-wrap gap-2 border-b pb-2", children: [permissions.canReview && (_jsx("button", { className: `px-3 py-1 rounded border ${tab === "review" ? "bg-gray-100" : "bg-white"}`, onClick: () => setTab("review"), children: "Review" })), permissions.canCreate && (_jsx("button", { className: `px-3 py-1 rounded border ${tab === "create" ? "bg-gray-100" : "bg-white"}`, onClick: () => setTab("create"), children: "Create" })), permissions.canManageSources && (_jsx("button", { className: `px-3 py-1 rounded border ${tab === "sources" ? "bg-gray-100" : "bg-white"}`, onClick: () => setTab("sources"), children: "Sources" })), _jsx("button", { className: `px-3 py-1 rounded border ${tab === "trends" ? "bg-gray-100" : "bg-white"}`, onClick: () => setTab("trends"), children: "Trends" }), permissions.canAccessAnalytics && (_jsx("button", { className: `px-3 py-1 rounded border ${tab === "analytics" ? "bg-gray-100" : "bg-white"}`, onClick: () => setTab("analytics"), children: "Analytics" })), permissions.canManageUsers && (_jsx("button", { className: `px-3 py-1 rounded border ${tab === "admin" ? "bg-gray-100" : "bg-white"}`, onClick: () => setTab("admin"), children: "Admin" })), _jsx("div", { className: "flex-1" }), _jsx("button", { className: "px-3 py-1 rounded border bg-white", onClick: () => supabase.auth.signOut(), title: "Sign out", children: "Sign out" })] }), tab === "review" && _jsx(AlertReviewQueueInline, { permissions: permissions, accessToken: accessToken || '' }), tab === "create" && (_jsx(AlertCreateInline, { accessToken: accessToken, permissions: { canCreate: permissions.canCreate } })), tab === "sources" && (_jsx(SourceManagerInline, { accessToken: accessToken, permissions: {
+    return (_jsxs(ScourProvider, { accessToken: accessToken, children: [_jsx(HealthReportModal, { isOpen: showHealthReport, onClose: () => setShowHealthReport(false) }), _jsx(ScourStatusIndicator, {}), _jsxs("main", { className: "p-4 space-y-4", children: [_jsxs("div", { className: "flex flex-wrap gap-2 border-b pb-2", children: [permissions.canReview && (_jsx("button", { className: `px-3 py-1 rounded border ${tab === "review" ? "bg-gray-100" : "bg-white"}`, onClick: () => setTab("review"), children: "Review" })), permissions.canCreate && (_jsx("button", { className: `px-3 py-1 rounded border ${tab === "create" ? "bg-gray-100" : "bg-white"}`, onClick: () => setTab("create"), children: "Create" })), permissions.canManageSources && (_jsx("button", { className: `px-3 py-1 rounded border ${tab === "sources" ? "bg-gray-100" : "bg-white"}`, onClick: () => setTab("sources"), children: "Sources" })), _jsx("button", { className: `px-3 py-1 rounded border ${tab === "trends" ? "bg-gray-100" : "bg-white"}`, onClick: () => setTab("trends"), children: "Trends" }), permissions.canAccessAnalytics && (_jsx("button", { className: `px-3 py-1 rounded border ${tab === "analytics" ? "bg-gray-100" : "bg-white"}`, onClick: () => setTab("analytics"), children: "Analytics" })), permissions.canManageUsers && (_jsx("button", { className: `px-3 py-1 rounded border ${tab === "admin" ? "bg-gray-100" : "bg-white"}`, onClick: () => setTab("admin"), children: "Admin" })), _jsx("div", { className: "flex-1" }), _jsx("button", { className: "px-3 py-1 rounded border bg-white", onClick: () => supabase.auth.signOut(), title: "Sign out", children: "Sign out" })] }), tab === "review" && _jsx(AlertReviewQueueInline, { permissions: permissions, accessToken: accessToken || '' }), tab === "create" && (_jsx(AlertCreateInline, { accessToken: accessToken, permissions: { canCreate: permissions.canCreate } })), tab === "sources" && (_jsx(SourceManagerInline, { accessToken: accessToken, permissions: {
                             canManageSources: permissions.canManageSources,
                             canScour: permissions.canScour,
                         } })), tab === "trends" && _jsx(TrendsView, { accessToken: accessToken }), tab === "analytics" && (_jsx(AnalyticsDashboardInline, { apiBase: "", accessToken: accessToken, permissions: { canAccessAnalytics: permissions.canAccessAnalytics } })), tab === "admin" && (_jsx(UserManagementInline, { accessToken: accessToken || undefined, currentUserRole: role, permissions: { canManageUsers: permissions.canManageUsers } }))] })] }));

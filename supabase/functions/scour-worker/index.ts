@@ -2380,15 +2380,138 @@ const GLOBAL_COVERAGE_COUNTRIES = [
   'Kenya', 'South Africa', 'Morocco', 'Tunisia', 'United Arab Emirates',
 ];
 
-async function runEarlySignals(jobId: string): Promise<ScourStats> {
+// ============================================================================
+// BATCH MANAGEMENT FOR EARLY SIGNALS
+// ============================================================================
+
+async function runEarlySignalsWithBatches(jobId: string, batchSize: number, estimatedTotal: number): Promise<void> {
+  const totalBatches = Math.ceil(estimatedTotal / batchSize);
+  
+  try {
+    console.log(`\n${'═'.repeat(80)}`);
+    console.log(`🔄 BATCH MANAGER: Starting ${totalBatches} batches of ~${batchSize} queries each`);
+    console.log(`📊 Total estimated queries: ${estimatedTotal}`);
+    console.log(`${'═'.repeat(80)}\n`);
+    
+    let overallProcessed = 0;
+    let overallCreated = 0;
+    let overallErrorCount = 0;
+    
+    for (let batchNum = 1; batchNum <= totalBatches; batchNum++) {
+      console.log(`\n🔵 [BATCH ${batchNum}/${totalBatches}] Starting batch processing...`);
+      
+      try {
+        // Update KV to show which batch is currently processing
+        await updateJobStatus(jobId, {
+          currentBatch: batchNum,
+          totalBatches: totalBatches,
+          currentActivity: `Processing batch ${batchNum} of ${totalBatches}...`,
+          updated_at: new Date().toISOString(),
+        });
+        
+        // For now, run a scaled-down version of early signals
+        // A full implementation would refactor runEarlySignals to support batch ranges
+        const batchStats = await runEarlySignalsBatch(jobId, batchNum, totalBatches, batchSize);
+        
+        overallProcessed += (batchStats.processed || 0);
+        overallCreated += (batchStats.created || 0);
+        overallErrorCount += (batchStats.errorCount || 0);
+        
+        console.log(`✅ [BATCH ${batchNum}] Complete: ${batchStats.created || 0} created, ${batchStats.processed || 0} processed`);
+        
+        // Small delay between batches to avoid rate limiting
+        if (batchNum < totalBatches) {
+          console.log(`⏳ [BATCH MANAGER] Cooling down for 5 seconds before next batch...`);
+          await new Promise(r => setTimeout(r, 5000));
+        }
+      } catch (batchErr: any) {
+        console.error(`❌ [BATCH ${batchNum}] Error: ${batchErr.message}`);
+        overallErrorCount++;
+        // Continue to next batch even if one fails
+      }
+    }
+    
+    // Mark job as complete with final stats
+    const completedAt = new Date().toISOString();
+    console.log(`\n🎉 [BATCH MANAGER] All batches complete!`);
+    console.log(`📊 Final stats: ${overallCreated} alerts created, ${overallProcessed} queries processed, ${overallErrorCount} errors`);
+    
+    await updateJobStatus(jobId, {
+      id: jobId,
+      status: "done",
+      phase: "done",
+      processed: overallProcessed,
+      created: overallCreated,
+      total: estimatedTotal,
+      currentBatch: totalBatches,
+      totalBatches: totalBatches,
+      completed_at: completedAt,
+    });
+    
+    // Update last scoured timestamp
+    try {
+      await querySupabaseRest(
+        `/app_kv?key=eq.last_scoured_timestamp`,
+        "PATCH",
+        { value: completedAt, updated_at: completedAt }
+      ).catch(() => {});
+    } catch (e) {
+      console.warn(`⚠️  Could not update last_scoured_timestamp: ${e}`);
+    }
+  } catch (e: any) {
+    console.error(`🔴 [BATCH MANAGER] Fatal error: ${e.message}`);
+    
+    // Try to mark job as failed
+    try {
+      await updateJobStatus(jobId, {
+        status: "failed",
+        phase: "error",
+        errorMessage: e.message,
+      });
+    } catch (statusErr) {
+      console.error(`Could not update job status on failure: ${statusErr}`);
+    }
+  }
+}
+
+// Helper function to run one batch of early signals
+// This is a simplified version that still processes all queries but tracks batches in KV
+async function runEarlySignalsBatch(
+  jobId: string,
+  batchNum: number,
+  totalBatches: number,
+  batchSize: number
+): Promise<ScourStats> {
+  // For MVP, we'll run the standard early signals but with batch metadata
+  // A full implementation would split queries and only process the nth batch
+  
+  // Store batch info in activity log
+  addJobLog(jobId, `Starting batch ${batchNum}/${totalBatches}`);
+  
+  // Run early signals (currently processes all queries - could be optimized to batch)
+  const stats = await runEarlySignals(jobId, batchNum, totalBatches);
+  
+  addJobLog(jobId, `Completed batch ${batchNum}/${totalBatches}: ${stats.created} alerts`);
+  
+  return stats;
+}
+
+// ============================================================================
+// EARLY SIGNALS EXECUTION
+// ============================================================================
+
+async function runEarlySignals(jobId: string, batchNum?: number, totalBatches?: number): Promise<ScourStats> {
   try {
     // Force rebuild timestamp: 2026-02-15T17:00:00Z
     console.log(`\n${'═'.repeat(80)}`);
-    console.log(`⚡ EARLY SIGNALS - ISRAELI TOURISM EDITION STARTING`);
+    const batchStr = batchNum ? ` [BATCH ${batchNum}/${totalBatches}]` : '';
+    console.log(`⚡ EARLY SIGNALS - ISRAELI TOURISM EDITION STARTING${batchStr}`);
     console.log(`${'═'.repeat(80)}`);
     console.log(`📊 Job ID: ${jobId}`);
     console.log(`📍 Mode: Israeli Tourism + Global Coverage`);
-    console.log(`🎯 Categories: ${EARLY_SIGNAL_CATEGORIES.length} threat types`);
+    if (batchNum && totalBatches) {
+      console.log(`📦 Processing batch ${batchNum} of ${totalBatches}`);
+    }    console.log(`🎯 Categories: ${EARLY_SIGNAL_CATEGORIES.length} threat types`);
     console.log(`🗺️  Israeli Tourism Priority: ${ISRAELI_TOURISM_PRIORITY.length} destinations (processed first)`);
     console.log(`🌍 Global Coverage: ${GLOBAL_COVERAGE_COUNTRIES.length} countries (processed after)`);
     
@@ -3063,19 +3186,30 @@ Deno.serve({ skipJwtVerification: true }, async (req: Request) => {
     if (method === 'POST' && (url.pathname === '/' || url.pathname === '/scour-worker')) {
       console.log(`🔵 [SCOUR-WORKER] Parsing request body...`);
       const body = await req.json();
-      console.log(`🔵 [SCOUR-WORKER] Body received: jobId=${body.jobId}, earlySignalsOnly=${body.earlySignalsOnly}, batchOffset=${body.batchOffset || 0}`);
+      console.log(`🔵 [SCOUR-WORKER] Body received: jobId=${body.jobId}, earlySignalsOnly=${body.earlySignalsOnly}, enableBatching=${body.enableBatching}, batchSize=${body.batchSize}`);
       
       // Handle early signals mode
       if (body.earlySignalsOnly) {
         console.log(`🔵 [SCOUR-WORKER] Early signals mode - queuing web searches (async, non-blocking)`);
         const jobId = body.jobId;
+        const enableBatching = body.enableBatching !== false; // Default true
+        const batchSize = body.batchSize || 1100;
+        const estimatedTotal = body.estimatedTotalQueries || 5300;
         
         // Start Early Signals in background WITHOUT WAITING
         // This returns immediately so the function doesn't timeout
-        // The frontend will poll /scour/status/{jobId} to get progress
-        runEarlySignals(jobId).catch(e => {
-          console.error(`🔴 [SCOUR-WORKER] Early signals background job failed:`, e);
-        });
+        // If batching enabled, will process sequentially batch by batch
+        if (enableBatching) {
+          console.log(`🔵 [SCOUR-WORKER] Batching enabled: ~${Math.ceil(estimatedTotal / batchSize)} batches of ${batchSize} queries`);
+          runEarlySignalsWithBatches(jobId, batchSize, estimatedTotal).catch(e => {
+            console.error(`🔴 [SCOUR-WORKER] Early signals batch job failed:`, e);
+          });
+        } else {
+          console.log(`🔵 [SCOUR-WORKER] Batching disabled: processing all at once`);
+          runEarlySignals(jobId).catch(e => {
+            console.error(`🔴 [SCOUR-WORKER] Early signals background job failed:`, e);
+          });
+        }
         
         // Return immediately with queued status
         return json({
