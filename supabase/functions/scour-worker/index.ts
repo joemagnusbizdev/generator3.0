@@ -2526,9 +2526,10 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
           const alerts = await executeEarlySignalQuery(`${baseQuery} ${country}`, config);
           
           const validAlerts = alerts.filter(a => {
-            // Filter: Only alerts with confidence > 0.5 and recent data
-            if (!a.confidence_score || a.confidence_score < 0.5) {
-              console.log(`  ⚠️ Filtered alert: "${a.title}" (confidence=${a.confidence_score || 'undefined'})`);
+            // STRICT FILTERING: Only accept confidence >= 0.7 to reduce false positives
+            // This prevents low-confidence extracted alerts from cluttering operators' workload
+            if (!a.confidence_score || a.confidence_score < 0.7) {
+              console.log(`  ⚠️ Filtered alert: "${a.title}" (confidence=${a.confidence_score || 'undefined'}, requires >= 0.7)`);
               alertsFiltered++;
               return false;
             }
@@ -2536,7 +2537,7 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
           });
           
           if (validAlerts.length > 0) {
-            console.log(`  ✅ Accepted ${validAlerts.length} alerts with confidence >= 0.5`);
+            console.log(`  ✅ Accepted ${validAlerts.length} alerts with confidence >= 0.7`);
           }
           alertsCreated += validAlerts.length;
           
@@ -2761,13 +2762,20 @@ async function executeEarlySignalQuery(query: string, config: ScourConfig): Prom
             console.log(`[CLAUDE_DASHBOARD_LOG] Brave returned ${braveData.web.length} results`);
             searchResults = braveData.web;
           } else {
-            console.log(`[CLAUDE_DASHBOARD_LOG] Brave returned empty results or no .web property`);
+            // Empty Brave results - skip this query entirely instead of wasting Claude calls
+            console.log(`[BRAVE_EMPTY] Skipping query due to empty results: "${query}"`);
             console.log(`[BRAVE_DEBUG] Full response: ${JSON.stringify(braveData).substring(0, 500)}`);
+            return { alerts: [], skipped: true, reason: 'brave_empty' };
           }
         } else {
           const errorText = await braveResponse.text().catch(() => 'unknown');
           console.warn(`[CLAUDE_DASHBOARD_LOG] Brave API returned status ${braveResponse.status}`);
           console.warn(`[BRAVE_DEBUG] Error: ${errorText.substring(0, 300)}`);
+          // 429 = Rate Limited - activate circuit breaker
+          if (braveResponse.status === 429) {
+            console.error(`[CIRCUIT_BREAKER] Brave API rate limited (429). Stopping batch to preserve quota.`);
+            return { alerts: [], error: 'brave_429_rate_limited', rateLimited: true };
+          }
         }
       } catch (braveErr: any) {
         console.warn(`[CLAUDE_DASHBOARD_LOG] Brave error: ${braveErr.message}`);
