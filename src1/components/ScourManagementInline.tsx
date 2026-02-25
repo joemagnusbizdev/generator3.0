@@ -238,6 +238,8 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
       
       // If job is queued, poll for completion instead of getting immediate results
       if (result.status === 'queued') {
+        const actualJobId = result.jobId || groupId; // Use the ID returned from the backend
+        console.log(`[Scour polling] Using jobId: ${actualJobId} (groupId: ${groupId})`);
         addStatusMessage(groupId, 'Job queued, polling for status...');
         
         // Poll for job completion
@@ -251,7 +253,7 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
           
           try {
             const statusResponse = await fetch(
-              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/status?jobId=${encodeURIComponent(groupId)}`,
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/status?jobId=${encodeURIComponent(actualJobId)}`,
               {
                 headers: {
                   Authorization: `Bearer ${accessToken}`,
