@@ -1,5 +1,5 @@
 import { jsx as _jsx } from "react/jsx-runtime";
-import { createContext, useContext, useState, useCallback, useRef } from "react";
+import { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
 import { apiFetchJson, apiPostJson } from "../lib/utils/api";
 // ============================================================================
 // CONTEXT
@@ -22,7 +22,14 @@ export const ScourProvider = ({ children, accessToken: defaultAccessToken, }) =>
     const [lastError, setLastError] = useState(null);
     const [lastStartedAt, setLastStartedAt] = useState(null);
     const [lastFinishedAt, setLastFinishedAt] = useState(null);
+    const [activeJobs, setActiveJobs] = useState(new Map());
     const pollIntervalRef = useRef(null);
+    const activeJobsRef = useRef(new Map());
+    // Sync isScouring with activeJobs - only true if any jobs are running
+    useEffect(() => {
+        const hasRunningJobs = Array.from(activeJobs.values()).some(job => job.status === 'running');
+        setIsScouring(hasRunningJobs);
+    }, [activeJobs]);
     const stopPolling = useCallback(() => {
         if (pollIntervalRef.current) {
             clearInterval(pollIntervalRef.current);
@@ -30,29 +37,28 @@ export const ScourProvider = ({ children, accessToken: defaultAccessToken, }) =>
         }
     }, []);
     const pollStatus = useCallback(async (currentJobId, token) => {
-        const res = await apiFetchJson(`/scour/status/${encodeURIComponent(currentJobId)}`, token);
+        const res = await apiFetchJson(`/scour/status?jobId=${encodeURIComponent(currentJobId)}`, token);
         if (!res?.ok || !res.job) {
             console.log(`[ScourContext.pollStatus] Response not ok or missing job:`, { ok: res?.ok, hasJob: !!res?.job });
             return;
         }
         const job = res.job;
-        console.log(`[ScourContext.pollStatus] Got job for ${currentJobId}:`, {
-            phase: job.phase,
-            processed: job.processed,
-            created: job.created,
-            hasActivityLog: !!job.activityLog,
-            activityLogLength: job.activityLog?.length || 0,
-            activityLogType: typeof job.activityLog,
-            jobKeys: Object.keys(job),
-        });
-        // Debug: Check what's in activityLog
-        if (job.activityLog) {
-            console.log(`[ScourContext.pollStatus] First activityLog entry:`, job.activityLog[0]);
-            console.log(`[ScourContext.pollStatus] Last activityLog entry:`, job.activityLog[job.activityLog.length - 1]);
-        }
+        console.log(`[ScourContext.pollStatus] Got job for ${currentJobId}: status=${job.status}`);
+        // Update both the primary scourJob (for main UI) and activeJobs map (for tracking multiple jobs)
         setScourJob(job);
+        setActiveJobs(prev => {
+            const updated = new Map(prev);
+            updated.set(currentJobId, job);
+            return updated;
+        });
         if (job.status === "done" || job.status === "error") {
-            setIsScouring(false);
+            // Job finished - remove from active jobs
+            setActiveJobs(prev => {
+                const updated = new Map(prev);
+                updated.delete(currentJobId);
+                // useEffect will automatically set isScouring based on remaining jobs
+                return updated;
+            });
             setLastFinishedAt(new Date().toISOString());
             if (job.status === "done") {
                 setLastResult({
@@ -70,15 +76,6 @@ export const ScourProvider = ({ children, accessToken: defaultAccessToken, }) =>
             }
             stopPolling();
         }
-        else if (job.phase === 'early_signals' && pollIntervalRef.current) {
-            // During early signals, poll faster to catch query updates
-            if (pollIntervalRef.current) {
-                clearInterval(pollIntervalRef.current);
-                pollIntervalRef.current = setInterval(() => {
-                    pollStatus(currentJobId, token);
-                }, 400); // Very fast polling for early signals
-            }
-        }
     }, [stopPolling]);
     // Helper to trigger next batch of scour
     const triggerNextBatch = useCallback(async (jobId, offset, token) => {
@@ -91,7 +88,12 @@ export const ScourProvider = ({ children, accessToken: defaultAccessToken, }) =>
             if (!batchRes.ok) {
                 console.error(`[Scour] Batch failed:`, batchRes);
                 setLastError(batchRes.error || "Batch processing failed");
-                setIsScouring(false);
+                // Remove job from activeJobs - useEffect will update isScouring
+                setActiveJobs(prev => {
+                    const updated = new Map(prev);
+                    updated.delete(jobId);
+                    return updated;
+                });
                 return;
             }
             // Update progress (accumulate across batches)
@@ -129,19 +131,29 @@ export const ScourProvider = ({ children, accessToken: defaultAccessToken, }) =>
             else {
                 console.log(`[Scour] All batches complete!`);
                 setScourJob(prev => prev ? { ...prev, status: "done", phase: "done" } : prev);
-                setIsScouring(false);
+                // Remove job from activeJobs - useEffect will update isScouring
+                setActiveJobs(prev => {
+                    const updated = new Map(prev);
+                    updated.delete(jobId);
+                    return updated;
+                });
             }
         }
         catch (e) {
             console.error(`[Scour] Batch trigger error:`, e);
             setLastError(e.message || "Failed to trigger next batch");
-            setIsScouring(false);
+            // Remove job from activeJobs - useEffect will update isScouring
+            setActiveJobs(prev => {
+                const updated = new Map(prev);
+                updated.delete(jobId);
+                return updated;
+            });
         }
     }, [defaultAccessToken]);
     const startScour = useCallback(async (accessToken, opts) => {
         const token = accessToken || defaultAccessToken;
         try {
-            setIsScouring(true);
+            // Don't set global isScouring here - track via activeJobs instead
             setLastError(null);
             setLastStartedAt(new Date().toISOString());
             console.log(`[Scour] Starting batch-based scour with ${opts?.daysBack || 14} days back`);
@@ -168,6 +180,12 @@ export const ScourProvider = ({ children, accessToken: defaultAccessToken, }) =>
             };
             console.log(`[Scour] Setting scourJob state:`, jobData);
             setScourJob(jobData);
+            // Add to activeJobs so useEffect can manage isScouring
+            setActiveJobs(prev => {
+                const updated = new Map(prev);
+                updated.set(newJobId, jobData);
+                return updated;
+            });
             // If more batches remain, trigger next batch
             if (startRes.hasMoreBatches && startRes.nextBatchOffset !== undefined) {
                 console.log(`[Scour] Batch complete, triggering next batch at offset ${startRes.nextBatchOffset}`);
@@ -184,8 +202,8 @@ export const ScourProvider = ({ children, accessToken: defaultAccessToken, }) =>
             const errorMsg = e?.message || "Failed to start scour";
             console.error(`[Scour Error]`, errorMsg);
             setLastError(errorMsg);
-            setIsScouring(false);
             stopPolling();
+            // useEffect will set isScouring based on activeJobs
         }
     }, [defaultAccessToken, pollStatus, stopPolling]);
     const stopScour = useCallback(async () => {
@@ -194,13 +212,18 @@ export const ScourProvider = ({ children, accessToken: defaultAccessToken, }) =>
             try {
                 console.log(`[Scour] Requesting stop for job ${jobId}`);
                 await apiPostJson(`/scour/stop/${jobId}`, {}, defaultAccessToken);
+                // Remove from activeJobs - useEffect will update isScouring
+                setActiveJobs(prev => {
+                    const updated = new Map(prev);
+                    updated.delete(jobId);
+                    return updated;
+                });
             }
             catch (e) {
                 console.warn(`[Scour] Failed to notify backend of stop:`, e);
             }
         }
         // Stop frontend polling immediately
-        setIsScouring(false);
         stopPolling();
     }, [jobId, defaultAccessToken, stopPolling]);
     // Helper methods for direct job management (used by Early Signals)
@@ -215,8 +238,24 @@ export const ScourProvider = ({ children, accessToken: defaultAccessToken, }) =>
     const startJobPolling = useCallback((newJobId, token) => {
         console.log(`[Scour] Starting polling for jobId:`, newJobId);
         setJobId(newJobId);
-        setIsScouring(true);
         setLastError(null);
+        // Add placeholder job to activeJobs - pollStatus will update it
+        // This ensures useEffect sets isScouring=true before first poll
+        setActiveJobs(prev => {
+            const updated = new Map(prev);
+            updated.set(newJobId, {
+                id: newJobId,
+                status: 'running',
+                phase: 'early_signals',
+                total: 0,
+                processed: 0,
+                created: 0,
+                duplicatesSkipped: 0,
+                lowConfidenceSkipped: 0,
+                errorCount: 0,
+            });
+            return updated;
+        });
         // Start polling with fast interval for early signals
         if (pollIntervalRef.current) {
             clearInterval(pollIntervalRef.current);
@@ -225,6 +264,21 @@ export const ScourProvider = ({ children, accessToken: defaultAccessToken, }) =>
             pollStatus(newJobId, token || defaultAccessToken);
         }, 400); // Fast polling for real-time updates
     }, [pollStatus, defaultAccessToken]);
+    // Emergency hard reset - clears all UI state
+    const hardReset = useCallback(() => {
+        console.log('🔄 [HARD RESET] Clearing all state...');
+        setIsScouring(false);
+        setScourJob(null);
+        setJobId(null);
+        setLastResult(null);
+        setLastError(null);
+        setLastStartedAt(null);
+        setLastFinishedAt(null);
+        setActiveJobs(new Map());
+        if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+        }
+    }, []);
     const value = {
         isScouring,
         scourJob,
@@ -240,6 +294,9 @@ export const ScourProvider = ({ children, accessToken: defaultAccessToken, }) =>
         setScourJob: setScourJobHelper,
         setJobId: setJobIdHelper,
         startJobPolling,
+        activeJobs,
+        isJobRunning: (jobId) => activeJobs.has(jobId) && activeJobs.get(jobId)?.status === 'running',
+        hardReset,
     };
     return _jsx(ScourContext.Provider, { value: value, children: children });
 };

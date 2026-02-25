@@ -77,7 +77,18 @@ async function getKV(key: string) {
   try {
     const result = await querySupabaseRest(`/app_kv?key=eq.${encodeURIComponent(key)}&select=value`);
     if (!result || result.length === 0) return null;
-    return result[0]?.value ?? null;
+    const rawValue = result[0]?.value ?? null;
+    if (rawValue === null) return null;
+    // Parse JSON string back to object if it's stored as string
+    if (typeof rawValue === 'string') {
+      try {
+        return JSON.parse(rawValue);
+      } catch {
+        // If parse fails, return the raw value
+        return rawValue;
+      }
+    }
+    return rawValue;
   } catch (e: any) {
     return null;
   }
@@ -376,7 +387,7 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
         
         if (jobId) {
           // Return specific job by ID (regardless of status)
-          const jobData = await getKV(`scour_job:${jobId}`);
+          const jobData = await getKV(`scour-job-${jobId}`);
           return json({ ok: true, job: jobData });
         }
         

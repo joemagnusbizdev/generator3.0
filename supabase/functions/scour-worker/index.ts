@@ -2724,7 +2724,9 @@ async function executeEarlySignalQuery(query: string, config: ScourConfig): Prom
     let searchResults: any[] = [];
     
     // Step 1: Get web search results from Brave
-    if (config.braveApiKey) {
+    // TEMPORARILY DISABLED: Brave API not returning reliable results, using Claude direct analysis instead
+    console.warn(`[CLAUDE_DASHBOARD_LOG] Brave search disabled - using Claude direct analysis`);
+    if (false && config.braveApiKey) {
       console.log(`[CLAUDE_DASHBOARD_LOG] Brave Search API call for: "${query}"`);
       try {
         // Add search parameters
@@ -2769,21 +2771,22 @@ async function executeEarlySignalQuery(query: string, config: ScourConfig): Prom
       console.warn(`[CLAUDE_DASHBOARD_LOG] No Brave API key configured, skipping web search`);
     }
     
-    // OPTIMIZATION: Skip Claude if no search results found
-    if (searchResults.length === 0) {
-      console.log(`[CLAUDE_DASHBOARD_LOG] No search results found, skipping Claude analysis`);
-      return [];
-    }
+    // NOTE: Proceeding with Claude direct analysis instead of requiring Brave results
+    console.log(`[CLAUDE_DASHBOARD_LOG] Proceeding to Claude analysis (search results count: ${searchResults.length})`);
+
     
-    // Step 2: Ask Claude to extract alerts from search results
-    console.log(`[CLAUDE_DASHBOARD_LOG] Sending ${searchResults.length} search results to Claude`);
+    // Step 2: Ask Claude to extract alerts from search results or analyze directly
+    console.log(`[CLAUDE_DASHBOARD_LOG] Sending query to Claude for analysis`);
     
-    const searchContent = searchResults.map((r: any) => `- ${r.title}\n  ${r.description}\n  ${r.url}`).join('\n\n');
+    // If we have search results, format them; otherwise use empty string for direct analysis
+    const searchContent = searchResults.length > 0 
+      ? searchResults.map((r: any) => `- ${r.title}\n  ${r.description}\n  ${r.url}`).join('\n\n')
+      : `(No search results - analyzing based on knowledge)`;
     
-    console.log(`[CLAUDE_DASHBOARD_LOG] About to fetch from Claude API with timeout 15s`);
+    console.log(`[CLAUDE_DASHBOARD_LOG] About to fetch from Claude API with timeout 5 minutes`);
     // Combine config abort signal with timeout
     const extractController = new AbortController();
-    const extractTimeout = setTimeout(() => extractController.abort(), 15000);
+    const extractTimeout = setTimeout(() => extractController.abort(), 300000); // 5 minutes for AI extraction
     const extractSignals: AbortSignal[] = [extractController.signal];
     if (config?.abortSignal) extractSignals.push(config.abortSignal);
     const extractCombinedSignal = AbortSignal.any ? AbortSignal.any(extractSignals) : extractController.signal;
@@ -2797,15 +2800,19 @@ async function executeEarlySignalQuery(query: string, config: ScourConfig): Prom
       },
       body: JSON.stringify({
         model: 'claude-3-haiku-20240307',
-        max_tokens: 1024,
-        system: `You are a travel safety alert extraction system. Extract ONLY recent (within last 7 days), verifiable incidents from the provided content.
-Return ONLY real incidents with: title, location (city), country, event_type, severity (low/medium/high), description, event_start_date (YYYY-MM-DD or ISO format), and url.
-REJECT: stale/historical events, vague locations, generic titles, events older than 7 days.
-Format as JSON array. If no valid incidents found, return [].`,
+        max_tokens: 2048,
+        system: `You are a travel safety alert extraction system. Your task is to identify ONLY recent (within last 7 days), verifiable travel safety incidents.
+You will receive either:
+1. Recent search results about travel incidents, OR
+2. A query to analyze based on your knowledge
+Extract ONLY real incidents with: title, location (city), country, event_type, severity (low/medium/high), description, event_start_date (YYYY-MM-DD or ISO format), and url (best guess if not in search results).
+REJECT: stale/historical events, vague locations, generic titles, events older than 7 days, unconfirmed rumors.
+Format as JSON array. If no valid recent incidents found, return [].`,
         messages: [{ 
           role: 'user', 
-          content: `Extract travel safety incidents from this content about "${query}":\n\n${searchContent}\n\nReturn JSON array with: title, location, country, event_type (earthquake/flood/protest/explosion/airport_closure/weather/health/security/other), severity, description, event_start_date, and url.
-CRITICAL: Only include incidents from last 7 days. MUST include actual news article URL from search results. Reject vague locations, outdated events, or irrelevant content.`
+          content: searchResults.length > 0 
+            ? `Extract travel safety incidents from this content about "${query}":\n\n${searchContent}\n\nReturn JSON array with: title, location, country, event_type (earthquake/flood/protest/explosion/airport_closure/weather/health/security/other), severity, description, event_start_date, and url.\nCRITICAL: Only include incidents from last 7 days. MUST include actual news article URL. Reject vague locations, outdated events, or irrelevant content.`
+            : `Based on your knowledge of current events, identify any recent travel safety incidents (last 7 days) related to: "${query}"\n\nFor each incident, provide:\n- title: Short headline\n- location: City name\n- country: Country name\n- event_type: One of earthquake/flood/protest/explosion/airport_closure/weather/health/security/other\n- severity: low/medium/high\n- description: 1-2 sentence summary\n- event_start_date: YYYY-MM-DD format\n- url: Link to news article (best guess)\n\nReturn ONLY recent incidents (last 7 days). Return empty array [] if no recent incidents found.`
         }]
       }),
       signal: extractCombinedSignal,

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 export default function ScourManagementInline({ accessToken }) {
     const [sourceGroups, setSourceGroups] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [runningGroupId, setRunningGroupId] = useState(null);
+    const [runningGroupIds, setRunningGroupIds] = useState(new Set());
     const [allComplete, setAllComplete] = useState(false);
     const [statusMessages, setStatusMessages] = useState({});
     const [lastSourceCount, setLastSourceCount] = useState(0);
@@ -20,11 +20,15 @@ export default function ScourManagementInline({ accessToken }) {
     }, [accessToken]);
     // Poll for activity logs while any scour is running
     useEffect(() => {
-        if (!runningGroupId)
+        if (runningGroupIds.size === 0)
             return;
         const pollActivityLogs = async () => {
             try {
-                const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/status?jobId=${encodeURIComponent(runningGroupId)}`, {
+                // Poll first running group for activity logs display
+                const firstRunning = Array.from(runningGroupIds)[0];
+                if (!firstRunning)
+                    return;
+                const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clever-function/scour/status?jobId=${encodeURIComponent(firstRunning)}`, {
                     headers: {
                         Authorization: `Bearer ${accessToken}`,
                     },
@@ -32,10 +36,10 @@ export default function ScourManagementInline({ accessToken }) {
                 if (response.ok) {
                     const data = await response.json();
                     if (data.job?.activityLog && Array.isArray(data.job.activityLog)) {
-                        setActivityLogs(prev => ({ ...prev, [runningGroupId]: data.job.activityLog }));
+                        setActivityLogs(prev => ({ ...prev, [firstRunning]: data.job.activityLog }));
                         // Auto-expand logs section when logs appear
-                        if (data.job.activityLog.length > 0 && !expandedActivityLogs.has(runningGroupId)) {
-                            setExpandedActivityLogs(prev => new Set([...prev, runningGroupId]));
+                        if (data.job.activityLog.length > 0 && !expandedActivityLogs.has(firstRunning)) {
+                            setExpandedActivityLogs(prev => new Set([...prev, firstRunning]));
                         }
                     }
                 }
@@ -47,7 +51,7 @@ export default function ScourManagementInline({ accessToken }) {
         // Poll every 500ms for live updates
         const interval = setInterval(pollActivityLogs, 500);
         return () => clearInterval(interval);
-    }, [runningGroupId, accessToken]);
+    }, [runningGroupIds, accessToken]);
     const addStatusMessage = (groupId, message) => {
         setStatusMessages(prev => ({ ...prev, [groupId]: message }));
     };
@@ -139,9 +143,9 @@ export default function ScourManagementInline({ accessToken }) {
     };
     const runGroup = async (groupId) => {
         const group = sourceGroups.find(g => g.id === groupId);
-        if (!group || runningGroupId !== null)
-            return;
-        setRunningGroupId(groupId);
+        if (!group || runningGroupIds.has(groupId))
+            return; // Only block if THIS group is already running
+        setRunningGroupIds(prev => new Set([...prev, groupId]));
         setSourceGroups(prev => prev.map(g => g.id === groupId ? { ...g, status: 'running' } : g));
         addStatusMessage(groupId, 'Starting...');
         const now = new Date().toISOString(); // Set timestamp at the start
@@ -235,6 +239,12 @@ export default function ScourManagementInline({ accessToken }) {
                 if (!jobComplete) {
                     throw new Error('Scour job polling timeout (15 minutes elapsed)');
                 }
+                // Clear this group from running set
+                setRunningGroupIds(prev => {
+                    const updated = new Set(prev);
+                    updated.delete(groupId);
+                    return updated;
+                });
                 const allDone = sourceGroups.every(g => g.id === groupId || g.status === 'completed');
                 if (allDone)
                     setAllComplete(true);
@@ -369,11 +379,15 @@ export default function ScourManagementInline({ accessToken }) {
             }
         }
         finally {
-            setRunningGroupId(null);
+            setRunningGroupIds(prev => {
+                const updated = new Set(prev);
+                updated.delete(groupId);
+                return updated;
+            });
         }
     };
     const stopAllScours = () => {
-        setRunningGroupId(null);
+        setRunningGroupIds(new Set());
         setSourceGroups(prev => prev.map(g => (g.status === 'running' ? { ...g, status: 'pending' } : g)));
         setStatusMessages({});
     };
@@ -396,21 +410,19 @@ export default function ScourManagementInline({ accessToken }) {
             minute: '2-digit'
         });
     };
-    return (_jsxs("div", { className: "border rounded-lg p-4 bg-gray-50", children: [_jsxs("div", { className: "flex items-center justify-between mb-4", children: [_jsxs("div", { onClick: () => setIsExpanded(!isExpanded), className: "flex-1 cursor-pointer flex items-center gap-2 hover:opacity-80", children: [_jsx("span", { className: "text-lg", children: isExpanded ? '▼' : '▶' }), _jsxs("div", { className: "flex flex-col", children: [_jsx("h3", { className: "font-bold text-base", children: "\uD83D\uDCCA Scour Management" }), !isExpanded && mostRecentScour && (_jsxs("span", { className: "text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded", children: ["\u23F1 Last scour: ", formatTime(sourceGroups.find(g => g.lastScourTime && new Date(g.lastScourTime).getTime() === mostRecentScour)?.lastScourTime)] }))] })] }), _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { onClick: stopAllScours, disabled: !runningGroupId, className: `text-xs px-3 py-1 rounded ${runningGroupId
-                                    ? 'bg-red-600 text-white hover:bg-red-700 cursor-pointer'
-                                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`, children: "Force Stop" }), allComplete && _jsx("span", { className: "text-xs bg-green-200 text-green-800 px-2 py-1 rounded", children: "\u2705 Complete" })] })] }), isExpanded && (_jsxs("div", { className: "grid grid-cols-2 gap-4", children: [_jsxs("div", { className: "space-y-2", children: [_jsx("h4", { className: "text-xs font-semibold text-gray-600 uppercase", children: "Scour Groups" }), sourceGroups.map(group => {
-                                const isRunning = runningGroupId === group.id;
+    return (_jsxs("div", { className: "border rounded-lg p-4 bg-gray-50", children: [_jsxs("div", { className: "flex items-center justify-between mb-4", children: [_jsxs("div", { onClick: () => setIsExpanded(!isExpanded), className: "flex-1 cursor-pointer flex items-center gap-2 hover:opacity-80", children: [_jsx("span", { className: "text-lg", children: isExpanded ? '▼' : '▶' }), _jsxs("div", { className: "flex flex-col", children: [_jsx("h3", { className: "font-bold text-base", children: "\uD83D\uDCCA Scour Management" }), !isExpanded && mostRecentScour && (_jsxs("span", { className: "text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded", children: ["\u23F1 Last scour: ", formatTime(sourceGroups.find(g => g.lastScourTime && new Date(g.lastScourTime).getTime() === mostRecentScour)?.lastScourTime)] }))] })] }), _jsxs("div", { className: "flex gap-2", children: [_jsx("button", { onClick: stopAllScours, className: "text-xs px-3 py-1 rounded bg-orange-600 text-white hover:bg-orange-700 cursor-pointer font-semibold", style: { opacity: 1, pointerEvents: 'auto' }, children: "\u2297 Force Stop" }), allComplete && _jsx("span", { className: "text-xs bg-green-200 text-green-800 px-2 py-1 rounded", children: "\u2705 Complete" })] })] }), isExpanded && (_jsxs("div", { className: "grid grid-cols-2 gap-4", children: [_jsxs("div", { className: "space-y-2", children: [_jsx("h4", { className: "text-xs font-semibold text-gray-600 uppercase", children: "Scour Groups" }), sourceGroups.map(group => {
+                                const isRunning = runningGroupIds.has(group.id);
                                 return (_jsx("div", { className: `border rounded p-2 text-xs transition-colors ${group.status === 'completed'
                                         ? 'bg-green-100 border-green-300'
                                         : group.status === 'error'
                                             ? 'bg-red-100 border-red-300'
                                             : isRunning
                                                 ? 'bg-blue-100 border-blue-300'
-                                                : 'bg-white border-gray-300'}`, children: _jsxs("div", { className: "flex items-center justify-between gap-2", children: [_jsxs("div", { className: "flex-1 min-w-0", children: [_jsx("div", { className: "font-semibold text-xs", children: group.name }), group.lastScourTime && (_jsxs("div", { className: "text-xs font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded mt-1 inline-block", children: ["\u23F1 ", formatTime(group.lastScourTime)] }))] }), _jsxs("div", { className: "flex-shrink-0 flex items-center gap-1", children: [group.status === 'pending' && (_jsx("button", { onClick: () => runGroup(group.id), disabled: runningGroupId !== null, className: "px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap", children: "Run" })), isRunning && (_jsx("div", { className: "animate-spin w-3 h-3 border-2 border-blue-400 border-t-blue-600 rounded-full" })), group.status === 'completed' && _jsx("span", { className: "text-green-700 font-bold", children: "\u2713" }), group.status === 'error' && _jsx("span", { className: "text-red-700 font-bold", children: "\u2717" })] })] }) }, group.id));
+                                                : 'bg-white border-gray-300'}`, children: _jsxs("div", { className: "flex items-center justify-between gap-2", children: [_jsxs("div", { className: "flex-1 min-w-0", children: [_jsx("div", { className: "font-semibold text-xs", children: group.name }), group.lastScourTime && (_jsxs("div", { className: "text-xs font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded mt-1 inline-block", children: ["\u23F1 ", formatTime(group.lastScourTime)] }))] }), _jsxs("div", { className: "flex-shrink-0 flex items-center gap-1", children: [group.status === 'pending' && (_jsx("button", { onClick: () => runGroup(group.id), disabled: runningGroupIds.has(group.id), className: "px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap", children: "Run" })), isRunning && (_jsx("div", { className: "animate-spin w-3 h-3 border-2 border-blue-400 border-t-blue-600 rounded-full" })), group.status === 'completed' && _jsx("span", { className: "text-green-700 font-bold", children: "\u2713" }), group.status === 'error' && _jsx("span", { className: "text-red-700 font-bold", children: "\u2717" })] })] }) }, group.id));
                             })] }), _jsxs("div", { className: "space-y-2", children: [_jsx("h4", { className: "text-xs font-semibold text-gray-600 uppercase", children: "Results & Status" }), sourceGroups.map(group => {
                                 const statusMsg = statusMessages[group.id];
-                                return (_jsxs("div", { className: "border rounded p-2 bg-white text-xs", children: [_jsx("div", { className: "flex items-center justify-between mb-2", children: _jsx("div", { className: "font-semibold text-xs", children: group.name }) }), group.lastScourTime && (_jsxs("div", { className: "mb-2 font-semibold text-sm text-blue-600 bg-blue-50 px-2 py-1.5 rounded border border-blue-200", children: ["\u2713 Scoured: ", formatTime(group.lastScourTime)] })), statusMsg && (_jsx("div", { className: "text-xs text-gray-700 mb-2", children: statusMsg })), (() => {
-                                            const isRunning = runningGroupId === group.id;
+                                return (_jsxs("div", { className: "border rounded p-2 bg-white text-xs", children: [_jsx("div", { className: "flex items-center justify-between mb-2", children: _jsx("div", { className: "font-semibold text-xs", children: group.name }) }), group.lastScourTime && (_jsxs("div", { className: "mb-2 font-semibold text-sm text-blue-600 bg-blue-50 px-2 py-1.5 rounded border border-blue-200", children: ["\u2713 Scoured: ", formatTime(group.lastScourTime)] })), statusMsg && (_jsxs("div", { className: "text-xs text-gray-700 mb-2 flex items-center gap-2", children: [runningGroupIds.has(group.id) && (_jsx("div", { className: "animate-spin w-3 h-3 border-2 border-blue-400 border-t-blue-600 rounded-full flex-shrink-0" })), _jsx("span", { children: statusMsg })] })), (() => {
+                                            const isRunning = runningGroupIds.has(group.id);
                                             const hasLogs = activityLogs[group.id];
                                             const logCount = hasLogs?.length || 0;
                                             if (isRunning && logCount > 0) {

@@ -15,12 +15,14 @@ const spinnerStyle = `
   }
 `;
 export default function ScourStatusBarInline({ accessToken }) {
-    const { isScouring, scourJob, stopScour, startScour } = useScour();
+    const { isScouring, scourJob, stopScour, startScour, hardReset } = useScour();
     const [runningEarlySignals, setRunningEarlySignals] = useState(false);
     const [earlySignalsProgress, setEarlySignalsProgress] = useState(null);
     const [showErrors, setShowErrors] = useState(false);
     const [showLogs, setShowLogs] = useState(false);
     const [liveLogs, setLiveLogs] = useState([]);
+    const [forceStopLoading, setForceStopLoading] = useState(false);
+    const [forceStopSuccess, setForceStopSuccess] = useState(false);
     // DEBUG: Log scourJob changes
     useEffect(() => {
         console.log(`[ScourStatusBarInline] scourJob updated:`, {
@@ -167,11 +169,13 @@ export default function ScourStatusBarInline({ accessToken }) {
         }
     }
     async function forceStopScour() {
-        if (!confirm("Force stop all running scour jobs?")) {
-            return;
-        }
+        // ⚡ INSTANT HARD STOP - No confirmation needed
+        setForceStopLoading(true);
+        setForceStopSuccess(false);
+        console.log('[ForceStop] Sending hard stop signal to server...');
         if (!accessToken) {
             alert("Not authenticated");
+            setForceStopLoading(false);
             return;
         }
         try {
@@ -184,21 +188,30 @@ export default function ScourStatusBarInline({ accessToken }) {
             });
             const data = await response.json().catch(() => ({}));
             if (response.ok) {
-                console.log('[ForceStop] Backend cleared jobs:', data);
+                console.log('[ForceStop] ✅ Hard stop executed:', data);
                 stopScour();
                 // Clear the early signals state immediately
                 setRunningEarlySignals(false);
                 setEarlySignalsProgress(null);
-                alert(`✓ Force stopped: ${data.message || 'all jobs cleared'}`);
+                // Show success feedback
+                setForceStopSuccess(true);
+                console.log(`✓ Force stopped: ${data.message || 'all jobs cleared'}`);
+                // Keep success state visible for 2 seconds
+                setTimeout(() => {
+                    setForceStopSuccess(false);
+                    setForceStopLoading(false);
+                }, 2000);
             }
             else {
                 console.error('[ForceStop] Backend error:', data);
                 alert(`⚠️ Error: ${data.error || 'Unknown error'}`);
+                setForceStopLoading(false);
             }
         }
         catch (e) {
             console.error('[ForceStop] Request failed:', e);
             alert(`❌ Error: ${e.message}`);
+            setForceStopLoading(false);
         }
     }
     const progressPercent = scourJob && scourJob.total > 0
@@ -212,16 +225,19 @@ export default function ScourStatusBarInline({ accessToken }) {
                         borderWidth: '3px',
                         marginBottom: '1rem',
                         boxShadow: `0 0 20px rgba(255, 140, 0, 0.3)`,
-                    }, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '0.5rem' }, children: [_jsx("span", { className: "early-signals-spinner", style: { fontSize: '1.5rem' }, children: "\u26A1" }), _jsx("div", { style: { color: MAGNUS_COLORS.orange, fontWeight: 'bold', fontSize: '1.1rem' }, children: "EARLY SIGNALS - WEB SEARCH IN PROGRESS" })] }), _jsxs("div", { style: { display: 'flex', gap: '0.5rem' }, children: [_jsx("button", { onClick: forceStopScour, style: {
+                    }, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '0.5rem' }, children: [_jsx("span", { className: "early-signals-spinner", style: { fontSize: '1.5rem' }, children: "\u26A1" }), _jsx("div", { style: { color: MAGNUS_COLORS.orange, fontWeight: 'bold', fontSize: '1.1rem' }, children: "EARLY SIGNALS - WEB SEARCH IN PROGRESS" })] }), _jsxs("div", { style: { display: 'flex', gap: '0.5rem' }, children: [_jsx("button", { onClick: forceStopScour, disabled: forceStopLoading, style: {
                                                 padding: '0.35rem 1rem',
-                                                backgroundColor: MAGNUS_COLORS.orange,
+                                                backgroundColor: forceStopSuccess ? '#00aa00' : MAGNUS_COLORS.orange,
                                                 color: 'white',
                                                 border: 'none',
                                                 borderRadius: '4px',
-                                                cursor: 'pointer',
+                                                cursor: forceStopLoading ? 'not-allowed' : 'pointer',
                                                 fontSize: '0.85rem',
                                                 fontWeight: 'bold',
-                                            }, children: "\u2297 Force Stop" }), _jsx("button", { onClick: () => stopScour(), style: {
+                                                opacity: 1,
+                                                pointerEvents: 'auto',
+                                                transition: 'background-color 0.3s ease',
+                                            }, children: forceStopLoading ? '⏳ Stopping...' : forceStopSuccess ? '✅ Stopped!' : '⊗ Force Stop' }), _jsx("button", { onClick: () => stopScour(), style: {
                                                 padding: '0.35rem 1rem',
                                                 backgroundColor: MAGNUS_COLORS.critical,
                                                 color: 'white',
@@ -230,7 +246,16 @@ export default function ScourStatusBarInline({ accessToken }) {
                                                 cursor: 'pointer',
                                                 fontSize: '0.85rem',
                                                 fontWeight: 'bold',
-                                            }, children: "\u23F9 KILL SEARCH" })] })] }), _jsxs("div", { style: { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(150px, 1fr))', gap: '1.5rem', marginBottom: '1rem', fontSize: '0.95rem' }, children: [_jsxs("div", { children: [_jsx("div", { style: { color: MAGNUS_COLORS.orange, fontSize: '0.9rem', marginBottom: '0.25rem' }, children: "\uD83D\uDD0D Queries Done" }), _jsx("div", { style: { fontSize: '1.5rem', color: MAGNUS_COLORS.deepGreen, fontWeight: 'bold' }, children: (earlySignalsProgress?.current || 0).toLocaleString() })] }), _jsxs("div", { children: [_jsx("div", { style: { color: MAGNUS_COLORS.orange, fontSize: '0.9rem', marginBottom: '0.25rem' }, children: "\uD83D\uDCCA Total Queries" }), _jsx("div", { style: { fontSize: '1.5rem', color: MAGNUS_COLORS.deepGreen, fontWeight: 'bold' }, children: (earlySignalsProgress?.total || 3710).toLocaleString() })] }), _jsxs("div", { children: [_jsx("div", { style: { color: MAGNUS_COLORS.orange, fontSize: '0.9rem', marginBottom: '0.25rem' }, children: "\u2713 Alerts Found" }), _jsx("div", { style: { fontSize: '1.5rem', color: MAGNUS_COLORS.deepGreen, fontWeight: 'bold' }, children: (scourJob.created || 0).toLocaleString() })] }), _jsxs("div", { children: [_jsx("div", { style: { color: MAGNUS_COLORS.orange, fontSize: '0.9rem', marginBottom: '0.25rem' }, children: "\u23F1 Progress" }), _jsxs("div", { style: { fontSize: '1.5rem', color: '#ff8c00', fontWeight: 'bold' }, children: [earlySignalsProgress?.total ? Math.round(((earlySignalsProgress?.current || 0) / earlySignalsProgress?.total) * 100) : 0, "%"] })] })] }), _jsx("div", { style: {
+                                            }, children: "\u23F9 KILL SEARCH" }), _jsx("button", { onClick: hardReset, style: {
+                                                padding: '0.35rem 1rem',
+                                                backgroundColor: MAGNUS_COLORS.deepGreen,
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '4px',
+                                                cursor: 'pointer',
+                                                fontSize: '0.85rem',
+                                                fontWeight: 'bold',
+                                            }, children: "\uD83D\uDD04 RESET" })] })] }), _jsxs("div", { style: { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(150px, 1fr))', gap: '1.5rem', marginBottom: '1rem', fontSize: '0.95rem' }, children: [_jsxs("div", { children: [_jsx("div", { style: { color: MAGNUS_COLORS.orange, fontSize: '0.9rem', marginBottom: '0.25rem' }, children: "\uD83D\uDD0D Queries Done" }), _jsx("div", { style: { fontSize: '1.5rem', color: MAGNUS_COLORS.deepGreen, fontWeight: 'bold' }, children: (earlySignalsProgress?.current || 0).toLocaleString() })] }), _jsxs("div", { children: [_jsx("div", { style: { color: MAGNUS_COLORS.orange, fontSize: '0.9rem', marginBottom: '0.25rem' }, children: "\uD83D\uDCCA Total Queries" }), _jsx("div", { style: { fontSize: '1.5rem', color: MAGNUS_COLORS.deepGreen, fontWeight: 'bold' }, children: (earlySignalsProgress?.total || 3710).toLocaleString() })] }), _jsxs("div", { children: [_jsx("div", { style: { color: MAGNUS_COLORS.orange, fontSize: '0.9rem', marginBottom: '0.25rem' }, children: "\u2713 Alerts Found" }), _jsx("div", { style: { fontSize: '1.5rem', color: MAGNUS_COLORS.deepGreen, fontWeight: 'bold' }, children: (scourJob.created || 0).toLocaleString() })] }), _jsxs("div", { children: [_jsx("div", { style: { color: MAGNUS_COLORS.orange, fontSize: '0.9rem', marginBottom: '0.25rem' }, children: "\u23F1 Progress" }), _jsxs("div", { style: { fontSize: '1.5rem', color: '#ff8c00', fontWeight: 'bold' }, children: [earlySignalsProgress?.total ? Math.round(((earlySignalsProgress?.current || 0) / earlySignalsProgress?.total) * 100) : 0, "%"] })] })] }), _jsx("div", { style: {
                                 width: '100%',
                                 height: '20px',
                                 backgroundColor: MAGNUS_COLORS.border,
@@ -294,13 +319,13 @@ export default function ScourStatusBarInline({ accessToken }) {
                     borderColor: MAGNUS_COLORS.border,
                     opacity: isScouring ? 0.5 : 1,
                     pointerEvents: 'auto'
-                }, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }, children: [_jsx("div", { style: { color: MAGNUS_COLORS.darkGreen, fontWeight: 'bold' }, children: isScouring ? '🔍 SCOURING IN PROGRESS (v2.1)' : '✓ SCOUR COMPLETE (v2.1)' }), _jsxs("div", { style: { display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }, children: [_jsx("button", { onClick: runEarlySignals, disabled: runningEarlySignals || isScouring, style: {
+                }, children: [_jsxs("div", { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }, children: [_jsx("div", { style: { color: MAGNUS_COLORS.darkGreen, fontWeight: 'bold' }, children: isScouring ? '🔍 SCOURING IN PROGRESS (v2.1)' : '✓ SCOUR COMPLETE (v2.1)' }), _jsxs("div", { style: { display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }, children: [_jsx("button", { onClick: runEarlySignals, disabled: runningEarlySignals, style: {
                                             padding: '0.25rem 0.75rem',
                                             backgroundColor: runningEarlySignals ? MAGNUS_COLORS.border : MAGNUS_COLORS.deepGreen,
                                             color: 'white',
                                             border: runningEarlySignals ? `2px solid ${MAGNUS_COLORS.deepGreen}` : 'none',
                                             borderRadius: '4px',
-                                            cursor: runningEarlySignals || isScouring ? 'not-allowed' : 'pointer',
+                                            cursor: runningEarlySignals ? 'not-allowed' : 'pointer',
                                             fontSize: '0.85rem',
                                             fontWeight: 'bold',
                                             minWidth: '140px',
@@ -308,16 +333,19 @@ export default function ScourStatusBarInline({ accessToken }) {
                                             alignItems: 'center',
                                             justifyContent: 'center',
                                             transition: 'all 0.3s ease',
-                                        }, title: runningEarlySignals ? "Early Signals searching..." : "Runs 25+ web searches for emerging threats", children: runningEarlySignals ? (_jsxs(_Fragment, { children: [_jsx("span", { className: "early-signals-spinner", children: "\uD83D\uDD0D" }), "Searching Web..."] })) : ("⚡ Early Signals") }), _jsx("button", { onClick: forceStopScour, style: {
+                                        }, title: runningEarlySignals ? "Early Signals searching..." : "Runs 25+ web searches for emerging threats", children: runningEarlySignals ? (_jsxs(_Fragment, { children: [_jsx("span", { className: "early-signals-spinner", children: "\uD83D\uDD0D" }), "Searching Web..."] })) : ("⚡ Early Signals") }), _jsx("button", { onClick: forceStopScour, disabled: forceStopLoading, style: {
                                             padding: '0.25rem 0.75rem',
-                                            backgroundColor: MAGNUS_COLORS.orange,
+                                            backgroundColor: forceStopSuccess ? '#00aa00' : MAGNUS_COLORS.orange,
                                             color: 'white',
                                             border: 'none',
                                             borderRadius: '4px',
-                                            cursor: 'pointer',
+                                            cursor: forceStopLoading ? 'not-allowed' : 'pointer',
                                             fontSize: '0.85rem',
                                             fontWeight: 'bold',
-                                        }, children: "\u2297 Force Stop" }), _jsx("button", { onClick: () => stopScour(), disabled: !isScouring, style: {
+                                            opacity: 1,
+                                            pointerEvents: 'auto',
+                                            transition: 'background-color 0.3s ease',
+                                        }, children: forceStopLoading ? '⏳ Stopping...' : forceStopSuccess ? '✅ Stopped!' : '⊗ Force Stop' }), _jsx("button", { onClick: () => stopScour(), disabled: !isScouring, style: {
                                             padding: '0.25rem 0.75rem',
                                             backgroundColor: isScouring ? MAGNUS_COLORS.critical : MAGNUS_COLORS.border,
                                             color: 'white',

@@ -614,7 +614,12 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
                     </div>
                   )}
                   {statusMsg && (
-                    <div className="text-xs text-gray-700 mb-2">{statusMsg}</div>
+                    <div className="text-xs text-gray-700 mb-2 flex items-center gap-2">
+                      {runningGroupIds.has(group.id) && (
+                        <div className="animate-spin w-3 h-3 border-2 border-blue-400 border-t-blue-600 rounded-full flex-shrink-0" />
+                      )}
+                      <span>{statusMsg}</span>
+                    </div>
                   )}
                   
                   {/* Activity Log for running scours */}
