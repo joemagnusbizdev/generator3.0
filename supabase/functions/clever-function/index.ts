@@ -449,13 +449,14 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
       try {
         // Query the app_kv table for job status
         const statusKey = `scour-job-${jobId}`;
-        console.log(`[/scour/status] Querying app_kv for key: ${statusKey}`);
+        console.log(`[/scour/status] Querying app_kv for key: ${statusKey} (jobId: ${jobId})`);
         
         let result;
         try {
           result = await querySupabaseRest(`/app_kv?key=eq.${encodeURIComponent(statusKey)}&select=value`);
+          console.log(`[/scour/status] Query result: ${result ? (Array.isArray(result) ? `array(${result.length})` : 'object') : 'null'}`);
         } catch (queryErr: any) {
-          console.error(`[/scour/status] Query failed:`, queryErr.message);
+          console.error(`[/scour/status] Query failed for key ${statusKey}:`, queryErr.message);
           // Return unknown status instead of erroring
           return json({
             ok: true,

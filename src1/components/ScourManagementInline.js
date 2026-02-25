@@ -173,10 +173,11 @@ export default function ScourManagementInline({ accessToken }) {
                 throw new Error(error.error || `Scour failed with status ${response.status}`);
             }
             const result = await response.json();
+            console.log(`[Scour run] Response result:`, result);
             // If job is queued, poll for completion instead of getting immediate results
             if (result.status === 'queued') {
                 const actualJobId = result.jobId || groupId; // Use the ID returned from the backend
-                console.log(`[Scour polling] Using jobId: ${actualJobId} (groupId: ${groupId})`);
+                console.log(`[Scour polling] Using jobId: "${actualJobId}" (groupId: "${groupId}"), result.jobId: "${result.jobId}"`);
                 addStatusMessage(groupId, 'Job queued, polling for status...');
                 // Poll for job completion
                 let jobComplete = false;
@@ -194,8 +195,9 @@ export default function ScourManagementInline({ accessToken }) {
                         if (statusResponse.ok) {
                             const statusData = await statusResponse.json();
                             const job = statusData.job;
+                            console.log(`[Scour polling] Poll ${pollCount}: statusData keys=${Object.keys(statusData).join(',')}, job=${job ? 'exists' : 'NULL'}, job keys=${job ? Object.keys(job).join(',') : 'N/A'}`);
                             if (!job) {
-                                console.warn(`[Scour polling] Poll ${pollCount}: No job data returned`);
+                                console.warn(`[Scour polling] Poll ${pollCount}: No job data returned from status endpoint`);
                                 continue;
                             }
                             console.log(`[Scour polling] Poll ${pollCount}: status=${job.status}, processed=${job.processed}/${job.total}, created=${job.created}, logs=${job.activityLog?.length || 0}`);
