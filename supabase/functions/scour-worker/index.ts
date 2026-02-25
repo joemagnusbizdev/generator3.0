@@ -2512,11 +2512,16 @@ async function runEarlySignals(jobId: string): Promise<ScourStats> {
           const validAlerts = alerts.filter(a => {
             // Filter: Only alerts with confidence > 0.5 and recent data
             if (!a.confidence_score || a.confidence_score < 0.5) {
+              console.log(`  ⚠️ Filtered alert: "${a.title}" (confidence=${a.confidence_score || 'undefined'})`);
               alertsFiltered++;
               return false;
             }
             return true;
           });
+          
+          if (validAlerts.length > 0) {
+            console.log(`  ✅ Accepted ${validAlerts.length} alerts with confidence >= 0.5`);
+          }
           alertsCreated += validAlerts.length;
           
           // Live progress update
@@ -2885,6 +2890,7 @@ CRITICAL: Only include incidents from last 7 days. MUST include actual news arti
                       ai_generated: true,
                       ai_model: 'claude-3-haiku-20240307',
                       ai_confidence: 0.8,
+                      confidence_score: 0.75, // Set confidence score for filtering
                       recommendations: generateIncidentRecommendations(
                         item.event_type || 'Security Incident',
                         mapSeverity(item.severity || 'informative'),
@@ -2950,13 +2956,15 @@ CRITICAL: Only include incidents from last 7 days. MUST include actual news arti
             confidence_score: alert.confidence_score,
           };
           
-          await querySupabaseRest(`/alerts`, {
+          console.log(`  🔍 Saving alert: title="${alert.title}", confidence=${alert.confidence_score}`);
+          const saveResponse = await querySupabaseRest(`/alerts`, {
             method: 'POST',
             body: JSON.stringify(alertToSave),
           });
           console.log(`    ✓ Saved: ${alert.title} (${alert.country}) [${alert.latitude?.toFixed(2)}, ${alert.longitude?.toFixed(2)}]`);
-        } catch (saveErr) {
-          console.warn(`    ✗ Failed to save alert: ${saveErr}`);
+        } catch (saveErr: any) {
+          console.error(`    ✗ Failed to save alert "${alert.title}": ${saveErr.message || saveErr}`);
+          console.error(`    Error details:`, saveErr);
         }
       }
     } else {
