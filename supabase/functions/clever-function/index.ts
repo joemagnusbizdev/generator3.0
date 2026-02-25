@@ -439,7 +439,7 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
     }
 
     // GET /scour/status - Get specific job status (supports both query param and path param)
-    if ((path.startsWith("/scour/status") || path.startsWith("/clever-function/scour/status")) && method === "GET") {
+    if ((path.includes("/scour/status") || path.includes("/clever-function/scour/status")) && method === "GET") {
       // Extract jobId from query string first, then path
       const url = new URL(req.url);
       let jobId = url.searchParams.get('jobId');
