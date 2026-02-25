@@ -981,49 +981,68 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
       }
     }
 
-    // POST /force-stop-scour - Alias for stopping the current scour job
+    // POST /force-stop-scour - HARD STOP: Immediately kill ALL running scour/early signal jobs
     if ((path === "/force-stop-scour" || path.endsWith("/force-stop-scour")) && method === "POST") {
       try {
-        // Stop ALL running scour jobs
+        console.log(`🛑 [FORCE STOP] Received hard stop request - terminating all scour and early signal operations`);
+        let stoppedCount = 0;
+        
+        // 1. Stop ALL running scour jobs with hard stop flags
         try {
           const activeJobs = await querySupabaseRest(`/app_kv?key=like.scour-job-*&select=key,value`);
           if (activeJobs && Array.isArray(activeJobs)) {
-            let stoppedCount = 0;
             for (const entry of activeJobs) {
               const jobId = entry.key?.replace('scour-job-', '');
               if (jobId) {
-                // Get the current job value
                 const jobValue = typeof entry.value === 'string' ? JSON.parse(entry.value) : entry.value;
                 
-                // Mark as stopped and delete the job record
-                if (jobValue?.status === 'running' || jobValue?.status !== 'completed') {
-                  // Set stop flag
-                  await setKV(`scour-stop-${jobId}`, { stopped: true, at: nowIso() });
+                // Only stop jobs that are NOT already completed
+                if (jobValue?.status !== 'completed' && jobValue?.status !== 'cancelled') {
+                  // Set HARD STOP flag immediately
+                  await setKV(`scour-stop-${jobId}`, { stopped: true, at: nowIso(), by: 'force-stop-endpoint' });
                   
-                  // Mark job as cancelled in KV
+                  // Mark job as cancelled
                   await querySupabaseRest(`/app_kv?key=eq.${encodeURIComponent(entry.key)}`, {
                     method: "PATCH",
-                    body: JSON.stringify({ value: JSON.stringify({ ...jobValue, status: "cancelled", cancelled_at: nowIso() }) })
+                    body: JSON.stringify({ value: JSON.stringify({ ...jobValue, status: "cancelled", cancelled_at: nowIso(), cancelled_by: 'force-stop' }) })
                   });
                   
                   stoppedCount++;
-                  console.log(`🛑 Force stopped job: ${jobId}`);
+                  console.log(`🛑 Hard stopped scour job: ${jobId}`);
                 }
               }
             }
-            console.log(`🛑 Force stopped ${stoppedCount} scour job(s)`);
-            return json({ 
-              ok: true, 
-              message: `Stopped ${stoppedCount} scour job(s)`,
-              stopped_jobs: stoppedCount
-            });
           }
         } catch (e) {
-          console.warn(`Error stopping jobs: ${e}`);
+          console.warn(`Error stopping scour jobs: ${e}`);
         }
-
-        return json({ ok: true, message: "No active scour jobs to stop", stopped_jobs: 0 });
+        
+        // 2. Stop all early signal jobs as well
+        try {
+          const earlySignalJobs = await querySupabaseRest(`/app_kv?key=like.early-signals-*&select=key,value`);
+          if (earlySignalJobs && Array.isArray(earlySignalJobs)) {
+            for (const entry of earlySignalJobs) {
+              const jobId = entry.key?.replace('early-signals-', '');
+              if (jobId) {
+                // Set hard stop flag for early signals
+                await setKV(`early-signals-stop-${jobId}`, { stopped: true, at: nowIso() });
+                console.log(`🛑 Hard stopped early signals job: ${jobId}`);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`Error stopping early signals: ${e}`);
+        }
+        
+        console.log(`🛑 [FORCE STOP COMPLETE] Stopped ${stoppedCount} scour job(s) - all operations halted`);
+        return json({
+          ok: true,
+          message: `Hard stop executed - ${stoppedCount} scour job(s) terminated`,
+          stopped_jobs: stoppedCount,
+          status: 'hard-stop-complete'
+        });
       } catch (err: any) {
+        console.error(`Force stop error: ${err.message}`);
         return json({ ok: false, error: err.message }, 500);
       }
     }

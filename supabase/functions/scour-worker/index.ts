@@ -1470,19 +1470,27 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
   // Clean up controller when job finishes
   const cleanup = () => jobAbortControllers.delete(config.jobId);
   
-  // Set up monitor to abort controller if stop flag is set
+  // Set up AGGRESSIVE monitor to abort controller if stop flag is set
+  // This is a hard stop - we check frequently and abort immediately
   const stopMonitorInterval = setInterval(async () => {
     try {
       const stopFlag = await querySupabaseRest(`/app_kv?key=eq.scour-stop-${config.jobId}&select=value`);
       if (stopFlag && Array.isArray(stopFlag) && stopFlag.length > 0) {
-        console.log(`🛑 [runScourWorker] Stop flag detected for job ${config.jobId}, aborting...`);
+        console.log(`🛑 [HARD STOP TRIGGERED] Job ${config.jobId} - aborting all operations immediately`);
+        logger.log(`🛑 HARD STOP TRIGGERED - Cancelling all in-flight operations`);
+        
+        // Immediately abort all in-flight requests
         abortController.abort();
+        
+        // Log the hard stop for debugging
+        stats.errors.push('Hard stop was triggered - all operations aborted');
+        
         clearInterval(stopMonitorInterval);
       }
     } catch (e) {
       // Silently ignore monitoring errors
     }
-  }, 500); // Check every 500ms for stop signal
+  }, 100); // Check every 100ms for stop signal (MORE AGGRESSIVE than 500ms)
   const extractedBeforeValidation: number[] = [];
   const validatedAfter: number[] = [];
   
@@ -1613,10 +1621,14 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
         queue.push(async () => {
           // Check if stop was requested before processing each source
           if (await checkStopFlag()) {
-            logger.log(`🛑 STOP REQUESTED: Halting scour job`);
-            console.log(`🛑 Scour job ${config.jobId} was stopped`);
-            stats.errors.push('Scour job was stopped by user');
-            return; // FIX: return instead of break
+            logger.log(`🛑 HARD STOP RECEIVED: Halting scour job immediately`);
+            console.log(`🛑 Scour job ${config.jobId} received hard stop signal`);
+            stats.errors.push('Hard stop triggered - all operations aborted');
+            
+            // Immediately abort all pending requests
+            abortController.abort();
+            console.log(`🛑 AbortController triggered for job ${config.jobId}`);
+            return; // Exit immediately
           }
           
           // Periodically update job status in app_kv so frontend can see progress
@@ -2030,9 +2042,20 @@ async function runScourWorker(config: ScourConfig, batchOffset: number = 0, batc
     // Return partial results even on fatal error - don't throw
     return stats;
   } finally {
-    // Always clean up: stop monitoring and remove abort controller
+    // Always clean up: stop monitoring, remove abort controller, and clear stop flag
     clearInterval(stopMonitorInterval);
     cleanup();
+    
+    // Clean up stop flag when job completes (whether normally or via hard stop)
+    try {
+      const stopFlagKey = `scour-stop-${config.jobId}`;
+      await querySupabaseRest(`/app_kv?key=eq.${stopFlagKey}`, {
+        method: 'DELETE'
+      }).catch(() => {}); // Ignore errors, best effort cleanup
+      console.log(`✓ Cleaned up stop flag for job ${config.jobId}`);
+    } catch (e) {
+      console.warn(`Failed to clean up stop flag: ${e}`);
+    }
   }
 }
 
