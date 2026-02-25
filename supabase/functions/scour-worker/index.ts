@@ -2724,9 +2724,8 @@ async function executeEarlySignalQuery(query: string, config: ScourConfig): Prom
     let searchResults: any[] = [];
     
     // Step 1: Get web search results from Brave
-    // TEMPORARILY DISABLED: Brave API not returning reliable results, using Claude direct analysis instead
-    console.warn(`[CLAUDE_DASHBOARD_LOG] Brave search disabled - using Claude direct analysis`);
-    if (false && config.braveApiKey) {
+    console.log(`[CLAUDE_DASHBOARD_LOG] Brave Search API enabled`);
+    if (config.braveApiKey) {
       console.log(`[CLAUDE_DASHBOARD_LOG] Brave Search API call for: "${query}"`);
       try {
         // Add search parameters

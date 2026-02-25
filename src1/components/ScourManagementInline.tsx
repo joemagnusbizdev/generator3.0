@@ -263,6 +263,13 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
               const statusData = await statusResponse.json();
               const job = statusData.job;
               
+              if (!job) {
+                console.warn(`[Scour polling] Poll ${pollCount}: No job data returned`);
+                continue;
+              }
+              
+              console.log(`[Scour polling] Poll ${pollCount}: status=${job.status}, processed=${job.processed}/${job.total}, created=${job.created}, logs=${job.activityLog?.length || 0}`);
+              
               if (job && (job.status === 'done' || job.status === 'error')) {
                 jobComplete = true;
                 
@@ -303,7 +310,12 @@ export default function ScourManagementInline({ accessToken }: ScourManagementPr
                 // Still running, show progress
                 const processed = job.processed || 0;
                 const total = job.total || '?';
-                addStatusMessage(groupId, `Running: ${processed}/${total} sources processed...`);
+                const logCount = job.activityLog?.length || 0;
+                const logHint = logCount > 0 ? ` (${logCount} log entries)` : '';
+                addStatusMessage(groupId, `Running: ${processed}/${total} sources processed...${logHint}`);
+              } else {
+                // Status is neither done, error, nor running - might be queued/pending
+                addStatusMessage(groupId, `Processing... (status: ${job.status})`);
               }
             }
           } catch (pollError) {
