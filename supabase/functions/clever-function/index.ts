@@ -1078,6 +1078,46 @@ Deno.serve({ skipJwtVerification: true }, async (req) => {
       }
     }
 
+    // POST /cleanup - FULL CACHE CLEANUP: Delete ALL job records from KV
+    if ((path === "/cleanup" || path.endsWith("/cleanup")) && method === "POST") {
+      try {
+        console.log(`🧹 [CLEANUP] Starting full cache cleanup - clearing all job data`);
+        let deletedCount = 0;
+
+        // Get all job-related keys from app_kv
+        const patterns = ['scour-job-', 'scour-stop-', 'early-signals-'];
+        
+        for (const pattern of patterns) {
+          try {
+            const entries = await querySupabaseRest(`/app_kv?key=like.${pattern}*&select=key`);
+            if (entries && Array.isArray(entries)) {
+              for (const entry of entries) {
+                // Delete each entry
+                await querySupabaseRest(`/app_kv?key=eq.${encodeURIComponent(entry.key)}`, {
+                  method: 'DELETE',
+                });
+                deletedCount++;
+                console.log(`🧹 Deleted KV entry: ${entry.key}`);
+              }
+            }
+          } catch (e) {
+            console.warn(`Error cleaning up ${pattern} entries:`, e);
+          }
+        }
+
+        console.log(`🧹 [CLEANUP COMPLETE] Deleted ${deletedCount} KV entries`);
+        return json({
+          ok: true,
+          message: `Cache cleanup complete - deleted ${deletedCount} job entries`,
+          deleted_count: deletedCount,
+          status: 'cleanup-complete'
+        });
+      } catch (err: any) {
+        console.error(`Cleanup error: ${err.message}`);
+        return json({ ok: false, error: err.message }, 500);
+      }
+    }
+
     // POST /trends/rebuild - Rebuild trend definitions from dismissed alerts only
     if ((path === "/trends/rebuild" || path === "/clever-function/trends/rebuild") && method === "POST") {
       try {

@@ -18,7 +18,7 @@ export async function apiFetchJson<T>(
   };
 
   // Endpoints that have JWT verification disabled don't need Authorization header
-  const noAuthEndpoints = ['/scour-sources-v2', '/scour-early-signals', '/force-stop-scour', '/scour/status'];
+  const noAuthEndpoints = ['/scour-sources-v2', '/scour-early-signals', '/force-stop-scour', '/scour/status', '/cleanup'];
   const needsAuth = !noAuthEndpoints.some(ep => endpoint.includes(ep));
 
   // Only add Authorization header if token is provided AND endpoint requires auth
